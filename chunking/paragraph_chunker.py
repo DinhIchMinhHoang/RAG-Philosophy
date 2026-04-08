@@ -40,12 +40,31 @@ class ParagraphChunker(BaseChunker):
     def _extract_paragraphs(self, text: str) -> List[str]:
         """
         Extract paragraphs from text.
-        Paragraphs are separated by 2+ newlines or blank lines.
+        Paragraphs are separated by:
+        1. Double newlines (standard paragraph separator)
+        2. Single newlines (fallback)
+        3. If no newlines exist, split by numbered/bullet points or sentence periods
         """
-        # Split by multiple newlines (standard paragraph separator)
-        paragraphs = re.split(r"\n\s*\n+", text.strip())
+        # Try double newlines first
+        if '\n\n' in text:
+            paragraphs = re.split(r"\n\s*\n+", text.strip())
+        # Try single newlines if text has them
+        elif '\n' in text:
+            paragraphs = re.split(r"\n+", text.strip())
+        # Fallback: split by sentence-like boundaries (periods, numbers, etc.)
+        else:
+            # Split on numbered items (1. 2. 3.) or long sentences
+            paragraphs = re.split(r'(?<=[.!?])\s+(?=[A-Z0-9])', text.strip())
+            if len(paragraphs) <= 1:
+                # If still one paragraph, split every ~500 chars for safety
+                if len(text) > 1000:
+                    paragraphs = [text[i:i+500] for i in range(0, len(text), 500)]
+                else:
+                    paragraphs = [text]
+        
         # Filter out empty paragraphs and strip whitespace
         paragraphs = [p.strip() for p in paragraphs if p.strip()]
+        logger.debug(f"Extracted {len(paragraphs)} paragraphs")
         return paragraphs
 
     def _split_paragraph_to_sentences(self, paragraph: str) -> List[str]:
@@ -61,7 +80,6 @@ class ParagraphChunker(BaseChunker):
                 logger.warning(f"sent_tokenize failed: {e}. Using fallback.")
 
         # Fallback: simple regex split on common sentence endings
-        # This is naive but works for basic cases
         sentences = re.split(r'(?<=[.!?])\s+', paragraph)
         return [s.strip() for s in sentences if s.strip()]
 
@@ -89,22 +107,31 @@ class ParagraphChunker(BaseChunker):
         Returns:
             List of Chunk objects
         """
-        logger.debug(f"Chunking {len(text)} chars from {source_path}")
+        logger.info(f"Chunking {len(text)} chars from {source_path}")
 
         # Extract paragraphs
+        logger.debug("Extracting paragraphs...")
         paragraphs = self._extract_paragraphs(text)
         if not paragraphs:
             logger.warning(f"No paragraphs extracted from {source_path}")
             return []
+        
+        logger.info(f"  Extracted {len(paragraphs)} paragraphs")
 
         # Prepare list of sentence groups (each para broken into sentences)
+        logger.debug("Tokenizing paragraphs into sentences...")
         sentence_groups: List[List[str]] = []
-        for para in paragraphs:
+        for para_idx, para in enumerate(paragraphs):
             sentences = self._split_paragraph_to_sentences(para)
             if sentences:
                 sentence_groups.append(sentences)
+            if (para_idx + 1) % 10 == 0:
+                logger.debug(f"  Processed {para_idx + 1}/{len(paragraphs)} paragraphs")
+        
+        logger.info(f"  Created {len(sentence_groups)} groups of sentences")
 
         # Assemble chunks using sliding window with overlap
+        logger.debug("Assembling chunks with token budget...")
         chunks: List[Chunk] = []
         chunk_index = 0
 
@@ -171,6 +198,9 @@ class ParagraphChunker(BaseChunker):
             chunks.append(chunk)
 
             chunk_index += 1
+            
+            if chunk_index % 5 == 0:
+                logger.debug(f"  Created {chunk_index} chunks so far...")
 
             # Move offset by (end - start - overlap_factor) to create sliding window
             # overlap_factor is in terms of paragraphs
@@ -207,8 +237,21 @@ class ParagraphChunker(BaseChunker):
 
         logger.info(f"Processing conversions from {jsonl_file}")
 
+        # Count total lines first for progress bar
+        total_lines = 0
         with open(jsonl_file, "r", encoding="utf-8") as f:
-            for line_idx, line in enumerate(f):
+            for line in f:
+                if line.strip():
+                    total_lines += 1
+        
+        logger.info(f"Found {total_lines} conversions to process")
+
+        # Process each line
+        line_idx = 0
+        with open(jsonl_file, "r", encoding="utf-8") as f:
+            for line in f:
+                line_idx += 1
+                
                 if not line.strip():
                     continue
 
@@ -222,14 +265,21 @@ class ParagraphChunker(BaseChunker):
                         logger.warning(f"Empty text at line {line_idx}, skipping")
                         continue
 
+                    logger.info(f"Line {line_idx}: chunking {len(text)} chars")
                     chunks = self.chunk(text, source_path=source_path)
+                    logger.info(f"Line {line_idx}: created {len(chunks)} chunks")
+                    
                     all_chunks.extend(chunks)
 
                 except json.JSONDecodeError as e:
                     logger.error(f"JSON decode error at line {line_idx}: {e}")
                 except Exception as e:
                     logger.error(f"Error processing line {line_idx}: {e}")
+                    import traceback
+                    traceback.print_exc()
 
+        logger.info(f"Total chunks created: {len(all_chunks)}")
+        
         # Save output if requested
         if output_jsonl:
             output_path = Path(output_jsonl)

@@ -89,7 +89,8 @@ class FasterWhisperSTT(WhisperSTTBase):
                 "faster-whisper not installed (install: pip install faster-whisper)"
             )
         try:
-            self.model = WhisperModel(self.model_size, device="cpu", compute_type="int8")
+            # Use GPU if available, with float16 for better performance
+            self.model = WhisperModel(self.model_size, device="cuda", compute_type="float16")
         except Exception as e:
             logger.error(f"Failed to load faster-whisper model: {e}")
             raise
@@ -120,6 +121,7 @@ class AudioConverter(BaseConverter):
         use_faster_whisper: bool = True,
         model_size: str = "small",
         language: str = "vi",
+        use_gpu: bool = True,
     ):
         """
         Initialize audio converter.
@@ -127,10 +129,12 @@ class AudioConverter(BaseConverter):
             use_faster_whisper: Use faster-whisper if True, else openai-whisper
             model_size: Model size ("tiny", "base", "small", "medium", "large")
             language: Language code (e.g., 'vi' for Vietnamese)
+            use_gpu: Use GPU if available (default: True)
         """
         self.use_faster_whisper = use_faster_whisper
         self.model_size = model_size
         self.language = language
+        self.use_gpu = use_gpu
         self.stt_engine = None
         self._init_stt_engine()
 

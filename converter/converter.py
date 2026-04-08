@@ -32,6 +32,7 @@ class FileConverter:
         use_easyocr: bool = True,
         whisper_model_size: str = "small",
         language: str = "vi",
+        use_gpu: bool = True,
     ):
         """
         Initialize converter with all adapters.
@@ -41,8 +42,10 @@ class FileConverter:
             use_easyocr: Use EasyOCR for OCR
             whisper_model_size: Whisper model size ("tiny", "base", "small", "medium", "large")
             language: Language code (e.g., 'vi' for Vietnamese)
+            use_gpu: Use GPU for OCR/STT if available (default: True)
         """
         self.language = language
+        self.use_gpu = use_gpu
         self.converters = [
             TextConverter(),
             MarkdownConverter(),
@@ -50,15 +53,16 @@ class FileConverter:
             PdfConverter(),
             PptxConverter(),
             ExcelConverter(),
-            ImageConverter(use_easyocr=use_easyocr, language=language),
+            ImageConverter(use_easyocr=use_easyocr, language=language, use_gpu=use_gpu),
             AudioConverter(
                 use_faster_whisper=use_faster_whisper,
                 model_size=whisper_model_size,
                 language=language,
+                use_gpu=use_gpu,
             ),
         ]
         logger.info(
-            f"FileConverter initialized with {len(self.converters)} converters"
+            f"FileConverter initialized with {len(self.converters)} converters (GPU: {use_gpu})"
         )
 
     def convert_file(self, file_path: str) -> ConvertedContent:
