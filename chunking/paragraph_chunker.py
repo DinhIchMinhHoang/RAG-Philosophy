@@ -202,10 +202,24 @@ class ParagraphChunker(BaseChunker):
             if chunk_index % 5 == 0:
                 logger.debug(f"  Created {chunk_index} chunks so far...")
 
-            # Move offset by (end - start - overlap_factor) to create sliding window
-            # overlap_factor is in terms of paragraphs
-            overlap_paras = max(1, end_group_idx - start_group_idx - 1)
-            i = end_group_idx - overlap_paras
+            # Move offset: step forward so that only ~overlap_tokens worth of
+            # trailing paragraph groups are re-included in the next chunk.
+            if self.config.overlap_tokens > 0 and end_group_idx < len(sentence_groups):
+                overlap_token_budget = self.config.overlap_tokens
+                overlap_paras = 0
+                accumulated = 0
+                # Walk backward from the end of the current chunk
+                for g in range(end_group_idx - 1, start_group_idx - 1, -1):
+                    para_text = " ".join(sentence_groups[g])
+                    accumulated += self.token_counter.count(para_text)
+                    overlap_paras += 1
+                    if accumulated >= overlap_token_budget:
+                        break
+                # Ensure we advance by at least 1 group to avoid infinite loop
+                i = max(start_group_idx + 1, end_group_idx - overlap_paras)
+            else:
+                # No overlap requested or last chunk — move to end
+                i = end_group_idx
 
         # Update total_chunks count
         for i, chunk in enumerate(chunks):
