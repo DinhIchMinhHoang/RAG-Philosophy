@@ -32,15 +32,17 @@ class WhisperSTTBase:
 
     AUDIO_EXTENSIONS = {".mp3", ".wav", ".m4a", ".flac", ".ogg", ".wma", ".aac"}
 
-    def __init__(self, model_size: str = "small", language: str = "vi"):
+    def __init__(self, model_size: str = "small", language: str = "vi", use_gpu: bool = False):
         """
         Initialize Whisper STT.
         Args:
             model_size: "tiny", "base", "small", "medium", "large"
             language: Language code (e.g., 'vi' for Vietnamese)
+            use_gpu: Use GPU if available (default: False)
         """
         self.model_size = model_size
         self.language = language
+        self.use_gpu = use_gpu
         self.model = None
         self._init_model()
 
@@ -89,8 +91,10 @@ class FasterWhisperSTT(WhisperSTTBase):
                 "faster-whisper not installed (install: pip install faster-whisper)"
             )
         try:
-            # Use GPU if available, with float16 for better performance
-            self.model = WhisperModel(self.model_size, device="cuda", compute_type="float16")
+            # Use GPU if enabled, otherwise use CPU
+            device = "cuda" if self.use_gpu else "cpu"
+            compute_type = "float16" if self.use_gpu else "float32"
+            self.model = WhisperModel(self.model_size, device=device, compute_type=compute_type)
         except Exception as e:
             logger.error(f"Failed to load faster-whisper model: {e}")
             raise
@@ -121,7 +125,7 @@ class AudioConverter(BaseConverter):
         use_faster_whisper: bool = True,
         model_size: str = "small",
         language: str = "vi",
-        use_gpu: bool = True,
+        use_gpu: bool = False,
     ):
         """
         Initialize audio converter.
@@ -129,7 +133,7 @@ class AudioConverter(BaseConverter):
             use_faster_whisper: Use faster-whisper if True, else openai-whisper
             model_size: Model size ("tiny", "base", "small", "medium", "large")
             language: Language code (e.g., 'vi' for Vietnamese)
-            use_gpu: Use GPU if available (default: True)
+            use_gpu: Use GPU if available (default: False)
         """
         self.use_faster_whisper = use_faster_whisper
         self.model_size = model_size
@@ -143,12 +147,12 @@ class AudioConverter(BaseConverter):
         try:
             if self.use_faster_whisper and WhisperModel:
                 self.stt_engine = FasterWhisperSTT(
-                    model_size=self.model_size, language=self.language
+                    model_size=self.model_size, language=self.language, use_gpu=self.use_gpu
                 )
-                logger.info("Initialized faster-whisper STT engine")
+                logger.info(f"Initialized faster-whisper STT engine (GPU: {self.use_gpu})")
             elif whisper:
                 self.stt_engine = OpenAIWhisperSTT(
-                    model_size=self.model_size, language=self.language
+                    model_size=self.model_size, language=self.language, use_gpu=self.use_gpu
                 )
                 logger.info("Initialized OpenAI Whisper STT engine")
             else:

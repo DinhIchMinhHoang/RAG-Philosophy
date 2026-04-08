@@ -31,13 +31,14 @@ def main():
         use_easyocr=True,
         whisper_model_size="small",
         language="vi",
-        use_gpu=True,  # GPU enabled by default
+        # use_gpu=False by default (CPU mode)
+        # To enable GPU: use_gpu=True (requires CUDA PyTorch)
     )
 
     converted_dir = output_dir / "converted"
     print(f"  [1.3] Output directory: {converted_dir.absolute()}")
-    print(f"  [1.4] GPU enabled: ✓ (RTX 4050 with CUDA 12.8)")
-    print(f"  [1.5] Starting conversion (faster with GPU)...\n")
+    print(f"  [1.4] GPU enabled: ✗ (CPU mode - slower but compatible)")
+    print(f"  [1.5] Starting conversion (CPU)...\n")
     
     results = converter.convert_directory(
         data_dir=str(data_dir),

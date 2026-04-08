@@ -35,13 +35,13 @@ logger = logging.getLogger(__name__)
 class OCRConverter(BaseConverter):
     """Base OCR converter using Tesseract or EasyOCR."""
 
-    def __init__(self, use_easyocr: bool = True, language: str = "vi", use_gpu: bool = True):
+    def __init__(self, use_easyocr: bool = True, language: str = "vi", use_gpu: bool = False):
         """
         Initialize OCR converter.
         Args:
             use_easyocr: Use EasyOCR if True, otherwise Tesseract
             language: Language code (e.g., 'vi' for Vietnamese)
-            use_gpu: Use GPU if available (default: True)
+            use_gpu: Use GPU if available (default: False)
         """
         self.use_easyocr = use_easyocr
         self.language = language
@@ -99,8 +99,8 @@ class ImageConverter(OCRConverter):
 
     IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".heic", ".webp"}
     
-    def __init__(self, use_easyocr: bool = True, language: str = "vi", use_gpu: bool = True):
-        """Initialize with GPU support."""
+    def __init__(self, use_easyocr: bool = True, language: str = "vi", use_gpu: bool = False):
+        """Initialize with GPU support (default: CPU-only)."""
         super().__init__(use_easyocr=use_easyocr, language=language, use_gpu=use_gpu)
 
     def can_handle(self, file_path: str) -> bool:

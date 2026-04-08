@@ -32,7 +32,7 @@ class FileConverter:
         use_easyocr: bool = True,
         whisper_model_size: str = "small",
         language: str = "vi",
-        use_gpu: bool = True,
+        use_gpu: bool = False,
     ):
         """
         Initialize converter with all adapters.
@@ -42,7 +42,7 @@ class FileConverter:
             use_easyocr: Use EasyOCR for OCR
             whisper_model_size: Whisper model size ("tiny", "base", "small", "medium", "large")
             language: Language code (e.g., 'vi' for Vietnamese)
-            use_gpu: Use GPU for OCR/STT if available (default: True)
+            use_gpu: Use GPU for OCR/STT if available (default: False)
         """
         self.language = language
         self.use_gpu = use_gpu

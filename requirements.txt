@@ -34,9 +34,9 @@ pydub  # audio file conversions (requires ffmpeg)
 
 tqdm  # progress bars
 
-# GPU Support (PyTorch with CUDA 12.8 - for faster OCR/STT on NVIDIA GPUs)
-# Install with: pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
-torch  # deep learning framework (GPU support for EasyOCR, Whisper)
+# PyTorch (CPU mode - for EasyOCR, Whisper)
+# For GPU support (CUDA 12.8): pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
+torch  # deep learning framework (CPU-only, set use_gpu=True in converter for GPU)
 torchvision  # computer vision utilities (required by EasyOCR)
 torchaudio  # audio processing (required by Whisper)
 
