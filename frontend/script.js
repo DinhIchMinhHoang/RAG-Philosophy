@@ -9,6 +9,12 @@ const COLORS = [
     '#7CC4ED'
 ];
 
+// Mouse position tracking
+let mouseX = window.innerWidth / 2;
+let mouseY = window.innerHeight / 2;
+const INTERACTION_RADIUS = 200;
+const SIZE_BOOST = 1.3;
+
 // Circle configuration
 class Circle {
     constructor(canvas) {
@@ -20,19 +26,44 @@ class Circle {
         this.color = COLORS[Math.floor(Math.random() * COLORS.length)];
         
         // Linear movement velocities (increased by 25% and constrained for better coverage)
-        this.vx = (Math.random() - 0.5) * 1.25;
-        this.vy = (Math.random() - 0.5) * 1.25;
+        this.vx = (Math.random() - 0.5) * 2.1875;
+        this.vy = (Math.random() - 0.5) * 2.1875;
         
         // Size change rate (increased by 25%)
-        this.radiusChangeRate = (Math.random() - 0.5) * 0.625;
+        this.radiusChangeRate = (Math.random() - 0.5) * 1.09375;
         this.minRadius = this.baseRadius * 0.6;
         this.maxRadius = this.baseRadius * 1.4;
+        
+        // Target radius for smooth size transitions
+        this.targetRadius = this.baseRadius;
     }
 
     update() {
         // Linear movement
         this.x += this.vx;
         this.y += this.vy;
+
+        // Mouse interaction - size change only
+        const dx = this.x - mouseX;
+        const dy = this.y - mouseY;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+
+        if (distance < INTERACTION_RADIUS) {
+            // Size boost when near cursor
+            this.targetRadius = this.baseRadius * SIZE_BOOST;
+        } else {
+            // Return to oscillating size
+            this.targetRadius = this.baseRadius;
+        }
+
+        // Smooth radius transition
+        this.radius += (this.targetRadius - this.radius) * 0.1;
+
+        // Original oscillation
+        this.targetRadius += this.radiusChangeRate;
+        if (this.targetRadius >= this.maxRadius || this.targetRadius <= this.minRadius) {
+            this.radiusChangeRate *= -1;
+        }
 
         // Wrap around screen edges - only wrap based on movement direction to prevent flickering
         if (this.vx < 0 && this.x + this.radius < 0) {
@@ -45,12 +76,6 @@ class Circle {
             this.y = this.canvas.height + this.radius;
         } else if (this.vy > 0 && this.y - this.radius > this.canvas.height) {
             this.y = -this.radius;
-        }
-
-        // Size change with oscillation
-        this.radius += this.radiusChangeRate;
-        if (this.radius >= this.maxRadius || this.radius <= this.minRadius) {
-            this.radiusChangeRate *= -1;
         }
     }
 
@@ -74,6 +99,20 @@ function resizeCanvas() {
 resizeCanvas();
 window.addEventListener('resize', resizeCanvas);
 
+// Track mouse movement
+window.addEventListener('mousemove', (e) => {
+    mouseX = e.clientX;
+    mouseY = e.clientY;
+});
+
+// Track touch movement for mobile
+window.addEventListener('touchmove', (e) => {
+    if (e.touches.length > 0) {
+        mouseX = e.touches[0].clientX;
+        mouseY = e.touches[0].clientY;
+    }
+});
+
 // Create circles
 const circles = [];
 for (let i = 0; i < 7; i++) {
@@ -87,7 +126,7 @@ function animate() {
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     // Apply blur filter
-    ctx.filter = 'blur(50px)';
+    ctx.filter = 'blur(75px)';
 
     // Update and draw circles
     circles.forEach(circle => {
