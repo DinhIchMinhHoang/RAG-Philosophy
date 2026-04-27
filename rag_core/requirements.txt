@@ -13,8 +13,17 @@ sentence-transformers==4.1.0
 # Vector Database
 qdrant-client==1.14.2
 
-# PDF Reader
+# PDF / Document Parsing
+docling
+torch
 pymupdf==1.25.5
+pymupdf4llm
+
+# Text Splitting
+langchain-text-splitters
+
+# Vietnamese Word Segmentation
+pyvi
 
 # Environment management
 python-dotenv==1.1.0

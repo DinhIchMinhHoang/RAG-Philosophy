@@ -55,7 +55,7 @@ def ingest_into_qdrant(chunks: list[Document]) -> QdrantVectorStore:
     vectorstore = QdrantVectorStore.from_documents(
         documents=chunks,
         embedding=embeddings,
-        location=Config.QDRANT_LOCATION,
+        path=Config.QDRANT_PATH,
         collection_name=Config.QDRANT_COLLECTION,
     )
 
@@ -111,7 +111,7 @@ if __name__ == "__main__":
         # 4. Tạo retriever và thử truy vấn
         retriever = get_retriever(vectorstore)
 
-        query = "Vấn đề cơ bản của triết học là gì?"
+        query = "mạng nơ ron là gì?"
         print(f"\n{'='*50}")
         print(f"Truy vấn: \"{query}\"")
         print(f"{'='*50}")
@@ -123,7 +123,7 @@ if __name__ == "__main__":
             print(f"Trang : {doc.metadata.get('page', 'N/A')}")
             print(f"Nguồn : {doc.metadata.get('source', 'N/A')}")
             print(f"Nội dung (300 ký tự):")
-            print(doc.page_content[:300])
+            print(doc.page_content)
 
     except Exception as e:
         logger.error(f"❌ Lỗi khi chạy test: {e}")

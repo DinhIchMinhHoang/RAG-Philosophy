@@ -21,9 +21,13 @@ class Config:
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
 
-    # ── Chunking (Text Splitter) ──────────────────────────────
-    CHUNK_SIZE: int = 1000        # Số ký tự tối đa mỗi chunk
-    CHUNK_OVERLAP: int = 200      # Số ký tự chồng lấp giữa 2 chunk liên tiếp
+    # ── Chunking — Parent Chunks (bảo toàn ngữ cảnh cho LLM) ──
+    PARENT_CHUNK_SIZE: int = 2000    # Kích thước tối đa mỗi Parent Chunk
+    PARENT_CHUNK_OVERLAP: int = 200  # Chồng lấp giữa các Parent Chunk
+
+    # ── Chunking — Child Chunks (tối ưu tìm kiếm vector) ────
+    CHILD_CHUNK_SIZE: int = 500      # Kích thước tối đa mỗi Child Chunk
+    CHILD_CHUNK_OVERLAP: int = 100   # Chồng lấp giữa các Child Chunk
 
     # ── Embedding Model ──────────────────────────────────────
     EMBEDDING_MODEL: str = "bkai-foundation-models/vietnamese-bi-encoder"
@@ -37,7 +41,13 @@ class Config:
     TOP_K_RESULTS: int = 3          # Số kết quả trả về khi truy xuất
 
     # ── Đường dẫn dữ liệu ───────────────────────────────────
-    DATA_DIR: str = str(Path(__file__).resolve().parent.parent / "data")
+    _DATA_ROOT: Path = Path(__file__).resolve().parent.parent / "data"
+
+    DATA_DIR: str       = str(_DATA_ROOT)
+    RAW_DIR: str        = str(_DATA_ROOT / "raw")            # PDF, Slide gốc
+    PROCESSED_DIR: str  = str(_DATA_ROOT / "processed")      # Markdown sau parse
+    QDRANT_PATH: str    = str(_DATA_ROOT / "stores" / "qdrant")      # Vector DB
+    DOC_STORE_DIR: str  = str(_DATA_ROOT / "stores" / "doc_store")   # Parent Chunks (JSON)
 
     @classmethod
     def validate(cls) -> None:
@@ -51,8 +61,10 @@ class Config:
     def __repr__(self) -> str:
         return (
             f"Config(\n"
-            f"  CHUNK_SIZE={self.CHUNK_SIZE},\n"
-            f"  CHUNK_OVERLAP={self.CHUNK_OVERLAP},\n"
+            f"  PARENT_CHUNK_SIZE={self.PARENT_CHUNK_SIZE},\n"
+            f"  PARENT_CHUNK_OVERLAP={self.PARENT_CHUNK_OVERLAP},\n"
+            f"  CHILD_CHUNK_SIZE={self.CHILD_CHUNK_SIZE},\n"
+            f"  CHILD_CHUNK_OVERLAP={self.CHILD_CHUNK_OVERLAP},\n"
             f"  EMBEDDING_MODEL='{self.EMBEDDING_MODEL}',\n"
             f"  LLM_MODEL='{self.LLM_MODEL}',\n"
             f"  QDRANT_LOCATION='{self.QDRANT_LOCATION}',\n"
