@@ -27,6 +27,9 @@
                     <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
                 </svg>
             </button>
+            <button class="social-button" title="Account">
+                <span class="material-icons">account_circle</span>
+            </button>
         </div>
     </header>
 
@@ -92,6 +95,81 @@
                     <button type="button" class="auth-button" data-back-to="landing">Back</button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- Dashboard Scene (shown after login) -->
+    <div id="scene-dashboard" class="scene" style="display: none;">
+        <div class="dashboard-container">
+
+            <div class="dashboard-top">
+                <div class="left-controls">
+                    <div class="sort-switch" role="tablist" aria-label="Sort notebooks">
+                        <button class="sort-option active" data-sort="recent">
+                            <span class="material-icons">history</span>
+                            <span class="label">Recently</span>
+                        </button>
+                        <button class="sort-option" data-sort="alpha">
+                            <span class="material-icons">sort_by_alpha</span>
+                            <span class="label">A → Z</span>
+                        </button>
+                        <div class="sort-thumb" aria-hidden="true"></div>
+                    </div>
+
+                    <button class="auth-button create-button" title="Create new notebook">
+                        <span class="material-icons">add</span>
+                        Create new notebook
+                    </button>
+                </div>
+
+                <div class="center-controls">
+                    <div class="search-wrap">
+                        <input type="text" class="search-input" placeholder="Search notebooks...">
+                    </div>
+                </div>
+
+                <div class="right-controls">
+                    <button class="social-button search-button" title="Search">
+                        <span class="material-icons">search</span>
+                    </button>
+
+                    <div class="view-toggle" role="tablist" aria-label="View mode">
+                        <button class="view-option" data-view="grid" title="Grid view">
+                            <span class="material-icons">grid_view</span>
+                            <span class="label">Grid</span>
+                        </button>
+                        <button class="view-option" data-view="list" title="List view">
+                            <span class="material-icons">format_list_bulleted</span>
+                            <span class="label">List</span>
+                        </button>
+                        <div class="view-thumb" aria-hidden="true"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="sections">
+                <div class="notebook-section community-section">
+                    <div class="section-header">
+                        <h3>Community notebooks:</h3>
+                    </div>
+                    <div class="notebook-grid community-grid" aria-live="polite">
+                        <div class="notebook-item">Community A</div>
+                        <div class="notebook-item">Community B</div>
+                        <div class="notebook-item">Community C</div>
+                        <div class="notebook-item">Community D</div>
+                    </div>
+                </div>
+
+                <div class="notebook-section my-section">
+                    <div class="section-header">
+                        <h3>My notebooks:</h3>
+                    </div>
+                    <div class="notebook-grid my-grid" aria-live="polite">
+                        <div class="notebook-item">My Notebook 1</div>
+                        <div class="notebook-item">My Notebook 2</div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 

@@ -145,6 +145,59 @@ class TransitionManager {
         // eslint-disable-next-line no-unused-expressions
         container.offsetHeight;
 
+        // If showing dashboard, ensure toggle thumbs are positioned now that the container is visible
+        if (scene === 'dashboard') {
+            const dash = document.getElementById('scene-dashboard');
+            if (dash) {
+                const sortSwitch = dash.querySelector('.sort-switch');
+                if (sortSwitch) {
+                    const thumb = sortSwitch.querySelector('.sort-thumb');
+                    const active = sortSwitch.querySelector('.sort-option.active') || sortSwitch.querySelector('.sort-option');
+                    const pad = parseInt(getComputedStyle(sortSwitch).getPropertyValue('--pad')) || 4;
+                    if (thumb && active) {
+                        thumb.style.left = `${active.offsetLeft + pad}px`;
+                        thumb.style.width = `${Math.max(24, active.offsetWidth - pad * 2)}px`;
+                    }
+                }
+
+                const viewToggle = dash.querySelector('.view-toggle');
+                if (viewToggle) {
+                    const thumb = viewToggle.querySelector('.view-thumb');
+                    const active = viewToggle.querySelector('.view-option.active') || viewToggle.querySelector('.view-option');
+                    const padV = parseInt(getComputedStyle(viewToggle).getPropertyValue('--pad')) || 4;
+                    if (thumb && active) {
+                        thumb.style.left = `${active.offsetLeft + padV}px`;
+                        thumb.style.width = `${Math.max(24, active.offsetWidth - padV * 2)}px`;
+                    }
+                }
+            }
+            // After labels expand (and scene children animate), recompute thumbs to match final widths
+            setTimeout(() => {
+                const dash2 = document.getElementById('scene-dashboard');
+                if (!dash2) return;
+                const ss = dash2.querySelector('.sort-switch');
+                if (ss) {
+                    const th = ss.querySelector('.sort-thumb');
+                    const act = ss.querySelector('.sort-option.active') || ss.querySelector('.sort-option');
+                    const pd = parseInt(getComputedStyle(ss).getPropertyValue('--pad')) || 4;
+                    if (th && act) {
+                        th.style.left = `${act.offsetLeft + pd}px`;
+                        th.style.width = `${Math.max(24, act.offsetWidth - pd * 2)}px`;
+                    }
+                }
+                const vt = dash2.querySelector('.view-toggle');
+                if (vt) {
+                    const thv = vt.querySelector('.view-thumb');
+                    const actv = vt.querySelector('.view-option.active') || vt.querySelector('.view-option');
+                    const pdv = parseInt(getComputedStyle(vt).getPropertyValue('--pad')) || 4;
+                    if (thv && actv) {
+                        thv.style.left = `${actv.offsetLeft + pdv}px`;
+                        thv.style.width = `${Math.max(24, actv.offsetWidth - pdv * 2)}px`;
+                    }
+                }
+            }, 360);
+        }
+
         // Stagger animation from top to bottom (normal order)
         let safetyTimer;
         const safetyTimeoutMs = this.transitionDuration + (totalElements * 80) + 200;
@@ -301,6 +354,146 @@ class TransitionManager {
         backButtons.forEach(btn => {
             btn.addEventListener('click', () => this.transitionTo('landing'));
         });
+
+        // Sign-in form submit -> transition to dashboard
+        const signInForm = document.querySelector('#scene-signin .auth-form');
+        if (signInForm) {
+            signInForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                this.transitionTo('dashboard');
+            });
+        }
+
+        // Sign-up form submit -> transition to dashboard
+        const signUpForm = document.querySelector('#scene-signup .auth-form');
+        if (signUpForm) {
+            signUpForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                this.transitionTo('dashboard');
+            });
+        }
+
+        // Dashboard UI interactions
+        const dashboard = document.getElementById('scene-dashboard');
+        if (dashboard) {
+            const container = dashboard.querySelector('.dashboard-container');
+
+            // Sort switch (slide between Recently and A→Z) - dynamic thumb sizing
+            const sortSwitch = dashboard.querySelector('.sort-switch');
+            if (sortSwitch) {
+                const options = Array.from(sortSwitch.querySelectorAll('.sort-option'));
+                const thumb = sortSwitch.querySelector('.sort-thumb');
+                const pad = parseInt(getComputedStyle(sortSwitch).getPropertyValue('--pad')) || 4;
+
+                const repositionThumb = (opt) => {
+                    if (!thumb || !opt) return;
+                    // offsetLeft is relative to parent (sortSwitch)
+                    const left = opt.offsetLeft + pad;
+                    const width = Math.max(24, opt.offsetWidth - pad * 2);
+                    thumb.style.left = `${left}px`;
+                    thumb.style.width = `${width}px`;
+                };
+
+                const setThumb = (opt) => {
+                    options.forEach(o => o.classList.remove('active'));
+                    opt.classList.add('active');
+                    // reposition immediately for the icon-only state
+                    repositionThumb(opt);
+                    // after label expansion animation completes, recompute to match final width
+                    setTimeout(() => repositionThumb(opt), 300);
+                };
+
+                options.forEach(opt => {
+                    opt.addEventListener('click', () => setThumb(opt));
+                });
+
+                // initialize when visible; attempt now and on resize
+                const initial = sortSwitch.querySelector('.sort-option.active') || options[0];
+                if (initial) {
+                    // if parent not yet laid out, defer a tick; also recompute after label expansion
+                    setTimeout(() => repositionThumb(initial), 20);
+                    setTimeout(() => repositionThumb(initial), 340);
+                }
+
+                window.addEventListener('resize', () => {
+                    const active = sortSwitch.querySelector('.sort-option.active') || options[0];
+                    repositionThumb(active);
+                });
+            }
+
+            // Create button
+            const createBtn = dashboard.querySelector('.create-button');
+            if (createBtn) {
+                createBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    // placeholder action
+                    console.log('Create new notebook');
+                });
+            }
+
+            // Search toggle (single button toggles search/close icon and expands center search input)
+            const searchButton = dashboard.querySelector('.search-button');
+            const searchInput = dashboard.querySelector('.search-input');
+            if (searchButton && searchInput) {
+                searchButton.addEventListener('click', () => {
+                    const isActive = container.classList.toggle('search-active');
+                    const icon = searchButton.querySelector('.material-icons');
+                    if (isActive) {
+                        icon.textContent = 'close';
+                        setTimeout(() => searchInput.focus(), 200);
+                    } else {
+                        icon.textContent = 'search';
+                        searchInput.value = '';
+                    }
+                });
+            }
+
+            // View toggle (grid/list switch) - dynamic thumb sizing
+            const viewToggle = dashboard.querySelector('.view-toggle');
+            if (viewToggle && container) {
+                const options = Array.from(viewToggle.querySelectorAll('.view-option'));
+                const thumb = viewToggle.querySelector('.view-thumb');
+                const padV = parseInt(getComputedStyle(viewToggle).getPropertyValue('--pad')) || 4;
+
+                const setView = (view) => {
+                    options.forEach(o => o.classList.remove('active'));
+                    const opt = viewToggle.querySelector(`.view-option[data-view="${view}"]`);
+                    if (opt) {
+                        opt.classList.add('active');
+                        container.setAttribute('data-view', view);
+                        if (opt && thumb) {
+                            // immediate positioning for icon-only -> active state
+                            thumb.style.left = `${opt.offsetLeft + padV}px`;
+                            thumb.style.width = `${Math.max(24, opt.offsetWidth - padV * 2)}px`;
+                        }
+                        // recompute after label expansion finishes so thumb matches final width
+                        setTimeout(() => {
+                            if (opt && thumb) {
+                                thumb.style.left = `${opt.offsetLeft + padV}px`;
+                                thumb.style.width = `${Math.max(24, opt.offsetWidth - padV * 2)}px`;
+                            }
+                        }, 300);
+                    } else {
+                        container.setAttribute('data-view', view);
+                    }
+                };
+
+                options.forEach(o => {
+                    o.addEventListener('click', () => setView(o.getAttribute('data-view')));
+                });
+
+                // initialize to grid (defer to allow layout)
+                setTimeout(() => setView('grid'), 20);
+
+                window.addEventListener('resize', () => {
+                    const active = viewToggle.querySelector('.view-option.active') || options[0];
+                    if (active && thumb) {
+                        thumb.style.left = `${active.offsetLeft + padV}px`;
+                        thumb.style.width = `${Math.max(24, active.offsetWidth - padV * 2)}px`;
+                    }
+                });
+            }
+        }
     }
 }
 
