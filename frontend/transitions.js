@@ -4,6 +4,8 @@ class TransitionManager {
         this.currentScene = 'landing';
         this.isTransitioning = false;
         this.transitionDuration = 500; // milliseconds
+        // Load persisted user or use empty defaults
+        this.currentUser = JSON.parse(localStorage.getItem('currentUser')) || { username: '', email: '', displayName: '', bio: '' };
     }
 
     /**
@@ -12,6 +14,11 @@ class TransitionManager {
      */
     transitionTo(targetScene) {
         if (this.isTransitioning || targetScene === this.currentScene) return;
+        // Prevent accessing account scene when not authenticated
+        if (targetScene === 'account' && !this.isAuthenticated()) {
+            // redirect to sign-in instead
+            targetScene = 'signin';
+        }
 
         this.isTransitioning = true;
 
@@ -38,6 +45,20 @@ class TransitionManager {
                 });
             }
         });
+    }
+
+    isAuthenticated() {
+        return Boolean(this.currentUser && (this.currentUser.email || this.currentUser.username));
+    }
+
+    updateAuthUI() {
+        const accountBtn = document.querySelector('.account-button');
+        if (!accountBtn) return;
+        if (this.isAuthenticated()) {
+            accountBtn.style.display = '';
+        } else {
+            accountBtn.style.display = 'none';
+        }
     }
 
     /**
@@ -198,6 +219,18 @@ class TransitionManager {
             }, 360);
         }
 
+        // If showing account scene, populate the fields from currentUser
+        if (scene === 'account') {
+            const unameEl = container.querySelector('#account-username');
+            const emailEl = container.querySelector('#account-email');
+            const displayEl = container.querySelector('#account-displayname');
+            const bioEl = container.querySelector('#account-bio');
+            if (unameEl) unameEl.value = this.currentUser.username || '';
+            if (emailEl) emailEl.value = this.currentUser.email || '';
+            if (displayEl) displayEl.value = this.currentUser.displayName || '';
+            if (bioEl) bioEl.value = this.currentUser.bio || '';
+        }
+
         // Stagger animation from top to bottom (normal order)
         let safetyTimer;
         const safetyTimeoutMs = this.transitionDuration + (totalElements * 80) + 200;
@@ -355,20 +388,44 @@ class TransitionManager {
             btn.addEventListener('click', () => this.transitionTo('landing'));
         });
 
-        // Sign-in form submit -> transition to dashboard
+        // Sign-in form submit -> set current user and transition to dashboard
         const signInForm = document.querySelector('#scene-signin .auth-form');
         if (signInForm) {
-            signInForm.addEventListener('submit', (e) => {
+                signInForm.addEventListener('submit', (e) => {
                 e.preventDefault();
+                const emailInput = signInForm.querySelector('input[type="email"]');
+                const email = emailInput ? emailInput.value.trim() : '';
+                const usernameGuess = email ? (email.split('@')[0] || '') : '';
+                this.currentUser = Object.assign({}, this.currentUser, {
+                    username: this.currentUser.username || usernameGuess,
+                    email: email,
+                    displayName: this.currentUser.displayName || usernameGuess
+                });
+                localStorage.setItem('currentUser', JSON.stringify(this.currentUser));
+                    // update UI to reflect logged-in state
+                    this.updateAuthUI();
                 this.transitionTo('dashboard');
             });
         }
 
-        // Sign-up form submit -> transition to dashboard
+        // Sign-up form submit -> persist new user and transition to dashboard
         const signUpForm = document.querySelector('#scene-signup .auth-form');
         if (signUpForm) {
-            signUpForm.addEventListener('submit', (e) => {
+                signUpForm.addEventListener('submit', (e) => {
                 e.preventDefault();
+                const usernameInput = signUpForm.querySelector('input[placeholder="User name"]') || signUpForm.querySelector('input[type="text"]');
+                const emailInput = signUpForm.querySelector('input[type="email"]');
+                const username = usernameInput ? usernameInput.value.trim() : '';
+                const email = emailInput ? emailInput.value.trim() : '';
+                this.currentUser = {
+                    username: username || (email ? email.split('@')[0] : ''),
+                    email: email,
+                    displayName: username || (email ? email.split('@')[0] : ''),
+                    bio: ''
+                };
+                localStorage.setItem('currentUser', JSON.stringify(this.currentUser));
+                    // update UI to reflect logged-in state
+                    this.updateAuthUI();
                 this.transitionTo('dashboard');
             });
         }
@@ -420,6 +477,83 @@ class TransitionManager {
                     repositionThumb(active);
                 });
             }
+
+                // Account button (navbar) -> open account scene
+                const accountBtn = document.querySelector('[data-scene="account"]');
+            if (accountBtn) {
+                accountBtn.addEventListener('click', () => {
+                    if (!this.isAuthenticated()) {
+                        // if not authed, send to sign in page
+                        this.transitionTo('signin');
+                        return;
+                    }
+                    this.transitionTo('account');
+                });
+            }
+
+                // Account scene handlers (save, logout, delete)
+                const accountScene = document.getElementById('scene-account');
+                if (accountScene) {
+                    const accountForm = accountScene.querySelector('.account-form');
+                    const logoutBtn = accountScene.querySelector('.logout-button');
+                    const deleteBtn = accountScene.querySelector('.delete-account-button');
+                    const cancelBtn = accountScene.querySelector('[data-back-to="dashboard"]');
+
+                    const populate = () => {
+                        const uname = accountScene.querySelector('#account-username');
+                        const email = accountScene.querySelector('#account-email');
+                        const disp = accountScene.querySelector('#account-displayname');
+                        const bio = accountScene.querySelector('#account-bio');
+                        if (uname) uname.value = this.currentUser.username || '';
+                        if (email) email.value = this.currentUser.email || '';
+                        if (disp) disp.value = this.currentUser.displayName || '';
+                        if (bio) bio.value = this.currentUser.bio || '';
+                    };
+
+                    // populate now (in case user opens immediately)
+                    populate();
+
+                    if (accountForm) {
+                        accountForm.addEventListener('submit', (e) => {
+                            e.preventDefault();
+                            const uname = accountScene.querySelector('#account-username')?.value.trim() || '';
+                            const email = accountScene.querySelector('#account-email')?.value.trim() || '';
+                            const displayName = accountScene.querySelector('#account-displayname')?.value.trim() || '';
+                            const bio = accountScene.querySelector('#account-bio')?.value.trim() || '';
+                            this.currentUser = { username: uname, email: email, displayName: displayName, bio: bio };
+                            localStorage.setItem('currentUser', JSON.stringify(this.currentUser));
+                            // update UI to reflect saved user
+                            this.updateAuthUI();
+                            // For now return to dashboard after save
+                            this.transitionTo('dashboard');
+                        });
+                    }
+
+                    if (cancelBtn) {
+                        cancelBtn.addEventListener('click', () => this.transitionTo('dashboard'));
+                    }
+
+                    if (logoutBtn) {
+                        logoutBtn.addEventListener('click', () => {
+                            localStorage.removeItem('currentUser');
+                            this.currentUser = { username: '', email: '', displayName: '', bio: '' };
+                            this.updateAuthUI();
+                            this.transitionTo('landing');
+                        });
+                    }
+
+                    if (deleteBtn) {
+                        deleteBtn.addEventListener('click', () => {
+                            if (confirm('Delete your account? This cannot be undone.')) {
+                                localStorage.removeItem('currentUser');
+                                this.currentUser = { username: '', email: '', displayName: '', bio: '' };
+                                this.updateAuthUI();
+                                alert('Account deleted');
+                                this.transitionTo('landing');
+                            }
+                        });
+                    }
+                }
 
             // Create button
             const createBtn = dashboard.querySelector('.create-button');
@@ -493,6 +627,8 @@ class TransitionManager {
                     }
                 });
             }
+            // Ensure auth UI (account button) reflects current state on init
+            this.updateAuthUI();
         }
     }
 }

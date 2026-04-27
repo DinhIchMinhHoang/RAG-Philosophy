@@ -27,7 +27,7 @@
                     <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
                 </svg>
             </button>
-            <button class="social-button" title="Account">
+            <button class="social-button account-button" data-scene="account" title="Account">
                 <span class="material-icons">account_circle</span>
             </button>
         </div>
@@ -45,6 +45,41 @@
                 <button class="auth-button" data-scene="signup">Sign Up</button>
                 <button class="auth-button" data-scene="signin">Sign In</button>
             </div>
+        </div>
+    </div>
+    
+    <!-- Account Scene -->
+    <div id="scene-account" class="scene" style="display: none;">
+        <div class="form-container">
+            <h2 class="form-title">Account</h2>
+            <form class="account-form">
+                <div class="form-group">
+                    <label class="form-label"><span class="material-icons">account_circle</span> Username</label>
+                    <input id="account-username" type="text" class="form-input" placeholder="User name">
+                </div>
+                <div class="form-group">
+                    <label class="form-label"><span class="material-icons">alternate_email</span> Email</label>
+                    <input id="account-email" type="email" class="form-input" placeholder="Email">
+                </div>
+                <div class="form-group">
+                    <label class="form-label"><span class="material-icons">person</span> Display name</label>
+                    <input id="account-displayname" type="text" class="form-input" placeholder="Display name">
+                </div>
+                <div class="form-group">
+                    <label class="form-label"><span class="material-icons">chat</span> Bio</label>
+                    <textarea id="account-bio" class="form-input" placeholder="Short bio" rows="3"></textarea>
+                </div>
+
+                <div class="form-buttons">
+                    <button type="submit" class="auth-button">Save changes</button>
+                    <button type="button" class="auth-button" data-back-to="dashboard">Cancel</button>
+                </div>
+
+                <div style="display:flex; gap:8px; margin-top:12px; justify-content:flex-end;">
+                    <button type="button" class="auth-button logout-button">Log out</button>
+                    <button type="button" class="auth-button delete-account-button" style="background: rgba(255,50,50,0.12); border-color: rgba(255,50,50,0.2);">Delete account</button>
+                </div>
+            </form>
         </div>
     </div>
 
