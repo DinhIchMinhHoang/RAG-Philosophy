@@ -26,11 +26,11 @@ class Circle {
         this.color = COLORS[Math.floor(Math.random() * COLORS.length)];
         
         // Linear movement velocities (increased by 25% and constrained for better coverage)
-        this.vx = (Math.random() - 0.5) * 2.1875;
-        this.vy = (Math.random() - 0.5) * 2.1875;
+        this.vx = (Math.random() - 0.5) * 5.46875;
+        this.vy = (Math.random() - 0.5) * 5.46875;
         
         // Size change rate (increased by 25%)
-        this.radiusChangeRate = (Math.random() - 0.5) * 1.09375;
+        this.radiusChangeRate = (Math.random() - 0.5) * 2.734375;
         this.minRadius = this.baseRadius * 0.6;
         this.maxRadius = this.baseRadius * 1.4;
         
