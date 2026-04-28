@@ -21,7 +21,8 @@ class Circle {
         this.canvas = canvas;
         this.x = Math.random() * canvas.width;
         this.y = Math.random() * canvas.height;
-        this.baseRadius = (80 + Math.random() * 150) * 1.5;
+        // Increase base radius by 100% (times 2) -> previous multiplier 1.5 becomes 3
+        this.baseRadius = (80 + Math.random() * 150) * 2;
         this.radius = this.baseRadius;
         this.color = COLORS[Math.floor(Math.random() * COLORS.length)];
         
