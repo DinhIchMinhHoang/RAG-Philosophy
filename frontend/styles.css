@@ -126,3 +126,43 @@ canvas {
     box-shadow: 0 2px 15px rgba(124, 196, 237, 0.4), 
                 inset 0 0 40px rgba(255, 255, 255, 0.3);
 }
+
+/* --- CODE CHO KHUNG ĐĂNG NHẬP --- */
+.modal {
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(5px);
+    justify-content: center;
+    align-items: center;
+}
+.modal-content {
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 20px;
+    padding: 40px;
+    width: 350px;
+    text-align: center;
+    position: relative;
+}
+.close-btn {
+    position: absolute;
+    top: 15px;
+    right: 20px;
+    color: white;
+    font-size: 24px;
+    cursor: pointer;
+}
+.modal h2 { color: white; margin-bottom: 25px; }
+.modal input {
+    width: 100%; padding: 12px; margin: 10px 0;
+    border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.3);
+    background: rgba(0, 0, 0, 0.2); color: white; outline: none;
+}
+.error { color: #ff6b6b; font-size: 14px; min-height: 20px; }
+.submit-btn { width: 100%; margin-top: 15px; }

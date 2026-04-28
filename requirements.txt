@@ -44,3 +44,12 @@ torchaudio  # audio processing (required by Whisper)
 # - Tesseract OCR (for pytesseract / easyocr)
 # - ffmpeg (for pydub / audio conversion)
 # On Windows: you may prefer python-magic-bin instead of python-magic
+
+# backend requierments:
+fastapi
+uvicorn
+sqlalchemy
+passlib[bcrypt]
+python-jose[cryptography]
+python-multipart
+python-dotenv
