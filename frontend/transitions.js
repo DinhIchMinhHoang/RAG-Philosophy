@@ -388,6 +388,7 @@ class TransitionManager {
             btn.addEventListener('click', () => this.transitionTo('landing'));
         });
 
+        /*
         // Sign-in form submit -> set current user and transition to dashboard
         const signInForm = document.querySelector('#scene-signin .auth-form');
         if (signInForm) {
@@ -429,7 +430,8 @@ class TransitionManager {
                 this.transitionTo('dashboard');
             });
         }
-
+        */
+       
         // Dashboard UI interactions
         const dashboard = document.getElementById('scene-dashboard');
         if (dashboard) {

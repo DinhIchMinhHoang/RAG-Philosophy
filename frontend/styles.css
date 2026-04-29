@@ -655,3 +655,23 @@ canvas {
     flex-direction: column;
 }
 
+.field-error {
+    color: #ff4d4d;
+    font-size: 11px;
+    margin-top: 4px;
+    text-align: left;
+    min-height: 16px; /* Giữ vị trí để form không bị nhảy */
+}
+
+.form-input.input-error {
+    border-color: #ff4d4d !important;
+}
+
+.general-error {
+    color: #ff4d4d;
+    font-size: 13px;
+    margin: 10px 0;
+    text-align: center;
+    min-height: 20px;
+    font-weight: 600;
+}

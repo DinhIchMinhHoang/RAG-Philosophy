@@ -1,68 +1,109 @@
-const modal = document.getElementById("auth-modal");
-const closeBtn = document.querySelector(".close-btn");
-const form = document.getElementById("auth-form");
-const title = document.getElementById("modal-title");
-const errorMsg = document.getElementById("error-message");
+const BACKEND_URL = "http://127.0.0.1:8000";
 
-let currentAction = ""; 
-const BACKEND_URL = "http://127.0.0.1:8000"; // URL mặc định của uvicorn
+function validateEmail(email) {
+    const re = /^[a-z0-9](\.?[a-z0-9]){4,}@gmail\.com$/;
+    return re.test(String(email).toLowerCase());
+}
 
-document.getElementById("btn-show-login").addEventListener("click", () => {
-    modal.style.display = "flex";
-    title.innerText = "Login to Lumina";
-    currentAction = "login";
-    errorMsg.innerText = "";
-});
+function clearAllErrors(type) {
+    const errorFields = document.querySelectorAll(`#scene-${type} .field-error`);
+    const generalError = document.getElementById(`${type}-general-error`);
+    const inputs = document.querySelectorAll(`#scene-${type} .form-input`);
+    errorFields.forEach(f => f.innerText = "");
+    if (generalError) generalError.innerText = "";
+    inputs.forEach(i => i.classList.remove("input-error"));
+}
 
-document.getElementById("btn-show-signup").addEventListener("click", () => {
-    modal.style.display = "flex";
-    title.innerText = "Create Account";
-    currentAction = "signup";
-    errorMsg.innerText = "";
-});
-
-closeBtn.addEventListener("click", () => {
-    modal.style.display = "none";
-});
-
-form.addEventListener("submit", async (e) => {
+async function handleAuth(e, type) {
     e.preventDefault(); 
-    errorMsg.innerText = "Đang kết nối...";
-    
-    const username = document.getElementById("username").value;
-    const password = document.getElementById("password").value;
-    
+    clearAllErrors(type);
+
+    const emailInput = document.getElementById(`${type}-email`);
+    const emailError = document.getElementById(`${type}-email-error`);
+    const generalError = document.getElementById(`${type}-general-error`);
+    let hasError = false;
+
+    // A. KIỂM TRA ĐỊNH DẠNG TẠI FRONTEND
+    if (!validateEmail(emailInput.value.trim())) {
+        emailError.innerText = "❌ Email không hợp lệ (phải là @gmail.com)!";
+        emailInput.classList.add("input-error");
+        hasError = true;
+    }
+
+    if (type === "signup") {
+        const pass = document.getElementById("signup-password").value;
+        const confirmInput = document.getElementById("signup-confirm-password");
+        const confirmError = document.getElementById("signup-confirm-password-error");
+        if (pass !== confirmInput.value) {
+            confirmError.innerText = "❌ Mật khẩu không khớp!";
+            confirmInput.classList.add("input-error");
+            hasError = true;
+        }
+    }
+
+    if (hasError) return;
+
+    // B. GỬI DỮ LIỆU THẬT LÊN SERVER (Đã sửa lỗi placeholder)
     try {
-        const response = await fetch(`${BACKEND_URL}/${currentAction}`, {
+        const payload = {
+            email: emailInput.value.trim(),
+            password: document.getElementById(`${type}-password`).value
+        };
+        
+        if (type === "signup") {
+            payload.username = document.getElementById("signup-username").value.trim();
+        }
+
+        // Map "signin" to "login" endpoint for backend compatibility
+        const endpoint = type === "signin" ? "login" : type;
+        const response = await fetch(`${BACKEND_URL}/${endpoint}`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ username, password })
+            body: JSON.stringify(payload)
         });
 
         const data = await response.json();
 
         if (response.ok) {
-            if (currentAction === "login") {
+            if (type === "signup") {
+                // Đăng ký thành công -> Tự động đăng nhập
                 localStorage.setItem("lumina_token", data.access_token);
-                alert("✅ Đăng nhập thành công!");
-                modal.style.display = "none";
+                localStorage.setItem("currentUser", JSON.stringify({ 
+                    email: payload.email,
+                    username: payload.username
+                }));
+                transitionManager.updateAuthUI();
+                transitionManager.transitionTo('dashboard');
             } else {
-                alert("✅ Đăng ký thành công! Vui lòng bấm Login để đăng nhập.");
-                modal.style.display = "none";
+                // Đăng nhập thành công -> Lưu token và vào Dashboard
+                localStorage.setItem("lumina_token", data.access_token);
+                // Lưu thêm thông tin user để transitions.js nhận diện đã auth
+                localStorage.setItem("currentUser", JSON.stringify({ email: payload.email }));
+                transitionManager.updateAuthUI();
+                transitionManager.transitionTo('dashboard');
             }
         } else {
-            errorMsg.innerText = "❌ " + (data.detail || "Sai thông tin");
+            const detail = data.detail || "Thao tác thất bại";
+            
+            // Tự động đưa lỗi về đúng ô bị sai
+            if (detail.includes("Email") || detail.includes("email")) {
+                emailError.innerText = "❌ " + detail;
+                emailInput.classList.add("input-error");
+            } else if (detail.includes("User name") || detail.includes("username") || detail.includes("Tên đăng nhập")) {
+                const uError = document.getElementById("signup-username-error");
+                const uInput = document.getElementById("signup-username");
+                if (uError) uError.innerText = "❌ " + detail;
+                if (uInput) uInput.classList.add("input-error");
+            } else {
+                generalError.innerText = "❌ " + detail;
+            }
         }
-    } catch (error) {
-        errorMsg.innerText = "❌ Không tìm thấy Backend! Nhớ bật Uvicorn nhé.";
-        console.error(error);
+    } catch (err) {
+        console.error("Lỗi:", err);
+        generalError.innerText = "❌ Lỗi kết nối server! Hãy chắc chắn uvicorn đang chạy.";
     }
-});
+}
 
-// Đóng Modal khi người dùng click ra ngoài vùng tối (overlay)
-window.addEventListener("click", (event) => {
-    // Kiểm tra xem nơi người dùng click có chính xác là cái nền tối (modal) hay không
-    if (event.target === modal) {
-        modal.style.display = "none";
-    }
-});
+// Gắn sự kiện (Đảm bảo ID trong HTML của bạn đúng là signup-form và signin-form)
+document.getElementById("signup-form").addEventListener("submit", (e) => handleAuth(e, "signup"));
+document.getElementById("signin-form").addEventListener("submit", (e) => handleAuth(e, "signin"));
