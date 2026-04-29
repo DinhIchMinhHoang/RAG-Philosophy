@@ -627,6 +627,62 @@ canvas {
     font-weight: 700;
 }
 
+/* Section footer with show-all button */
+.section-footer {
+    padding: 8px 4px;
+    display: flex;
+    justify-content: flex-start;
+}
+.show-all-btn {
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid rgba(124,196,237,0.6);
+    color: #7CC4ED;
+    padding: 4px 0;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 14px;
+    transition: border-color 200ms ease, color 200ms ease;
+}
+.show-all-btn:hover {
+    border-bottom-color: #7CC4ED;
+    color: #fff;
+}
+.show-all-btn:active {
+    opacity: 0.8;
+}
+
+/* Show-all scene content area */
+.showall-content {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    min-height: 0;
+    padding-top: 48px;
+}
+
+/* Close button in show-all scene */
+.close-showall-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    color: rgba(255,255,255,0.7);
+    cursor: pointer;
+    z-index: 100;
+    font-size: 20px;
+    transition: color 200ms ease;
+}
+.close-showall-btn:hover { color: #fff; }
+.close-showall-btn:active { opacity: 0.8; }
+
 .notebook-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
@@ -634,6 +690,32 @@ canvas {
     padding: 8px 4px;
     overflow: auto;
     align-content: start;
+    flex: 1 1 auto;
+    min-height: 0;
+    box-sizing: border-box;
+}
+
+/* Prevent grid item overflow on hover */
+.notebook-grid .notebook-item {
+    overflow: hidden;
+}
+
+/* Show-all full-screen grid (fills container, wraps lines naturally) */
+.showall-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 16px;
+    padding: 8px 4px;
+    overflow: auto;
+    align-content: start;
+    flex: 1 1 auto;
+    min-height: 0;
+    box-sizing: border-box;
+}
+
+/* Prevent show-all grid item overflow on hover */
+.showall-grid .notebook-item {
+    overflow: hidden;
 }
 
 .notebook-item {
@@ -649,9 +731,228 @@ canvas {
     box-sizing: border-box;
 }
 
+/* Visual hover / press effects for notebook cards */
+.notebook-item {
+    position: relative;
+    overflow: visible;
+    transition: transform 180ms cubic-bezier(0.2,0,0.2,1), box-shadow 180ms ease, background 180ms ease;
+    will-change: transform, box-shadow, background;
+}
+.notebook-item:hover {
+    transform: translateY(-6px) scale(1.02);
+    box-shadow: 0 18px 50px rgba(0,0,0,0.6), 0 8px 24px rgba(124,196,237,0.06);
+}
+.notebook-item:active {
+    transform: translateY(-2px) scale(0.99);
+    box-shadow: 0 8px 20px rgba(0,0,0,0.45);
+}
+
+/* Grid view (normal card display) */
+.dashboard-container[data-view="grid"] .notebook-item,
+.dashboard-container[data-view="grid"] .showall-grid .notebook-item {
+    aspect-ratio: 3 / 4;
+    overflow: hidden;
+}
+
+/* List view (thin horizontal line design) */
+.dashboard-container[data-view="list"] .notebook-item,
+.dashboard-container[data-view="list"] .showall-grid .notebook-item {
+    aspect-ratio: auto;
+    height: 60px;
+    border-radius: 8px;
+    padding: 8px 12px;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    background: rgba(255,255,255,0.01);
+    border: 1px solid rgba(255,255,255,0.06);
+    overflow: hidden;
+}
+
+/* In list view, reduce hover effect to avoid overflow */
+.dashboard-container[data-view="list"] .notebook-item:hover,
+.dashboard-container[data-view="list"] .showall-grid .notebook-item:hover {
+    transform: none;
+    box-shadow: inset 0 0 20px rgba(124,196,237,0.1), 0 4px 16px rgba(124,196,237,0.08);
+    background: rgba(255,255,255,0.03);
+}
+
+/* In list view, disable active transform */
+.dashboard-container[data-view="list"] .notebook-item:active,
+.dashboard-container[data-view="list"] .showall-grid .notebook-item:active {
+    transform: none;
+    box-shadow: inset 0 0 15px rgba(124,196,237,0.15);
+}
+
+/* Cover image area and title: image fills the card beneath text and controls */
+.notebook-item .cover {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, rgba(124,196,237,0.06), rgba(0,0,0,0.06));
+    background-size: cover;
+    background-position: center center;
+    width: 100%;
+    height: 100%;
+    z-index: 0;
+    border-radius: inherit;
+    pointer-events: none;
+}
+
+/* List view cover (small thumbnail) */
+.dashboard-container[data-view="list"] .notebook-item .cover,
+.dashboard-container[data-view="list"] .showall-grid .notebook-item .cover {
+    position: relative;
+    inset: auto;
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    border-radius: 6px;
+    margin-right: 12px;
+}
+
+.notebook-item .item-title {
+    padding: 10px 8px;
+    font-weight: 700;
+    color: #fff;
+    font-size: 14px;
+    line-height: 1.1;
+    z-index: 3;
+    position: relative;
+}
+
+/* List view title (inline with cover) */
+.dashboard-container[data-view="list"] .notebook-item .item-title,
+.dashboard-container[data-view="list"] .showall-grid .notebook-item .item-title {
+    padding: 0;
+    margin: 0;
+    flex: 1 1 auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 13px;
+}
+
+/* More button (top-right) - icon only, no visible border */
+.notebook-item .more-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 28px;
+    height: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border-radius: 0;
+    border: none;
+    color: rgba(255,255,255,0.95);
+    cursor: pointer;
+    z-index: 6;
+    transition: transform 120ms ease, color 120ms ease;
+    padding: 0;
+    font-size: 20px;
+    line-height: 1;
+}
+.notebook-item .more-btn:hover { transform: translateY(-2px); color: #7CC4ED; }
+.notebook-item .more-btn:active { transform: translateY(0); }
+
+/* List view more button (inline, no absolute positioning) */
+.dashboard-container[data-view="list"] .notebook-item .more-btn,
+.dashboard-container[data-view="list"] .showall-grid .notebook-item .more-btn {
+    position: relative;
+    top: auto;
+    right: auto;
+    width: 24px;
+    height: 24px;
+    min-width: 24px;
+    margin-left: auto;
+    margin-right: 0;
+    z-index: 5;
+}
+
+.dashboard-container[data-view="list"] .notebook-item .more-btn:hover,
+.dashboard-container[data-view="list"] .showall-grid .notebook-item .more-btn:hover {
+    transform: none;
+    color: #7CC4ED;
+}
+
+.dashboard-container[data-view="list"] .notebook-item .more-btn:active,
+.dashboard-container[data-view="list"] .showall-grid .notebook-item .more-btn:active {
+    transform: none;
+    opacity: 0.8;
+}
+
+/* Floating contextual menu for more button */
+.more-menu {
+    position: fixed;
+    display: none;
+    background: rgba(0,0,0,0.8);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 10px;
+    padding: 6px;
+    min-width: 160px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+    z-index: 9999;
+}
+.more-menu.visible { display: block; }
+.more-menu .menu-item {
+    display: block;
+    width: 100%;
+    background: transparent;
+    border: none;
+    color: #fff;
+    padding: 10px 12px;
+    text-align: left;
+    cursor: pointer;
+    border-radius: 6px;
+    font-weight: 600;
+}
+.more-menu .menu-item:hover { background: rgba(255,255,255,0.03); }
+.more-menu .menu-item.delete { color: #ff7a7a; }
+
 /* list view layout */
-.dashboard-container[data-view="list"] .notebook-grid {
+.dashboard-container[data-view="list"] .notebook-grid,
+.dashboard-container[data-view="list"] .showall-grid {
     display: flex;
     flex-direction: column;
+    gap: 1px;
+    padding: 0;
 }
+
+/* Image / Color picker modal styles */
+.image-modal {
+    position: fixed;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+}
+.image-modal.open { display: flex; }
+.image-modal-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    backdrop-filter: blur(4px);
+}
+.image-modal-body {
+    position: relative;
+    width: 420px;
+    max-width: calc(100% - 32px);
+    background: rgba(8,8,10,0.95);
+    border-radius: 12px;
+    padding: 16px;
+    border: 1px solid rgba(255,255,255,0.06);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.6);
+    z-index: 10001;
+    color: #fff;
+}
+.image-modal-tabs { display: flex; gap: 8px; margin-bottom: 12px; }
+.image-modal-tabs .tab { background: transparent; border: none; color: #fff; padding: 8px 12px; border-radius: 8px; cursor: pointer; font-weight:700 }
+.image-modal-tabs .tab.active { background: rgba(255,255,255,0.03); color: #7CC4ED; }
+.image-modal-content { margin-top: 4px; }
+.image-preview { width: 100%; height: 200px; border-radius: 10px; background: #0a0a0a center center no-repeat; background-size: cover; border: 1px solid rgba(255,255,255,0.04); overflow: hidden; }
+.tab-panel.hidden { display: none; }
+.color-preview { width: 80px; height: 48px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.08); }
+
 

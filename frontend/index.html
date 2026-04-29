@@ -188,10 +188,29 @@
                         <h3>Community notebooks:</h3>
                     </div>
                     <div class="notebook-grid community-grid" aria-live="polite">
-                        <div class="notebook-item">Community A</div>
-                        <div class="notebook-item">Community B</div>
-                        <div class="notebook-item">Community C</div>
-                        <div class="notebook-item">Community D</div>
+                        <div class="notebook-item" data-title="Community A">
+                            <button class="more-btn" aria-label="More"><span class="material-icons">more_vert</span></button>
+                            <div class="cover" aria-hidden="true"></div>
+                            <div class="item-title">Community A</div>
+                        </div>
+                        <div class="notebook-item" data-title="Community B">
+                            <button class="more-btn" aria-label="More"><span class="material-icons">more_vert</span></button>
+                            <div class="cover" aria-hidden="true"></div>
+                            <div class="item-title">Community B</div>
+                        </div>
+                        <div class="notebook-item" data-title="Community C">
+                            <button class="more-btn" aria-label="More"><span class="material-icons">more_vert</span></button>
+                            <div class="cover" aria-hidden="true"></div>
+                            <div class="item-title">Community C</div>
+                        </div>
+                        <div class="notebook-item" data-title="Community D">
+                            <button class="more-btn" aria-label="More"><span class="material-icons">more_vert</span></button>
+                            <div class="cover" aria-hidden="true"></div>
+                            <div class="item-title">Community D</div>
+                        </div>
+                    </div>
+                    <div class="section-footer">
+                        <button class="show-all-btn" data-target="community">Show all</button>
                     </div>
                 </div>
 
@@ -200,10 +219,111 @@
                         <h3>My notebooks:</h3>
                     </div>
                     <div class="notebook-grid my-grid" aria-live="polite">
-                        <div class="notebook-item">My Notebook 1</div>
-                        <div class="notebook-item">My Notebook 2</div>
+                        <div class="notebook-item" data-title="My Notebook 1">
+                            <button class="more-btn" aria-label="More"><span class="material-icons">more_vert</span></button>
+                            <div class="cover" aria-hidden="true"></div>
+                            <div class="item-title">My Notebook 1</div>
+                        </div>
+                        <div class="notebook-item" data-title="My Notebook 2">
+                            <button class="more-btn" aria-label="More"><span class="material-icons">more_vert</span></button>
+                            <div class="cover" aria-hidden="true"></div>
+                            <div class="item-title">My Notebook 2</div>
+                        </div>
+                    </div>
+                    <div class="section-footer">
+                        <button class="show-all-btn" data-target="my">Show all</button>
                     </div>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Show All Scene (full-screen notebook view for Community or My notebooks) -->
+    <div id="scene-showall" class="scene" style="display: none;">
+        <div class="dashboard-container">
+            <div class="dashboard-top">
+                <div class="left-controls">
+                    <div class="sort-switch" role="tablist" aria-label="Sort notebooks">
+                        <button class="sort-option active" data-sort="recent">
+                            <span class="material-icons">history</span>
+                            <span class="label">Recently</span>
+                        </button>
+                        <button class="sort-option" data-sort="alpha">
+                            <span class="material-icons">sort_by_alpha</span>
+                            <span class="label">A → Z</span>
+                        </button>
+                        <div class="sort-thumb" aria-hidden="true"></div>
+                    </div>
+                </div>
+
+                <div class="center-controls">
+                    <div class="search-wrap">
+                        <input type="text" class="search-input" placeholder="Search notebooks...">
+                    </div>
+                </div>
+
+                <div class="right-controls">
+                    <button class="social-button search-button" title="Search">
+                        <span class="material-icons">search</span>
+                    </button>
+
+                    <div class="view-toggle" role="tablist" aria-label="View mode">
+                        <button class="view-option" data-view="grid" title="Grid view">
+                            <span class="material-icons">grid_view</span>
+                            <span class="label">Grid</span>
+                        </button>
+                        <button class="view-option" data-view="list" title="List view">
+                            <span class="material-icons">format_list_bulleted</span>
+                            <span class="label">List</span>
+                        </button>
+                        <div class="view-thumb" aria-hidden="true"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="showall-content">
+                <div class="notebook-grid showall-grid" aria-live="polite"></div>
+                <button class="close-showall-btn" title="Close"><span class="material-icons">close</span></button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Image / Color picker modal (handles upload or color selection) -->
+    <div id="imageModal" class="image-modal" aria-hidden="true" style="display:none;">
+        <div class="image-modal-backdrop"></div>
+        <div class="image-modal-body" role="dialog" aria-modal="true" aria-label="Set cover image">
+            <h4 class="modal-title">Set Cover</h4>
+            <div class="image-modal-tabs">
+                <button class="tab active" data-tab="upload">Upload</button>
+                <button class="tab" data-tab="color">Color</button>
+            </div>
+
+            <div class="image-modal-content">
+                <div class="tab-panel" data-panel="upload">
+                    <div id="imagePreview" class="image-preview" aria-hidden="true"></div>
+                    <input id="imageFileInput" type="file" accept="image/*" style="display:none" />
+                    <div class="upload-controls" style="display:flex;gap:8px;align-items:center;margin-top:8px;">
+                        <button id="chooseFileBtn" class="auth-button">Choose file</button>
+                        <label style="color:#fff; margin-left:8px; font-weight:600;">Mode:
+                            <select id="imageMode" class="form-input" style="display:inline-block; width:auto; padding:6px 8px; margin-left:8px;">
+                                <option value="cover">Fill (cover)</option>
+                                <option value="contain">Fit (contain)</option>
+                            </select>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="tab-panel hidden" data-panel="color" style="margin-top:8px;">
+                    <div style="display:flex;gap:12px;align-items:center;">
+                        <input id="colorPicker" type="color" value="#7CC4ED" />
+                        <div id="colorPreview" class="color-preview" style="width:80px;height:48px;border-radius:8px;border:1px solid rgba(255,255,255,0.08)"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="image-modal-actions" style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;">
+                <button id="applyCoverBtn" class="auth-button">Apply</button>
+                <button id="cancelCoverBtn" class="auth-button">Cancel</button>
             </div>
         </div>
     </div>
