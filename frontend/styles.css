@@ -618,6 +618,14 @@ canvas {
     min-height: 0;
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
+    position: relative;
+}
+
+.section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-shrink: 0;
 }
 
 .section-header h3 {
@@ -627,11 +635,14 @@ canvas {
     font-weight: 700;
 }
 
-/* Section footer with show-all button */
+/* Section footer with show-all button - positioned at top-right */
 .section-footer {
-    padding: 8px 4px;
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    padding: 0;
     display: flex;
-    justify-content: flex-start;
+    justify-content: flex-end;
 }
 .show-all-btn {
     background: transparent;
@@ -693,6 +704,7 @@ canvas {
     flex: 1 1 auto;
     min-height: 0;
     box-sizing: border-box;
+    margin-top: 8px;
 }
 
 /* Prevent grid item overflow on hover */
