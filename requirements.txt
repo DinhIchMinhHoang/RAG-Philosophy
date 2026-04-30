@@ -45,9 +45,16 @@ torchaudio  # audio processing (required by Whisper)
 # - ffmpeg (for pydub / audio conversion)
 # On Windows: you may prefer python-magic-bin instead of python-magic
 
-# backend requierments:
+# Backend requirements:
 fastapi
 uvicorn
+sqlalchemy
+pydantic
+pydantic[email]
+python-jose[cryptography]
+passlib[argon2]
+argon2-cffi
+python-dotenv
 sqlalchemy
 pydantic[email]
 email-validator

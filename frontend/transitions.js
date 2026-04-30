@@ -48,7 +48,7 @@ class TransitionManager {
     }
 
     isAuthenticated() {
-        return Boolean(this.currentUser && (this.currentUser.email || this.currentUser.username));
+        return API.isAuthenticated();
     }
 
     updateAuthUI() {
@@ -388,45 +388,141 @@ class TransitionManager {
             btn.addEventListener('click', () => this.transitionTo('landing'));
         });
 
-        // Sign-in form submit -> set current user and transition to dashboard
+        // Sign-in form submit -> authenticate with backend and transition to dashboard
         const signInForm = document.querySelector('#scene-signin .auth-form');
         if (signInForm) {
-                signInForm.addEventListener('submit', (e) => {
+                signInForm.addEventListener('submit', async (e) => {
                 e.preventDefault();
+                const signInScene = document.querySelector('#scene-signin');
+                const errorDiv = signInScene.querySelector('.form-error');
                 const emailInput = signInForm.querySelector('input[type="email"]');
+                const passwordInput = signInForm.querySelector('input[type="password"]');
                 const email = emailInput ? emailInput.value.trim() : '';
-                const usernameGuess = email ? (email.split('@')[0] || '') : '';
-                this.currentUser = Object.assign({}, this.currentUser, {
-                    username: this.currentUser.username || usernameGuess,
-                    email: email,
-                    displayName: this.currentUser.displayName || usernameGuess
-                });
-                localStorage.setItem('currentUser', JSON.stringify(this.currentUser));
-                    // update UI to reflect logged-in state
+                const password = passwordInput ? passwordInput.value : '';
+
+                // Clear previous errors
+                if (errorDiv) {
+                    errorDiv.textContent = '';
+                    errorDiv.style.display = 'none';
+                }
+
+                if (!email || !password) {
+                    if (errorDiv) {
+                        errorDiv.textContent = 'Please enter email and password';
+                        errorDiv.style.display = 'block';
+                    }
+                    return;
+                }
+
+                try {
+                    // Call backend login endpoint
+                    const response = await API.login(email, password);
+                    
+                    // Extract username from email if not provided by backend
+                    const usernameGuess = email.split('@')[0] || 'user';
+                    
+                    // Store user info
+                    this.currentUser = {
+                        username: usernameGuess,
+                        email: email,
+                        displayName: usernameGuess,
+                        bio: ''
+                    };
+                    localStorage.setItem('currentUser', JSON.stringify(this.currentUser));
+                    
+                    // Update UI to reflect logged-in state
                     this.updateAuthUI();
-                this.transitionTo('dashboard');
+                    
+                    // Clear form
+                    signInForm.reset();
+                    
+                    // Transition to dashboard
+                    this.transitionTo('dashboard');
+                } catch (error) {
+                    if (errorDiv) {
+                        errorDiv.textContent = error.message;
+                        errorDiv.style.display = 'block';
+                    }
+                    if (passwordInput) passwordInput.value = '';
+                }
             });
         }
 
-        // Sign-up form submit -> persist new user and transition to dashboard
+        // Sign-up form submit -> register with backend and transition to dashboard
         const signUpForm = document.querySelector('#scene-signup .auth-form');
         if (signUpForm) {
-                signUpForm.addEventListener('submit', (e) => {
+                signUpForm.addEventListener('submit', async (e) => {
                 e.preventDefault();
+                const signUpScene = document.querySelector('#scene-signup');
+                const errorDiv = signUpScene.querySelector('.form-error');
                 const usernameInput = signUpForm.querySelector('input[placeholder="User name"]') || signUpForm.querySelector('input[type="text"]');
                 const emailInput = signUpForm.querySelector('input[type="email"]');
+                const passwordInputs = signUpForm.querySelectorAll('input[type="password"]');
+                const password = passwordInputs[0] ? passwordInputs[0].value : '';
+                const confirmPassword = passwordInputs[1] ? passwordInputs[1].value : '';
                 const username = usernameInput ? usernameInput.value.trim() : '';
                 const email = emailInput ? emailInput.value.trim() : '';
-                this.currentUser = {
-                    username: username || (email ? email.split('@')[0] : ''),
-                    email: email,
-                    displayName: username || (email ? email.split('@')[0] : ''),
-                    bio: ''
-                };
-                localStorage.setItem('currentUser', JSON.stringify(this.currentUser));
-                    // update UI to reflect logged-in state
+
+                // Clear previous errors
+                if (errorDiv) {
+                    errorDiv.textContent = '';
+                    errorDiv.style.display = 'none';
+                }
+
+                // Validation
+                if (!username || !email || !password || !confirmPassword) {
+                    const msg = 'Please fill in all fields';
+                    if (errorDiv) {
+                        errorDiv.textContent = msg;
+                        errorDiv.style.display = 'block';
+                    }
+                    return;
+                }
+                if (password !== confirmPassword) {
+                    const msg = 'Passwords do not match';
+                    if (errorDiv) {
+                        errorDiv.textContent = msg;
+                        errorDiv.style.display = 'block';
+                    }
+                    return;
+                }
+                if (password.length < 6) {
+                    const msg = 'Password must be at least 6 characters';
+                    if (errorDiv) {
+                        errorDiv.textContent = msg;
+                        errorDiv.style.display = 'block';
+                    }
+                    return;
+                }
+
+                try {
+                    // Call backend signup endpoint
+                    const response = await API.signup(username, email, password);
+                    
+                    // Store user info
+                    this.currentUser = {
+                        username: username,
+                        email: email,
+                        displayName: username,
+                        bio: ''
+                    };
+                    localStorage.setItem('currentUser', JSON.stringify(this.currentUser));
+                    
+                    // Update UI to reflect logged-in state
                     this.updateAuthUI();
-                this.transitionTo('dashboard');
+                    
+                    // Clear form
+                    signUpForm.reset();
+                    
+                    // Transition to dashboard
+                    this.transitionTo('dashboard');
+                } catch (error) {
+                    if (errorDiv) {
+                        errorDiv.textContent = error.message;
+                        errorDiv.style.display = 'block';
+                    }
+                    passwordInputs.forEach(input => input.value = '');
+                }
             });
         }
 
@@ -533,8 +629,74 @@ class TransitionManager {
                         cancelBtn.addEventListener('click', () => this.transitionTo('dashboard'));
                     }
 
+                    // Password change button handler
+                    const changePasswordBtn = accountScene.querySelector('.change-password-button');
+                    if (changePasswordBtn) {
+                        changePasswordBtn.addEventListener('click', async () => {
+                            const errorDiv = accountScene.querySelector('.form-error');
+                            const successDiv = accountScene.querySelector('.form-success');
+                            const currentPassword = accountScene.querySelector('#current-password')?.value || '';
+                            const newPassword = accountScene.querySelector('#new-password')?.value || '';
+                            const confirmNewPassword = accountScene.querySelector('#confirm-new-password')?.value || '';
+
+                            // Clear previous messages
+                            if (errorDiv) { errorDiv.textContent = ''; errorDiv.style.display = 'none'; }
+                            if (successDiv) { successDiv.textContent = ''; successDiv.style.display = 'none'; }
+
+                            // Validation
+                            if (!currentPassword || !newPassword || !confirmNewPassword) {
+                                if (errorDiv) {
+                                    errorDiv.textContent = 'Please fill in all password fields';
+                                    errorDiv.style.display = 'block';
+                                }
+                                return;
+                            }
+                            if (newPassword !== confirmNewPassword) {
+                                if (errorDiv) {
+                                    errorDiv.textContent = 'New passwords do not match';
+                                    errorDiv.style.display = 'block';
+                                }
+                                return;
+                            }
+                            if (newPassword.length < 6) {
+                                if (errorDiv) {
+                                    errorDiv.textContent = 'New password must be at least 6 characters';
+                                    errorDiv.style.display = 'block';
+                                }
+                                return;
+                            }
+
+                            try {
+                                const response = await API.changePassword(currentPassword, newPassword);
+                                if (successDiv) {
+                                    successDiv.textContent = 'Password changed successfully!';
+                                    successDiv.style.display = 'block';
+                                }
+                                // Clear password fields
+                                accountScene.querySelector('#current-password').value = '';
+                                accountScene.querySelector('#new-password').value = '';
+                                accountScene.querySelector('#confirm-new-password').value = '';
+                                // Auto-hide success message after 3 seconds
+                                setTimeout(() => {
+                                    if (successDiv) {
+                                        successDiv.style.display = 'none';
+                                    }
+                                }, 3000);
+                            } catch (error) {
+                                if (errorDiv) {
+                                    errorDiv.textContent = error.message;
+                                    errorDiv.style.display = 'block';
+                                }
+                                accountScene.querySelector('#current-password').value = '';
+                            }
+                        });
+                    }
+
                     if (logoutBtn) {
                         logoutBtn.addEventListener('click', () => {
+                            // Clear API token
+                            API.clearToken();
+                            // Clear localStorage
                             localStorage.removeItem('currentUser');
                             this.currentUser = { username: '', email: '', displayName: '', bio: '' };
                             this.updateAuthUI();

@@ -50,26 +50,54 @@
     
     <!-- Account Scene -->
     <div id="scene-account" class="scene" style="display: none;">
-        <div class="form-container">
+        <div class="form-container account-form-container">
             <h2 class="form-title">Account</h2>
+            <div class="form-error" style="display: none; color: #ff4444; font-weight: bold; margin-bottom: 12px; padding: 8px; background: rgba(255,68,68,0.1); border-radius: 4px;"></div>
+            <div class="form-success" style="display: none; color: #44ff44; font-weight: bold; margin-bottom: 12px; padding: 8px; background: rgba(68,255,68,0.1); border-radius: 4px;"></div>
             <form class="account-form">
-                <div class="form-group">
-                    <label class="form-label"><span class="material-icons">account_circle</span> Username</label>
-                    <input id="account-username" type="text" class="form-input" placeholder="User name">
-                </div>
-                <div class="form-group">
-                    <label class="form-label"><span class="material-icons">alternate_email</span> Email</label>
-                    <input id="account-email" type="email" class="form-input" placeholder="Email">
-                </div>
-                <div class="form-group">
-                    <label class="form-label"><span class="material-icons">person</span> Display name</label>
-                    <input id="account-displayname" type="text" class="form-input" placeholder="Display name">
-                </div>
-                <div class="form-group">
-                    <label class="form-label"><span class="material-icons">chat</span> Bio</label>
-                    <textarea id="account-bio" class="form-input" placeholder="Short bio" rows="3"></textarea>
+                <!-- Two Column Layout -->
+                <div class="account-form-columns">
+                    <!-- Left Column: User Information -->
+                    <div class="account-column">
+                        <h3 class="column-title">User Information</h3>
+                        <div class="form-group">
+                            <label class="form-label"><span class="material-icons">account_circle</span> Username</label>
+                            <input id="account-username" type="text" class="form-input" placeholder="User name" disabled>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label"><span class="material-icons">alternate_email</span> Email</label>
+                            <input id="account-email" type="email" class="form-input" placeholder="Email" disabled>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label"><span class="material-icons">person</span> Display name</label>
+                            <input id="account-displayname" type="text" class="form-input" placeholder="Display name">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label"><span class="material-icons">chat</span> Bio</label>
+                            <textarea id="account-bio" class="form-input" placeholder="Short bio" rows="3"></textarea>
+                        </div>
+                    </div>
+
+                    <!-- Right Column: Password Manager -->
+                    <div class="account-column">
+                        <h3 class="column-title">Change Password</h3>
+                        <div class="form-group">
+                            <label class="form-label"><span class="material-icons">lock</span> Current Password</label>
+                            <input id="current-password" type="password" class="form-input" placeholder="Current password">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label"><span class="material-icons">lock</span> New Password</label>
+                            <input id="new-password" type="password" class="form-input" placeholder="New password">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label"><span class="material-icons">lock</span> Confirm New Password</label>
+                            <input id="confirm-new-password" type="password" class="form-input" placeholder="Confirm new password">
+                        </div>
+                        <button type="button" class="auth-button change-password-button" style="width: 100%; margin-bottom: 12px;">Change Password</button>
+                    </div>
                 </div>
 
+                <!-- Buttons Row (Full Width) -->
                 <div class="form-buttons">
                     <button type="submit" class="auth-button">Save changes</button>
                     <button type="button" class="auth-button" data-back-to="dashboard">Cancel</button>
@@ -87,6 +115,7 @@
     <div id="scene-signup" class="scene" style="display: none;">
         <div class="form-container">
             <h2 class="form-title">Create Account</h2>
+            <div class="form-error" style="display: none; color: #ff4444; font-weight: bold; margin-bottom: 12px; padding: 8px; background: rgba(255,68,68,0.1); border-radius: 4px;"></div>
             <form class="auth-form">
                 <div class="form-group">
                     <label class="form-label"><span class="material-icons">account_circle</span> User name</label>
@@ -116,6 +145,7 @@
     <div id="scene-signin" class="scene" style="display: none;">
         <div class="form-container">
             <h2 class="form-title">Sign In</h2>
+            <div class="form-error" style="display: none; color: #ff4444; font-weight: bold; margin-bottom: 12px; padding: 8px; background: rgba(255,68,68,0.1); border-radius: 4px;"></div>
             <form class="auth-form">
                 <div class="form-group">
                     <label class="form-label"><span class="material-icons">alternate_email</span> Email</label>
@@ -328,6 +358,7 @@
         </div>
     </div>
 
+    <script src="api.js"></script>
     <script src="transitions.js"></script>
     <script src="script.js"></script>
 </body>

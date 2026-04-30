@@ -401,6 +401,52 @@ canvas {
     font-size: 14px;
 }
 
+/* ============ ACCOUNT FORM TWO-COLUMN LAYOUT ============ */
+.account-form-container {
+    max-width: 900px;
+    max-height: 85vh;
+    overflow-y: auto;
+}
+
+.account-form-columns {
+    display: flex;
+    gap: 24px;
+    margin-bottom: 20px;
+}
+
+.account-column {
+    flex: 1;
+    min-width: 0;
+}
+
+.column-title {
+    color: #7CC4ED;
+    font-size: 18px;
+    font-weight: 600;
+    margin: 0 0 16px 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.account-form .form-buttons {
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Responsive: Stack columns on smaller screens */
+@media (max-width: 768px) {
+    .account-form-container {
+        max-width: 95vw;
+    }
+    
+    .account-form-columns {
+        flex-direction: column;
+        gap: 16px;
+    }
+}
+
 /* ============ DASHBOARD ============ */
 .dashboard-container {
     position: absolute;
