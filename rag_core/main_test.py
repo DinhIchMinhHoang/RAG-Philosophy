@@ -21,7 +21,7 @@ def build_pipeline():
     Hỗ trợ Incremental Processing: Quét và xử lý file PDF mới trong data/raw.
     """
     from config import Config
-    from step1_parser import SmartDocumentParser
+    from step1_loader import DocumentAggregator
     from step2_chunker import hierarchical_chunking, save_chunks
     from step3_vector_db import ingest_into_qdrant, get_retriever
     from step4_generator import setup_rag_chain
@@ -33,7 +33,7 @@ def build_pipeline():
         print("⚠️ Không tìm thấy file PDF nào trong data/raw/.")
         return None
 
-    parser = SmartDocumentParser()
+    parser = DocumentAggregator()
     all_child_chunks = []
 
     print(f"\n🔍 Đang kiểm tra và xử lý {len(pdf_files)} file PDF...")
