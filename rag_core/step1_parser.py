@@ -1,28 +1,35 @@
 """
-step1_parser.py - Module phân tích tài liệu (Document Parsing).
+step1_parser.py — Hybrid Two-Pass Concurrent PDF Parser.
 
-Kiến trúc Page-Level Router:
-  1. Duyệt qua từng trang PDF bằng PyMuPDF (fitz).
-  2. Phân loại trang (Router Logic):
-     - Fast Track: Nếu trang chủ yếu là text thường -> Lấy raw text và heal text.
-     - Heavy Track: Nếu trang có nhiều công thức Toán hoặc Bảng (nhiều vector graphics)
-       -> Trích xuất trang đó ra file tạm và chạy Docling để lấy Markdown/LaTeX chuẩn.
-  3. Gộp kết quả các trang thành 1 file Markdown hoàn chỉnh.
+Kiến trúc (Single Responsibility: Parse PDF → List[Document]):
+  Pass 1 — Scan & Classify:
+       Quét từng trang bằng fitz. Phân loại simple_pages / complex_pages
+       dựa trên image blocks, table heuristics, vector drawings (toán học).
+  Pass 2 — Execute:
+       Fast Track  : pymupdf4llm.to_markdown() cho simple_pages.
+       Heavy Track : ThreadPoolExecutor gọi Ollama (glm-ocr) song song
+                     cho complex_pages với Smart Cropping bounding box.
+  Output: List[Document] (langchain_core) kèm metadata {source, page}.
 """
 
+from __future__ import annotations
+
+import base64
+import io
+import logging
 import os
 import re
-import json
-import logging
 import time
-import tempfile
+from concurrent.futures import ThreadPoolExecutor, TimeoutError, as_completed
+from typing import List, Optional
 
-import fitz  # PyMuPDF
-import pdfplumber
-import torch
-from docling.document_converter import DocumentConverter, PdfFormatOption
-from docling.datamodel.pipeline_options import PdfPipelineOptions, AcceleratorOptions
-from docling.datamodel.base_models import InputFormat
+from PIL import Image
+
+import fitz                              # PyMuPDF
+import pymupdf4llm
+from langchain_community.chat_models import ChatOllama
+from langchain_core.documents import Document
+from langchain_core.messages import HumanMessage, SystemMessage
 
 from config import Config
 
@@ -33,42 +40,55 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ── Đường dẫn file trạng thái ───────────────────────────────────────
-_PROCESSED_FILES_PATH: str = os.path.join(Config.DATA_DIR, "processed_files.json")
 
-
+# =====================================================================
+#  MARKDOWN SANITIZER
+# =====================================================================
 class MarkdownSanitizer:
     """
-    Xử lý và làm sạch văn bản Markdown trước khi lưu.
-    Khắc phục lỗi đứt dòng, heading giả và số trang.
+    Xử lý và làm sạch văn bản Markdown trước khi đóng gói.
+    Khắc phục lỗi đứt dòng, heading giả, số trang, và nhiễu OCR.
     """
 
     @staticmethod
     def sanitize(text: str) -> str:
+        """Chạy toàn bộ pipeline làm sạch Markdown."""
+        if not text:
+            return ""
+
         # 0.1 Normalize Bullets
         text = re.sub(r'(?m)^(\s*)[•▪o]\s+', r'\1- ', text)
 
         # 0.2 Clean Noise & Aggressive Header/Footer Removal
         text = text.replace('``', '')
         text = text.replace('\x0c', '')  # Form feed
-        text = re.sub(r'(?m)^\s*(MỤC LỤC|DANH SÁCH HÌNH|DANH SÁCH BẢNG|DANH MỤC|TÀI LIỆU THAM KHẢO)\s*$', '', text, flags=re.IGNORECASE)
-        # Remove common academic running headers/footers (e.g., "12 CHƯƠNG 1...", "12 PHẦN...")
-        text = re.sub(r'(?m)^\s*\d+\s+(CHƯƠNG|PHẦN)\s+.*$', '', text, flags=re.IGNORECASE)
+        text = re.sub(
+            r'(?m)^\s*(MỤC LỤC|DANH SÁCH HÌNH|DANH SÁCH BẢNG|DANH MỤC|TÀI LIỆU THAM KHẢO)\s*$',
+            '', text, flags=re.IGNORECASE,
+        )
+        text = re.sub(
+            r'(?m)^\s*\d+\s+(CHƯƠNG|PHẦN)\s+.*$',
+            '', text, flags=re.IGNORECASE,
+        )
 
         # 1. Remove Page Numbers
         text = re.sub(r'(?m)^\s*(?:Trang\s+|Page\s+)?\d+\s*$', '', text)
 
         # 2. Convert Fake Headings to Real Markdown Headings
-        # Header 1: Chương \d+ or Phần [IVXLCDM\d]+
-        text = re.sub(r'(?m)^(\s*)(Chương\s+\d+|Phần\s+[IVXLCDM\d]+)[ \t:\.]*(.*)', r'\1# \2 \3', text, flags=re.IGNORECASE)
-        
-        # Header 3: \d+\.\d+\.\d+ (e.g., 1.1.1)
-        text = re.sub(r'(?m)^(\s*)(\d+\.\d+\.\d+)(?!\.\d)[ \t:\.]*(.*)', r'\1### \2 \3', text)
-        
-        # Header 2: \d+\.\d+ (e.g., 1.1, 2.3)
-        text = re.sub(r'(?m)^(\s*)(\d+\.\d+)(?!\.\d)[ \t:\.]*(.*)', r'\1## \2 \3', text)
+        text = re.sub(
+            r'(?m)^(\s*)(Chương\s+\d+|Phần\s+[IVXLCDM\d]+)[ \t:\.]*(.*)',
+            r'\1# \2 \3', text, flags=re.IGNORECASE,
+        )
+        text = re.sub(
+            r'(?m)^(\s*)(\d+\.\d+\.\d+)(?!\.\d)[ \t:\.]*(.*)',
+            r'\1### \2 \3', text,
+        )
+        text = re.sub(
+            r'(?m)^(\s*)(\d+\.\d+)(?!\.\d)[ \t:\.]*(.*)',
+            r'\1## \2 \3', text,
+        )
 
-        # 2.5 Split Inline Headings (CRITICAL)
+        # 2.5 Split Inline Headings
         lines = text.split('\n')
         for i in range(len(lines)):
             if lines[i].lstrip().startswith('#'):
@@ -78,328 +98,653 @@ class MarkdownSanitizer:
         # 3. Fix Hard Line Breaks
         text = MarkdownSanitizer._fix_hard_line_breaks(text)
 
-        # 4. TOC Truncation (The RAG Savior)
-        match = re.search(r'^#\s+(Chương\s+1|Phần\s+(?:1|I))\b', text, flags=re.IGNORECASE | re.MULTILINE)
+        # 4. TOC Truncation (cắt bỏ mục lục đầu file)
+        match = re.search(
+            r'^#\s+(Chương\s+1|Phần\s+(?:1|I))\b',
+            text, flags=re.IGNORECASE | re.MULTILINE,
+        )
         if match:
             start_idx = match.start()
             nearest_tag = text.rfind('<!--', 0, start_idx)
-            if nearest_tag != -1:
-                text = text[nearest_tag:]
-            else:
-                text = text[start_idx:]
+            text = text[nearest_tag:] if nearest_tag != -1 else text[start_idx:]
 
         # Clean up excessive empty lines
         text = re.sub(r'\n{3,}', '\n\n', text)
-
         return text.strip()
 
     @staticmethod
     def _split_inline_heading(line: str) -> str:
-        """
-        Helper method to split inline headings where paragraph text is merged with the heading.
-        Finds a sentence boundary (?, ., or :) followed by an Uppercase Vietnamese character.
-        """
-        upper_chars = "A-ZÀÁÂÃÈÉÊÌÍÒÓÔÕÙÚĂĐĨŨƠƯẠẢẤẦẨẪẬẮẰẲẴẶẸẺẼỀỀỂỄỆỈỊỌỎỐỒỔỖỘỚỜỞỠỢỤỦỨỪỬỮỰỲỴÝỶỸ"
-        pattern = r'([?\.:])\s+([' + upper_chars + r'])'
-        
-        match = re.search(pattern, line)
-        if match:
-            split_idx = match.start(2)
-            # Insert \n\n to push the body text to a new paragraph
-            return line[:split_idx].strip() + "\n\n" + line[split_idx:]
+        """Tách heading bị dính paragraph text trên cùng dòng."""
+        upper_chars = (
+            "A-ZÀÁÂÃÈÉÊÌÍÒÓÔÕÙÚĂĐĨŨƠƯ"
+            "ẠẢẤẦẨẪẬẮẰẲẴẶẸẺẼỀỀỂỄỆỈỊỌỎỐỒỔỖỘỚỜỞỠỢỤỦỨỪỬỮỰỲỴÝỶỸ"
+        )
+        pattern = r'([?\.:])\\s+([' + upper_chars + r'])'
+        m = re.search(pattern, line)
+        if m:
+            idx = m.start(2)
+            return line[:idx].strip() + "\n\n" + line[idx:]
         return line
 
     @staticmethod
     def _fix_hard_line_breaks(text: str) -> str:
+        """Nối các dòng bị ngắt cứng giữa chừng câu."""
         paragraphs = text.split('\n\n')
-        fixed_paragraphs = []
+        fixed: list[str] = []
         for p in paragraphs:
             lines = p.split('\n')
             if not lines:
                 continue
-            
-            merged_lines = [lines[0]]
+            merged = [lines[0]]
             for i in range(1, len(lines)):
-                prev_line = merged_lines[-1].rstrip()
-                curr_line = lines[i].lstrip()
-                
-                if not prev_line or not curr_line:
-                    merged_lines.append(curr_line)
+                prev = merged[-1].rstrip()
+                curr = lines[i].lstrip()
+                if not prev or not curr:
+                    merged.append(curr)
                     continue
-
-                # Don't merge if prev line ends with end-of-sentence punctuation
-                if prev_line[-1] in ['.', '?', '!', ':', '>', ']']:
-                    merged_lines.append(curr_line)
+                if prev[-1] in '.?!:>]':
+                    merged.append(curr)
                     continue
-                
-                # Don't merge if curr line is a numbered list (\d+\.)
-                if re.match(r'^\d+\.', curr_line):
-                    merged_lines.append(curr_line)
+                if re.match(r'^\d+\.', curr):
+                    merged.append(curr)
                     continue
-                
-                # Don't merge if prev line or curr line is a special markdown element (including "- ")
-                if (prev_line.startswith(('#', '<!--', '-', '*', '>')) or
-                    curr_line.startswith(('#', '<!--', '-', '*', '>'))):
-                    merged_lines.append(curr_line)
+                if (prev.startswith(('#', '<!--', '-', '*', '>')) or
+                        curr.startswith(('#', '<!--', '-', '*', '>'))):
+                    merged.append(curr)
                     continue
-                
-                # Otherwise, merge them securely into a single continuous sentence
-                merged_lines[-1] = prev_line + ' ' + curr_line
-            
-            fixed_paragraphs.append('\n'.join(merged_lines))
-            
-        return '\n\n'.join(fixed_paragraphs)
+                merged[-1] = prev + ' ' + curr
+            fixed.append('\n'.join(merged))
+        return '\n\n'.join(fixed)
 
 
-class SmartDocumentParser:
+# =====================================================================
+#  OLLAMA LLM OCR ENGINE  (Heavy Track helper)
+# =====================================================================
+class OllamaOCREngine:
     """
-    Bộ phân tích tài liệu thông minh với Page-Level Router.
+    Gọi model glm-ocr qua Ollama để trích xuất nội dung từ ảnh trang PDF.
+    Sử dụng ChatOllama từ langchain_community với đúng format multimodal.
     """
-    X_TOLERANCE = 2.0
 
-    def __init__(self):
-        self._docling_converter = None
+    _SYSTEM_PROMPT: str = (
+        "Trích xuất nội dung văn bản, bảng biểu và toán học. "
+        "Dùng định dạng Markdown. Dùng LaTeX cho toán. "
+        "Không sinh ra text hội thoại dư thừa."
+    )
 
-    # ================================================================
-    # 1. CƠ CHẾ QUẢN LÝ TRẠNG THÁI (Incremental Processing)
-    # ================================================================
+    def __init__(self) -> None:
+        self._llm: Optional[ChatOllama] = None
 
-    @staticmethod
-    def _load_processed_list() -> list[str]:
-        if not os.path.exists(_PROCESSED_FILES_PATH):
-            return []
+    def _get_llm(self) -> ChatOllama:
+        """Lazy-init ChatOllama client."""
+        if self._llm is None:
+            logger.info(
+                f"[OllamaOCR] Kết nối tới {Config.OLLAMA_BASE_URL} "
+                f"model={Config.OLLAMA_MODEL_NAME}"
+            )
+            self._llm = ChatOllama(
+                base_url=Config.OLLAMA_BASE_URL,
+                model=Config.OLLAMA_MODEL_NAME,
+                temperature=0.0,
+            )
+        return self._llm
+
+    def ocr_page_image(self, image_b64: str) -> str:
+        """
+        Gửi ảnh base64 tới Ollama và trả về Markdown.
+
+        Uses the LangChain-community ChatOllama multimodal format:
+        image_url dict with data-URI string → the converter splits on
+        the comma and passes the raw base64 into Ollama's 'images' field.
+
+        Args:
+            image_b64: Chuỗi base64-encoded PNG của trang PDF.
+
+        Returns:
+            Markdown text trích xuất được, hoặc chuỗi rỗng nếu lỗi.
+        """
+        llm = self._get_llm()
+        # LangChain-community ChatOllama multimodal payload:
+        #   image_url.url = "data:<mime>;base64,<data>" — the internal
+        #   converter splits on ',' and feeds component[1] to Ollama.
+        messages = [
+            SystemMessage(content=self._SYSTEM_PROMPT),
+            HumanMessage(
+                content=[
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/png;base64,{image_b64}",
+                        },
+                    },
+                    {
+                        "type": "text",
+                        "text": (
+                            "Hãy trích xuất toàn bộ nội dung trong ảnh này "
+                            "sang Markdown. Dùng LaTeX ($...$ hoặc $$...$$) "
+                            "cho công thức toán."
+                        ),
+                    },
+                ],
+            ),
+        ]
         try:
-            with open(_PROCESSED_FILES_PATH, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            if isinstance(data, list):
-                return data
-            return []
-        except (json.JSONDecodeError, OSError) as exc:
-            logger.warning(f"[State] Không đọc được processed_files.json: {exc}")
-            return []
+            response = llm.invoke(messages)
+            return (response.content or "").strip()
+        except Exception as exc:
+            logger.error(f"[OllamaOCR] LLM call failed: {exc}")
+            return ""
+
+
+# =====================================================================
+#  HYBRID TWO-PASS CONCURRENT PDF PARSER
+# =====================================================================
+class HybridPDFParser:
+    """
+    Bộ phân tích PDF lai sử dụng kiến trúc Two-Pass Concurrent.
+
+    Pass 1 — Scan & Classify:
+        Quét mọi trang bằng fitz, phân loại simple / complex dựa trên:
+        - Có image block hay không
+        - Có nhiều vector drawings (≥ 15) → table/biểu đồ/toán
+        - Có ký hiệu toán học đặc trưng hay không
+
+    Pass 2 — Execute:
+        Fast Track  : pymupdf4llm cho simple pages (tuần tự).
+        Heavy Track : Smart Crop + Ollama OCR (song song qua ThreadPoolExecutor).
+
+    Output: List[Document] với metadata {"source": ..., "page": ...}
+    """
+
+    def __init__(self) -> None:
+        self._ocr_engine = OllamaOCREngine()
+
+    # ────────────────────────────────────────────────────────────────
+    #  PASS 1 — PAGE CLASSIFICATION
+    # ────────────────────────────────────────────────────────────────
 
     @staticmethod
-    def _save_processed_list(processed: list[str]) -> None:
-        os.makedirs(os.path.dirname(_PROCESSED_FILES_PATH), exist_ok=True)
-        with open(_PROCESSED_FILES_PATH, "w", encoding="utf-8") as f:
-            json.dump(processed, f, ensure_ascii=False, indent=2)
-        logger.info(f"[State] Đã cập nhật processed_files.json ({len(processed)} file)")
-
-
-    # ================================================================
-    # 3. PAGE-LEVEL ROUTER LOGIC
-    # ================================================================
-
-    def _is_complex_page(self, page: fitz.Page, raw_text: str) -> bool:
+    def _classify_page(page: fitz.Page) -> bool:
         """
-        Heuristic function để xác định xem trang có phức tạp không.
-        Trả về True nếu chứa nhiều ký hiệu Toán học hoặc có khả năng chứa Bảng.
+        Phân loại 1 trang: True = complex, False = simple.
+
+        Heuristics:
+          1. Trang chứa image block → complex.
+          2. Trang có ≥ 15 vector drawings (đường nét, hình vẽ) → complex.
+          3. Trang chứa nhiều ký hiệu toán học (> 3) → complex.
         """
-        # Kiểm tra ký hiệu Toán học
-        math_symbols = ['∑', '∫', 'lim', '∆', '∈', '∀', '∃', '≤', '≥', '≈', '∞', '∏', '√', '∂', 'µ', 'σ', 'θ']
-        math_count = sum(raw_text.count(sym) for sym in math_symbols)
-        
-        if math_count > 3:
+        # Check 1: Image blocks
+        image_list = page.get_images(full=False)
+        if image_list:
             return True
 
-        # Kiểm tra Vector Graphics (dấu hiệu của Bảng biểu hoặc Hình vẽ phức tạp)
+        # Check 2: Vector drawings (tables, diagrams, math figures)
         try:
             drawings = page.get_drawings()
-            if len(drawings) > 15:
+            if len(drawings) >= 15:
                 return True
         except Exception:
             pass
 
+        # Check 3: Math symbols in text layer
+        raw_text = page.get_text("text")
+        math_symbols = [
+            '∑', '∫', 'lim', '∆', '∈', '∀', '∃', '≤', '≥',
+            '≈', '∞', '∏', '√', '∂', 'µ', 'σ', 'θ', 'λ',
+            '⊂', '⊃', '∪', '∩', '⇒', '⇔', '→', '←',
+        ]
+        math_count = sum(raw_text.count(sym) for sym in math_symbols)
+        if math_count > 3:
+            return True
+
         return False
 
-    def heal_vietnamese_text(self, text: str) -> str:
+    def _scan_and_classify(
+        self, doc: fitz.Document,
+    ) -> tuple[list[int], list[int]]:
         """
-        Làm sạch text, sửa lỗi xuống dòng và khoảng trắng.
-        """
-        # Thay thế nhiều khoảng trắng hoặc tab bằng 1 khoảng trắng
-        text = re.sub(r'[ \t]+', ' ', text)
-        
-        # Sửa lỗi đứt dòng: nếu xuống dòng đơn (1 dấu \n) mà không kết thúc bằng dấu câu, ta thay bằng khoảng trắng.
-        # Ở đây ta giữ lại đoạn văn nếu có 2 dấu \n (đoạn mới).
-        text = re.sub(r'(?<!\n)\n(?!\n)', ' ', text)
-        
-        # Xóa các khoảng trắng ở đầu và cuối
-        return text.strip()
+        Pass 1: Quét toàn bộ trang, trả về (simple_pages, complex_pages).
 
-    # ================================================================
-    # 4. HÀM CHÍNH — PARSE DOC
-    # ================================================================
+        Args:
+            doc: fitz.Document đã mở.
 
-    def parse_doc(self, file_path: str) -> str | None:
+        Returns:
+            Tuple (simple_page_indices, complex_page_indices).
         """
-        Hàm public duy nhất — Phân tích PDF → Markdown bằng Router Architecture.
+        simple_pages: list[int] = []
+        complex_pages: list[int] = []
+
+        for page_idx in range(doc.page_count):
+            page = doc[page_idx]
+            if self._classify_page(page):
+                complex_pages.append(page_idx)
+            else:
+                simple_pages.append(page_idx)
+
+        logger.info(
+            f"📊 Pass 1 Classification: "
+            f"{len(simple_pages)} simple, {len(complex_pages)} complex"
+        )
+        return simple_pages, complex_pages
+
+    # ────────────────────────────────────────────────────────────────
+    #  PASS 2A — FAST TRACK  (pymupdf4llm)
+    # ────────────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _extract_fast_track(
+        doc: fitz.Document,
+        page_indices: list[int],
+    ) -> dict[int, str]:
+        """
+        Trích xuất Markdown từ simple pages bằng pymupdf4llm.
+
+        Args:
+            doc: fitz.Document đã mở.
+            page_indices: Danh sách page index (0-based) cần xử lý.
+
+        Returns:
+            Dict {page_index: markdown_text}.
+        """
+        if not page_indices:
+            return {}
+
+        results: dict[int, str] = {}
+
+        for page_num in page_indices:
+            try:
+                md_text: str = pymupdf4llm.to_markdown(
+                    doc,
+                    pages=[page_num],
+                )
+                results[page_num] = md_text
+            except Exception as exc:
+                logger.warning(
+                    f"⚠️ pymupdf4llm thất bại trang {page_num + 1}: {exc}. "
+                    f"Fallback sang fitz raw text."
+                )
+                results[page_num] = doc[page_num].get_text("text")
+
+        return results
+
+    # ────────────────────────────────────────────────────────────────
+    #  PASS 2B — HEAVY TRACK  (Smart Crop + Ollama OCR, Concurrent)
+    # ────────────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _compute_content_bbox(page: fitz.Page) -> fitz.Rect:
+        """
+        Smart Crop: Tính bounding box nội dung chính của trang,
+        bỏ vùng header/footer nhiễu.
+
+        Dùng page.get_text("blocks") để tìm vùng chứa nội dung thực sự,
+        sau đó mở rộng thêm lề nhỏ cho an toàn.
+
+        Args:
+            page: fitz.Page cần tính bbox.
+
+        Returns:
+            fitz.Rect là vùng nội dung chính.
+        """
+        blocks = page.get_text("blocks")  # (x0, y0, x1, y1, text, block_no, type)
+        if not blocks:
+            return page.rect
+
+        # Lọc chỉ text blocks (type == 0) và image blocks (type == 1)
+        content_blocks = [b for b in blocks if b[6] in (0, 1)]
+        if not content_blocks:
+            return page.rect
+
+        # Tính union bounding box của tất cả content blocks
+        min_x = min(b[0] for b in content_blocks)
+        min_y = min(b[1] for b in content_blocks)
+        max_x = max(b[2] for b in content_blocks)
+        max_y = max(b[3] for b in content_blocks)
+
+        # Thêm padding nhỏ (5 points) để tránh cắt sát nội dung
+        padding = 5.0
+        content_rect = fitz.Rect(
+            max(min_x - padding, page.rect.x0),
+            max(min_y - padding, page.rect.y0),
+            min(max_x + padding, page.rect.x1),
+            min(max_y + padding, page.rect.y1),
+        )
+        return content_rect
+
+    @staticmethod
+    def _downscale_image_bytes(
+        png_bytes: bytes, max_long_edge: int,
+    ) -> bytes:
+        """
+        Downscale ảnh PNG nếu cạnh dài nhất vượt *max_long_edge* px.
+        Trả về PNG bytes (giữ nguyên nếu đã nhỏ hơn ngưỡng).
+        """
+        img = Image.open(io.BytesIO(png_bytes))
+        w, h = img.size
+        longest = max(w, h)
+        if longest <= max_long_edge:
+            return png_bytes  # already within budget
+
+        scale = max_long_edge / longest
+        new_w, new_h = int(w * scale), int(h * scale)
+        img = img.resize((new_w, new_h), Image.LANCZOS)
+        buf = io.BytesIO()
+        img.save(buf, format="PNG", optimize=True)
+        logger.debug(
+            f"  📐 Downscaled image {w}×{h} → {new_w}×{new_h}"
+        )
+        return buf.getvalue()
+
+    def _ocr_single_page(
+        self,
+        doc: fitz.Document,
+        page_idx: int,
+    ) -> tuple[int, str]:
+        """
+        Xử lý OCR 1 trang complex: Smart Crop → render ảnh → downscale
+        → Ollama VLM → Markdown.
+        Hàm này được gọi song song trong ThreadPoolExecutor.
+
+        Args:
+            doc: fitz.Document (thread-safe cho read operations).
+            page_idx: Index trang (0-based).
+
+        Returns:
+            Tuple (page_idx, markdown_text).
+        """
+        page = doc[page_idx]
+
+        # Smart Crop: tính bbox nội dung chính
+        content_rect = self._compute_content_bbox(page)
+
+        # Render ảnh theo bbox đã crop, sử dụng DPI từ config
+        dpi = Config.DPI_FOR_OCR
+        mat = fitz.Matrix(dpi / 72.0, dpi / 72.0)
+        pix = page.get_pixmap(matrix=mat, clip=content_rect)
+        img_bytes: bytes = pix.tobytes("png")
+
+        # ── Image Optimization: cap longest edge ──────────────
+        img_bytes = self._downscale_image_bytes(
+            img_bytes, Config.MAX_IMAGE_LONG_EDGE,
+        )
+        image_b64: str = base64.b64encode(img_bytes).decode("ascii")
+
+        # ── Gọi Ollama OCR với hard timeout ───────────────────
+        try:
+            md_text = self._ocr_engine.ocr_page_image(image_b64)
+            if md_text:
+                logger.info(
+                    f"  ✅ OCR trang {page_idx + 1}: {len(md_text)} chars"
+                )
+                return page_idx, md_text
+            else:
+                logger.warning(
+                    f"  ⚠️ VLM trả về rỗng cho trang {page_idx + 1}. "
+                    f"Fallback sang pymupdf4llm."
+                )
+        except Exception as exc:
+            logger.warning(
+                f"  ⚠️ Ollama OCR lỗi trang {page_idx + 1}: {exc}. "
+                f"Fallback sang pymupdf4llm."
+            )
+
+        # Fallback: pymupdf4llm
+        return page_idx, self._fallback_pymupdf(doc, page_idx)
+
+    @staticmethod
+    def _fallback_pymupdf(doc: fitz.Document, page_idx: int) -> str:
+        """Fallback trích xuất: pymupdf4llm → fitz raw text."""
+        logger.info(f"  🔄 Fallback pymupdf4llm cho trang {page_idx + 1}")
+        try:
+            return pymupdf4llm.to_markdown(doc, pages=[page_idx])
+        except Exception:
+            return doc[page_idx].get_text("text")
+
+    def _extract_heavy_track(
+        self,
+        doc: fitz.Document,
+        complex_pages: list[int],
+    ) -> dict[int, str]:
+        """
+        Heavy Track: Gọi Ollama OCR song song cho các trang complex.
+        Mỗi page có hard timeout = Config.VLM_TIMEOUT_SECONDS giây.
+
+        Args:
+            doc: fitz.Document đã mở.
+            complex_pages: Danh sách page index (0-based).
+
+        Returns:
+            Dict {page_index: markdown_text}.
+        """
+        if not complex_pages:
+            return {}
+
+        results: dict[int, str] = {}
+        max_workers = min(Config.OLLAMA_MAX_WORKERS, len(complex_pages))
+        timeout = Config.VLM_TIMEOUT_SECONDS
+
+        logger.info(
+            f"🏋️ Heavy Track: {len(complex_pages)} trang, "
+            f"max_workers={max_workers}, timeout={timeout}s/page"
+        )
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_page = {
+                executor.submit(
+                    self._ocr_single_page, doc, page_idx,
+                ): page_idx
+                for page_idx in complex_pages
+            }
+
+            for future in as_completed(future_to_page):
+                submitted_page = future_to_page[future]
+                try:
+                    # ── Hard timeout per page ─────────────────
+                    page_idx, md_text = future.result(
+                        timeout=timeout,
+                    )
+                    results[page_idx] = md_text
+                except TimeoutError:
+                    logger.error(
+                        f"⏱️ Timeout ({timeout}s) trang "
+                        f"{submitted_page + 1}. Fallback pymupdf4llm."
+                    )
+                    future.cancel()
+                    results[submitted_page] = self._fallback_pymupdf(
+                        doc, submitted_page,
+                    )
+                except Exception as exc:
+                    logger.error(
+                        f"❌ Heavy Track thất bại trang "
+                        f"{submitted_page + 1}: {exc}. Fallback pymupdf4llm."
+                    )
+                    results[submitted_page] = self._fallback_pymupdf(
+                        doc, submitted_page,
+                    )
+
+        return results
+
+    # ────────────────────────────────────────────────────────────────
+    #  PUBLIC API — parse_pdf → List[Document]
+    # ────────────────────────────────────────────────────────────────
+
+    def parse_pdf(self, file_path: str) -> List[Document]:
+        """
+        Hàm public chính — Parse PDF thành List[Document] của LangChain.
+
+        Mỗi Document chứa:
+          - page_content: Markdown đã sanitize.
+          - metadata: {"source": tên_file, "page": số_trang_1_indexed}
+
+        Args:
+            file_path: Đường dẫn tuyệt đối tới file PDF.
+
+        Returns:
+            List[Document] — danh sách Document theo thứ tự trang.
+
+        Raises:
+            FileNotFoundError: Nếu file không tồn tại.
         """
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"Không tìm thấy file: {file_path}")
 
         source_filename: str = os.path.basename(file_path)
-
-        # Kiểm tra Incremental Processing
-        processed_list: list[str] = self._load_processed_list()
-        if source_filename in processed_list:
-            logger.info(f"⏭️ Bỏ qua file cũ (đã được xử lý): {source_filename}")
-            return None
-
-        final_markdown_blocks = []
         doc = fitz.open(file_path)
-        pdfplumber_doc = pdfplumber.open(file_path)
-        
-        logger.info(f"🚀 Bắt đầu parse file: {source_filename} ({doc.page_count} trang)")
+        total_pages = doc.page_count
+
+        logger.info(
+            f"🚀 Bắt đầu parse: {source_filename} ({total_pages} trang)"
+        )
 
         try:
-            for i, page in enumerate(doc):
-                raw_text_fitz = page.get_text("text")
-                is_complex = self._is_complex_page(page, raw_text_fitz)
+            # ── Pass 1: Scan & Classify ──────────────────────────
+            simple_pages, complex_pages = self._scan_and_classify(doc)
 
-                if is_complex:
-                    print(f"[Page {i+1}] -> Heavy Track (Math/Table detected)")
-                    # --- HEAVY TRACK ---
-                    # Trích xuất riêng trang này thành 1 file PDF tạm
-                    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp_pdf:
-                        tmp_path = tmp_pdf.name
-                    
-                    try:
-                        tmp_doc = fitz.open()
-                        tmp_doc.insert_pdf(doc, from_page=i, to_page=i)
-                        tmp_doc.save(tmp_path)
-                        tmp_doc.close()
+            # ── Pass 2: Execute ──────────────────────────────────
+            page_results: dict[int, str] = {}
 
-                        # Chạy Docling
-                        if self._docling_converter is None:
-                            logger.info("[Init] Khởi tạo Docling engine lần đầu tiên (Lazy Load)...")
-                            if torch.cuda.is_available():
-                                device = "cuda"
-                            elif torch.backends.mps.is_available():
-                                device = "mps"
-                            else:
-                                device = "cpu"
-                            
-                            pipeline_options = PdfPipelineOptions()
-                            pipeline_options.do_table_structure = True
-                            pipeline_options.do_ocr = True
-                            num_threads = 1 if device == "cuda" else 4
-                            pipeline_options.accelerator_options = AcceleratorOptions(num_threads=num_threads, device=device)
+            # Fast Track
+            if simple_pages:
+                logger.info(
+                    f"⚡ Fast Track: {len(simple_pages)} trang "
+                    f"via pymupdf4llm"
+                )
+                fast_results = self._extract_fast_track(doc, simple_pages)
+                page_results.update(fast_results)
 
-                            self._docling_converter = DocumentConverter(
-                                format_options={
-                                    InputFormat.PDF: PdfFormatOption(
-                                        pipeline_options=pipeline_options,
-                                    ),
-                                }
-                            )
-                        else:
-                            logger.info("[Heavy Track] Tái sử dụng Docling engine có sẵn...")
+            # Heavy Track (concurrent)
+            if complex_pages:
+                heavy_results = self._extract_heavy_track(doc, complex_pages)
+                page_results.update(heavy_results)
 
-                        result = self._docling_converter.convert(tmp_path)
-                        page_md = result.document.export_to_markdown()
-                        final_markdown_blocks.append(f"<!-- Page {i+1} (Heavy) -->\n" + page_md)
-                    
-                    except Exception as e:
-                        logger.error(f"❌ Lỗi Heavy Track ở trang {i+1}: {e}. Fallback sang Fast Track.")
-                        # Nếu Docling lỗi, lùi về Fast Track cho trang đó
-                        raw_text_plumber = pdfplumber_doc.pages[i].extract_text(x_tolerance=self.X_TOLERANCE) or ""
-                        healed_text = self.heal_vietnamese_text(raw_text_plumber)
-                        final_markdown_blocks.append(f"<!-- Page {i+1} (Fallback) -->\n" + healed_text)
-                    
-                    finally:
-                        # Dọn dẹp file tạm
-                        if os.path.exists(tmp_path):
-                            os.remove(tmp_path)
-                
-                else:
-                    print(f"[Page {i+1}] -> Fast Track")
-                    # --- FAST TRACK ---
-                    raw_text_plumber = pdfplumber_doc.pages[i].extract_text(x_tolerance=self.X_TOLERANCE) or ""
-                    healed_text = self.heal_vietnamese_text(raw_text_plumber)
-                    final_markdown_blocks.append(f"<!-- Page {i+1} -->\n" + healed_text)
         finally:
             doc.close()
-            pdfplumber_doc.close()
 
-        final_markdown = "\n\n".join(final_markdown_blocks)
-        
-        # Tích hợp MarkdownSanitizer tại đây (trước khi lưu/trả về)
-        final_markdown = MarkdownSanitizer.sanitize(final_markdown)
+        # ── Assembly & Sanitization → List[Document] ─────────────
+        documents: List[Document] = []
 
-        if final_markdown:
-            processed_list.append(source_filename)
-            self._save_processed_list(processed_list)
+        for page_idx in range(total_pages):
+            raw_md = page_results.get(page_idx, "")
+            if not raw_md or not raw_md.strip():
+                continue
 
-        return final_markdown
+            # Sanitize Markdown
+            clean_md = MarkdownSanitizer.sanitize(raw_md)
+            if not clean_md:
+                continue
 
-    # ================================================================
-    # LƯU MARKDOWN → data/processed/
-    # ================================================================
+            documents.append(
+                Document(
+                    page_content=clean_md,
+                    metadata={
+                        "source": source_filename,
+                        "page": page_idx + 1,     # 1-indexed cho end-user
+                    },
+                )
+            )
+
+        logger.info(
+            f"✅ Parse hoàn tất: {source_filename} → "
+            f"{len(documents)} Document objects"
+        )
+        return documents
 
     @staticmethod
-    def save_markdown(markdown_text: str, source_filename: str) -> str:
+    def save_markdown(documents: List[Document], source_filename: str) -> str:
+        """
+        Lưu danh sách Document thành một file Markdown duy nhất để kiểm tra.
+        """
         os.makedirs(Config.PROCESSED_DIR, exist_ok=True)
-        md_filename: str = os.path.splitext(source_filename)[0] + ".md"
-        output_path: str = os.path.join(Config.PROCESSED_DIR, md_filename)
+        md_filename = os.path.splitext(source_filename)[0] + ".md"
+        output_path = os.path.join(Config.PROCESSED_DIR, md_filename)
+
+        # Nối tất cả page_content lại với nhau
+        full_text = "\n\n".join(doc.page_content for doc in documents)
 
         with open(output_path, "w", encoding="utf-8") as f:
-            f.write(markdown_text)
+            f.write(full_text)
 
         logger.info(f"💾 Đã lưu Markdown → {output_path}")
         return output_path
 
 
+# =====================================================================
+#  CONVENIENCE FUNCTION  (cho import dễ dàng)
+# =====================================================================
+
+def parse_pdf(file_path: str) -> List[Document]:
+    """
+    Hàm tiện ích cấp module — tạo parser và parse ngay.
+
+    Args:
+        file_path: Đường dẫn tới file PDF.
+
+    Returns:
+        List[Document] kèm metadata {source, page}.
+    """
+    parser = HybridPDFParser()
+    return parser.parse_pdf(file_path)
+
+
+# =====================================================================
+#  SELF-TEST BLOCK
+# =====================================================================
 if __name__ == "__main__":
-    # ================================================================
-    # SELF-TESTING BLOCK
-    # ================================================================
-    # Để chạy block này, mở terminal và gõ lệnh:
-    # python d:\RAG-Philosophy\rag_core\step1_parser.py
-    
     print("=" * 60)
-    print("🧪 KHỞI ĐỘNG BÀI KIỂM TRA PAGE-LEVEL ROUTER")
+    print("🧪 HYBRID TWO-PASS CONCURRENT PDF PARSER — SELF TEST")
     print("=" * 60)
 
-    # Chọn 1 file PDF làm mẫu test (chỉnh tên file theo thực tế trong Config.RAW_DIR)
-    # Ví dụ: "SML (1).pdf" hoặc "Deep Learning.pdf"
-    sample_pdf_name = "Triết_Mác_Lenin.pdf"
+    sample_pdf_name = "1706.03762v7.pdf"
     sample_pdf_path = os.path.join(Config.RAW_DIR, sample_pdf_name)
-    
-    # Nếu không tìm thấy Deep Learning.pdf, thử với SML (1).pdf
-    if not os.path.exists(sample_pdf_path):
-        sample_pdf_name = "SML (1).pdf"
-        sample_pdf_path = os.path.join(Config.RAW_DIR, sample_pdf_name)
 
     if not os.path.exists(sample_pdf_path):
-        print(f"❌ Không tìm thấy file test nào trong: {Config.RAW_DIR}")
-    else:
-        print(f"📄 Đang xử lý file test: {sample_pdf_path}")
-        parser = SmartDocumentParser()
-        
-        # Bỏ qua cơ chế Incremental Processing trong lúc test để luôn phân tích lại
-        # Xóa file khỏi processed_files.json nếu tồn tại
-        processed = parser._load_processed_list()
-        if sample_pdf_name in processed:
-            processed.remove(sample_pdf_name)
-            parser._save_processed_list(processed)
-
-        start_time = time.time()
-        
-        markdown_result = parser.parse_doc(sample_pdf_path)
-        
-        execution_time = time.time() - start_time
-        
-        print("-" * 60)
-        print(f"⏱️ Tổng thời gian chạy: {execution_time:.2f} giây")
-        
-        if markdown_result:
-            output_file = parser.save_markdown(markdown_result, sample_pdf_name)
-            print(f"✅ Quá trình phân tích thành công. Kích thước file: {len(markdown_result):,} ký tự")
-            print(f"📂 File lưu tại: {output_file}")
+        print(f"❌ Không tìm thấy file test: {sample_pdf_path}")
+        # Thử file khác
+        import glob
+        pdfs = glob.glob(os.path.join(Config.RAW_DIR, "*.pdf"))
+        if pdfs:
+            sample_pdf_path = pdfs[0]
+            sample_pdf_name = os.path.basename(sample_pdf_path)
+            print(f"📄 Sử dụng file thay thế: {sample_pdf_name}")
         else:
-            print("⚠️ Quá trình phân tích không trả về kết quả.")
-            
+            print(f"❌ Không có file PDF nào trong: {Config.RAW_DIR}")
+            exit(1)
+
+    print(f"\n📄 Đang xử lý: {sample_pdf_path}")
+
+    parser = HybridPDFParser()
+
+    start_time = time.time()
+    docs = parser.parse_pdf(sample_pdf_path)
+    elapsed = time.time() - start_time
+
+    print("-" * 60)
+    print(f"⏱️  Thời gian xử lý: {elapsed:.2f}s")
+    print(f"📊 Số Document objects: {len(docs)}")
+
+    if docs:
+        total_chars = sum(len(d.page_content) for d in docs)
+        print(f"📝 Tổng ký tự: {total_chars:,}")
+        
+        # Lưu ra file markdown
+        out_file = parser.save_markdown(docs, sample_pdf_name)
+        print(f"📂 Đã xuất file ra: {out_file}")
+
+        # In mẫu Document đầu tiên
+        print(f"\n📗 MẪU DOCUMENT #0:")
+        print(f"   Metadata: {docs[0].metadata}")
+        print(f"   Nội dung (300 ký tự đầu):")
+        print(f"   {docs[0].page_content[:300]}")
+
+        # In mẫu Document cuối
+        print(f"\n📗 MẪU DOCUMENT #{len(docs) - 1} (cuối):")
+        print(f"   Metadata: {docs[-1].metadata}")
+        print(f"   Nội dung (300 ký tự đầu):")
+        print(f"   {docs[-1].page_content[:300]}")
+    else:
+        print("⚠️ Không có Document nào được tạo.")
+
     print("=" * 60)
 
-    # LỆNH THỰC THI (TERMINAL COMMAND):
+    # LỆNH THỰC THI:
     # python d:\RAG-Philosophy\rag_core\step1_parser.py

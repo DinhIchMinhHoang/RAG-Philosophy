@@ -392,7 +392,7 @@ huấn luyện n →∞ , ta có ước lượng tỉ lệ lỗi err P ( h KNN )
 
 Trong đó, R ⋆ là xác suất lỗi tối ưu Bayes.
 
-Định lý 2.13 cho thấy chỉ cần với k = 1 , khi có đủ dữ liệu, xác suất lỗi của hàm phân lớp h KNN không vượt quá hai lần so với xác suất lỗi tối ưu R ⋆ . Với k &gt; 1 càng lớn thì err P ( h KNN ) càng tiến đến sát R ⋆ . Đây là một kết quả thú vị nhưng nó đòi hỏi số mẫu huấn luyện n rất lớn so với k .
+Định lý 2.13 cho thấy chỉ cần với k = 1 , khi có đủ dữ liệu, xác suất lỗi của hàm phân lớp h KNN không vượt quá hai lần so với xác suất lỗi tối ưu R ⋆ . Với k > 1 càng lớn thì err P ( h KNN ) càng tiến đến sát R⋆ . Đây là một kết quả thú vị nhưng nó đòi hỏi số mẫu huấn luyện n rất lớn so với k.
 
 ## 2.8 Thuật toán Cây quyết định
 

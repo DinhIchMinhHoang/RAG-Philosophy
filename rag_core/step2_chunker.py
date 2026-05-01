@@ -202,7 +202,7 @@ def save_chunks(
 # ====================================================================
 if __name__ == "__main__":
     from config import Config
-    from step1_parser import SmartDocumentParser
+    from step1_loader import DocumentAggregator
 
     # Đọc PDF từ thư mục data/raw/
     pdf_path = os.path.join(Config.RAW_DIR, "SML (1).pdf")

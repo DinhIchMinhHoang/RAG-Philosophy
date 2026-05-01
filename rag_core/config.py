@@ -40,6 +40,15 @@ class Config:
     QDRANT_COLLECTION: str = "rag_philosophy"
     TOP_K_RESULTS: int = 3          # Số kết quả trả về khi truy xuất
 
+
+    # ── Ollama OCR Engine (Heavy Track) ────────────────────────
+    OLLAMA_BASE_URL: str = "http://localhost:11434"
+    OLLAMA_MODEL_NAME: str = "glm-ocr"
+    OLLAMA_MAX_WORKERS: int = 5          # ThreadPoolExecutor concurrency
+    DPI_FOR_OCR: int = 200               # Resolution khi render trang → ảnh
+    VLM_TIMEOUT_SECONDS: int = 60        # Hard timeout per page for VLM call
+    MAX_IMAGE_LONG_EDGE: int = 1500      # Max px on longest edge before b64 encode
+
     # ── Đường dẫn dữ liệu ───────────────────────────────────
     _DATA_ROOT: Path = Path(__file__).resolve().parent.parent / "data"
 

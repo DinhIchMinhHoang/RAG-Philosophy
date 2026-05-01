@@ -3,21 +3,22 @@
 ## UET Project Context
 This is a Retrieval-Augmented Generation (RAG) system for the "Thực hành phát triển hệ thống trí tuệ nhân tạo" course at the University of Engineering and Technology (UET). The system is designed to lookup lecture contents and PDF documents. It must be highly modular, easily configurable, and scalable for future integration with FastAPI and Celery/Redis.
 
-## Tech Stack
-- Python 3.13+
-- LangChain (langchain, langchain-openai, langchain-community)
-- Qdrant (qdrant-client)
-- PyMuPDF (pymupdf)
-- pdfplumber (pdfplumber)
-- Docling (docling)
-- python-dotenv
+## Exact UET Tech Stack
+- Python 3.10+
+- LangChain Ecosystem: `langchain==0.3.25`, `langchain-google-genai==2.1.5`, `langchain-community==0.3.24`, `langchain-qdrant==0.2.0`, `langchain-huggingface==0.2.0`, `langchain-text-splitters`
+- Local Embedding: `sentence-transformers==4.1.0`
+- Vector Database: `qdrant-client==1.14.2`
+- PDF / Document Parsing: `pymupdf==1.25.5`, `docling`, `torch`, `pymupdf4llm`, `pdfplumber`
+- Vietnamese Word Segmentation: `pyvi`
+- Environment Management: `python-dotenv==1.1.0`
 
 ## Directory Structure
 ../rag_core/
-├── .env                  # Chứa OPENAI_API_KEY
+├── .env                  # Chứa OPENAI_API_KEY / GEMINI_API_KEY
 ├── requirements.txt      # Chứa các dependencies
 ├── config.py             # File cấu hình trung tâm
 ├── step1_loader.py       # Tải và đọc tài liệu PDF
+├── step1_parser.py       # Implements Page-Level Router architecture for parsing
 ├── step2_chunker.py      # Chia nhỏ văn bản (Text Splitter)
 ├── step3_vector_db.py    # Nhúng (Embedding) và lưu vào Qdrant
 ├── step4_generator.py    # Truy xuất (Retriever) và sinh câu trả lời (LLM Chain)
