@@ -5,23 +5,22 @@ This is a Retrieval-Augmented Generation (RAG) system for the "Thực hành phá
 
 ## Exact UET Tech Stack
 - Python 3.10+
-- LangChain Ecosystem: `langchain==0.3.25`, `langchain-google-genai==2.1.5`, `langchain-community==0.3.24`, `langchain-qdrant==0.2.0`, `langchain-huggingface==0.2.0`, `langchain-text-splitters`
-- Local Embedding: `sentence-transformers==4.1.0`
-- Vector Database: `qdrant-client==1.14.2`
-- PDF / Document Parsing: `pymupdf==1.25.5`, `docling`, `torch`, `pymupdf4llm`, `pdfplumber`
-- Vietnamese Word Segmentation: `pyvi`
-- Environment Management: `python-dotenv==1.1.0`
+- LangChain Ecosystem: `langchain`, `langchain-google-genai`, `langchain-community`, `langchain-qdrant`, `langchain-huggingface`, `langchain-text-splitters`
+- Local Embedding: HuggingFace (`microsoft/harrier-oss-v1-270m`)
+- Vector Database: Qdrant
+- PDF / Document Parsing: `pymupdf`, `pymupdf4llm`, `Pillow`
+- LLM / OCR Engine: Ollama (`glm-ocr`), Gemini (`gemini-3.1-flash-lite-preview`)
+- Environment Management: `python-dotenv`
 
 ## Directory Structure
 ../rag_core/
 ├── .env                  # Chứa OPENAI_API_KEY / GEMINI_API_KEY
 ├── requirements.txt      # Chứa các dependencies
 ├── config.py             # File cấu hình trung tâm
-├── step1_loader.py       # Tải và đọc tài liệu PDF
-├── step1_parser.py       # Implements Page-Level Router architecture for parsing
-├── step2_chunker.py      # Chia nhỏ văn bản (Text Splitter)
-├── step3_vector_db.py    # Nhúng (Embedding) và lưu vào Qdrant
-├── step4_generator.py    # Truy xuất (Retriever) và sinh câu trả lời (LLM Chain)
+├── step1_parser.py       # Phân tích PDF lai 2 luồng (Fast Track / Heavy Track)
+├── step2_chunker.py      # Chia nhỏ văn bản (Parent-Child Text Splitter)
+├── step3_vector_db.py    # Nhúng (Embedding) và lưu vào Qdrant + InMemoryStore
+├── step4_generator.py    # Truy xuất (MultiVectorRetriever) và sinh câu trả lời (LLM Chain)
 └── main_test.py          # Kịch bản chạy thử toàn bộ pipeline
 
 ## Coding Guidelines

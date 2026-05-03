@@ -2,9 +2,17 @@
 main_test.py - Kịch bản chạy thử toàn bộ RAG pipeline.
 
 Full flow: Load PDF → Chunking → Embedding + Qdrant → RAG Chain → Chat loop.
+
+Cách dùng:
+    # Xử lý 1 file cụ thể:
+    python main_test.py "D:\RAG-Philosophy\data\raw\1706.03762v7.pdf"
+
+    # Xử lý tất cả PDF trong data/raw/ (mặc định):
+    python main_test.py
 """
 
 import os
+import sys
 import glob
 import logging
 
@@ -15,83 +23,84 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def build_pipeline():
+def build_pipeline(target_pdf: str | None = None):
     """
     Xây dựng toàn bộ pipeline RAG từ đầu đến cuối.
-    Hỗ trợ Incremental Processing: Quét và xử lý file PDF mới trong data/raw.
+
+    Args:
+        target_pdf: Đường dẫn tuyệt đối tới 1 file PDF cụ thể.
+                    Nếu None → quét tất cả PDF trong Config.RAW_DIR.
+
+    Returns:
+        RAG chain sẵn sàng dùng, hoặc None nếu không có dữ liệu.
     """
     from config import Config
-    from step1_loader import DocumentAggregator
-    from step2_chunker import hierarchical_chunking, save_chunks
-    from step3_vector_db import ingest_into_qdrant, get_retriever
+    from step1_parser import HybridPDFParser
+    from step2_chunker import chunk_documents
+    from step3_vector_db import build_vector_db
     from step4_generator import setup_rag_chain
 
-    # Lấy danh sách tất cả file PDF trong thư mục raw
-    pdf_files = glob.glob(os.path.join(Config.RAW_DIR, "*.pdf"))
-    
-    if not pdf_files:
-        print("⚠️ Không tìm thấy file PDF nào trong data/raw/.")
-        return None
+    # ── Xác định danh sách file cần xử lý ───────────────────────────
+    if target_pdf:
+        if not os.path.isfile(target_pdf):
+            print(f"❌ Không tìm thấy file: {target_pdf}")
+            return None
+        pdf_files = [target_pdf]
+        print(f"\n📄 Chế độ: 1 file — {os.path.basename(target_pdf)}")
+    else:
+        pdf_files = glob.glob(os.path.join(Config.RAW_DIR, "*.pdf"))
+        if not pdf_files:
+            print("⚠️ Không tìm thấy file PDF nào trong data/raw/.")
+            return None
+        print(f"\n📂 Chế độ: toàn bộ thư mục — {len(pdf_files)} file PDF")
 
-    parser = DocumentAggregator()
-    all_child_chunks = []
+    # ── Parse → Chunk ────────────────────────────────────────────────
+    parser = HybridPDFParser()
+    all_child_docs: list = []
+    all_parent_docs: list = []
 
-    print(f"\n🔍 Đang kiểm tra và xử lý {len(pdf_files)} file PDF...")
-    
+    print(f"\n{'='*60}")
     for pdf_path in pdf_files:
         source_name = os.path.basename(pdf_path)
-        print(f"\n--- Đang kiểm tra: {source_name} ---")
-        
-        # ── Step 1: Load & Parse PDF ──────────────────────────────
-        md_text = parser.parse_doc(pdf_path)
-        
-        if md_text is None:
-            # File đã được xử lý -> Hàm parse_doc đã tự in log "Bỏ qua file cũ"
+        print(f"\n📖 Đang xử lý: {source_name}")
+        print(f"{'─'*60}")
+
+        # ── Step 1: Parse PDF → List[Document] ───────────────────────
+        print("   [Step 1] Parsing PDF...")
+        pages = parser.parse_pdf(pdf_path)
+
+        if not pages:
+            print(f"   ⏭️  Không có nội dung. Bỏ qua.")
             continue
 
-        # Lưu Markdown
-        parser.save_markdown(md_text, source_name)
-        
-        # ── Step 2: Chunking ──────────────────────────────────────
-        print("✂️  Đang thực hiện Hierarchical Chunking...")
-        parents, children = hierarchical_chunking(
-            markdown_text=md_text,
-            source_name=source_name,
-        )
-        
-        # Lưu Parent Chunks ra JSON
-        print(f"💾 Đang lưu Parent Chunks...")
-        save_chunks(parents, children, source_name)
-        
-        # Thu thập các Child Chunks mới để nhúng vector
-        all_child_chunks.extend(children)
+        print(f"   [Step 1] ✅ {len(pages)} trang")
 
-    # ── Step 3: Embedding + Qdrant ────────────────────────────
-    # Nếu có chunk mới, tiến hành nhúng. Ngược lại, thông báo bỏ qua.
-    if all_child_chunks:
-        print(f"\n🚀 Đang nhúng {len(all_child_chunks)} Child Chunks mới vào Qdrant...")
-        vectorstore = ingest_into_qdrant(all_child_chunks)
-        retriever = get_retriever(vectorstore)
-    else:
-        print("\n✅ Tất cả file đã được xử lý từ trước. Bỏ qua bước Embedding.")
-        # Khởi tạo retriever từ vectorstore hiện có (Yêu cầu Qdrant phải lưu persistent)
-        # Tạm thời gọi get_retriever với vectorstore trống nếu :memory:, hoặc tải lại từ Qdrant
-        # (Để dùng được lâu dài, cần set Config.QDRANT_LOCATION trỏ vào ổ cứng)
-        from langchain_qdrant import QdrantVectorStore
-        from step3_vector_db import get_embeddings
-        embeddings = get_embeddings()
-        
-        # Thử load lại vector store từ ổ cứng
-        vectorstore = QdrantVectorStore.from_existing_collection(
-            embedding=embeddings,
-            collection_name=Config.QDRANT_COLLECTION,
-            path=Config.QDRANT_PATH,
-        )
-        retriever = get_retriever(vectorstore)
+        # ── Step 2: Parent-Child Chunking ─────────────────────────────
+        print("   [Step 2] Chunking...")
+        child_docs, parent_docs = chunk_documents(pages)
+        print(f"   [Step 2] ✅ {len(parent_docs)} parents, {len(child_docs)} children")
 
-    # ── Step 4: RAG Chain ─────────────────────────────────────
+        all_child_docs.extend(child_docs)
+        all_parent_docs.extend(parent_docs)
+
+    print(f"\n{'='*60}")
+
+    # ── Step 3: Build Vector DB ───────────────────────────────────────
+    if not all_child_docs:
+        print("⚠️ Không có dữ liệu để xây dựng vector DB.")
+        return None
+
+    print(f"\n[Step 3] Đang xây dựng vector DB...")
+    print(f"         {len(all_child_docs)} child docs | {len(all_parent_docs)} parent docs")
+    retriever = build_vector_db(all_child_docs, all_parent_docs)
+
+    # ── Step 4: RAG Chain ─────────────────────────────────────────────
+    print(f"\n[Step 4] Đang khởi tạo RAG chain...")
     rag_chain = setup_rag_chain(retriever)
 
+    print(f"\n{'='*60}")
+    print("✅ Pipeline sẵn sàng!")
+    print(f"{'='*60}")
     return rag_chain
 
 
@@ -135,7 +144,7 @@ def chat_loop(rag_chain):
                     if key not in seen:
                         seen.add(key)
                         filename = os.path.basename(src["source"])
-                        print(f"   - {filename}, Trang {src['page'] + 1}")
+                        print(f"   - {filename}, Trang {src['page']}")
 
         except Exception as e:
             logger.error(f"❌ Lỗi khi xử lý câu hỏi: {e}")
@@ -143,18 +152,29 @@ def chat_loop(rag_chain):
 
 
 def main():
-    """Entry point chính."""
+    """
+    Entry point chính.
+
+    Cách dùng:
+        python main_test.py                                 # tất cả PDF
+        python main_test.py path/to/file.pdf               # 1 file cụ thể
+    """
+    # Đọc argument dòng lệnh (tuỳ chọn)
+    target_pdf: str | None = None
+    if len(sys.argv) >= 2:
+        target_pdf = sys.argv[1].strip('"').strip("'")
+
     print("\n🚀 Đang khởi tạo RAG Pipeline...")
-    print("   (Lần đầu có thể mất vài phút để tải model)\n")
+    print("   (Lần đầu tải model có thể mất vài phút)\n")
 
     try:
-        rag_chain = build_pipeline()
+        rag_chain = build_pipeline(target_pdf=target_pdf)
         if rag_chain:
             chat_loop(rag_chain)
 
     except FileNotFoundError as e:
         logger.error(f"❌ {e}")
-        print(f"\n⚠️ Không tìm thấy file PDF. Kiểm tra thư mục data/raw/.")
+        print(f"\n⚠️ Không tìm thấy file. Kiểm tra đường dẫn PDF.")
     except EnvironmentError as e:
         logger.error(f"❌ {e}")
         print(f"\n⚠️ Lỗi cấu hình: {e}")

@@ -30,7 +30,7 @@ class Config:
     CHILD_CHUNK_OVERLAP: int = 100   # Chồng lấp giữa các Child Chunk
 
     # ── Embedding Model ──────────────────────────────────────
-    EMBEDDING_MODEL: str = "bkai-foundation-models/vietnamese-bi-encoder"
+    EMBEDDING_MODEL_NAME: str = "microsoft/harrier-oss-v1-270m"
 
     # ── LLM (Generator) ─────────────────────────────────────
     LLM_MODEL: str = "gemini-3.1-flash-lite-preview"
@@ -45,7 +45,7 @@ class Config:
     OLLAMA_BASE_URL: str = "http://localhost:11434"
     OLLAMA_MODEL_NAME: str = "glm-ocr"
     OLLAMA_MAX_WORKERS: int = 5          # ThreadPoolExecutor concurrency
-    DPI_FOR_OCR: int = 200               # Resolution khi render trang → ảnh
+    DPI_FOR_OCR: int = 150               # Resolution khi render trang → ảnh
     VLM_TIMEOUT_SECONDS: int = 60        # Hard timeout per page for VLM call
     MAX_IMAGE_LONG_EDGE: int = 1500      # Max px on longest edge before b64 encode
 
@@ -74,7 +74,7 @@ class Config:
             f"  PARENT_CHUNK_OVERLAP={self.PARENT_CHUNK_OVERLAP},\n"
             f"  CHILD_CHUNK_SIZE={self.CHILD_CHUNK_SIZE},\n"
             f"  CHILD_CHUNK_OVERLAP={self.CHILD_CHUNK_OVERLAP},\n"
-            f"  EMBEDDING_MODEL='{self.EMBEDDING_MODEL}',\n"
+            f"  EMBEDDING_MODEL_NAME='{self.EMBEDDING_MODEL_NAME}',\n"
             f"  LLM_MODEL='{self.LLM_MODEL}',\n"
             f"  QDRANT_LOCATION='{self.QDRANT_LOCATION}',\n"
             f"  QDRANT_COLLECTION='{self.QDRANT_COLLECTION}',\n"

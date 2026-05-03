@@ -167,9 +167,13 @@ class OllamaOCREngine:
     """
 
     _SYSTEM_PROMPT: str = (
-        "Trích xuất nội dung văn bản, bảng biểu và toán học. "
-        "Dùng định dạng Markdown. Dùng LaTeX cho toán. "
-        "Không sinh ra text hội thoại dư thừa."
+        '''
+        Bạn là một chuyên gia số hóa tài liệu học thuật. Nhiệm vụ của bạn là trích xuất chính xác nội dung từ ảnh sang định dạng Markdown.
+        1. Giữ nguyên cấu trúc phân cấp (Headers #, ##).
+        2. Chuyển đổi bảng biểu sang Markdown table hoàn chỉnh.
+        3. Sử dụng LaTeX: $inline$ cho công thức trong dòng và $$display$$ cho công thức độc lập.
+        4. Tuyệt đối không thêm lời dẫn, không giải thích, không hội thoại dư thừa.
+        '''
     )
 
     def __init__(self) -> None:
@@ -220,9 +224,13 @@ class OllamaOCREngine:
                     {
                         "type": "text",
                         "text": (
-                            "Hãy trích xuất toàn bộ nội dung trong ảnh này "
-                            "sang Markdown. Dùng LaTeX ($...$ hoặc $$...$$) "
-                            "cho công thức toán."
+                            '''
+                            Hãy thực hiện OCR cho ảnh tài liệu này:
+                            1. Trích xuất toàn bộ văn bản, bảng biểu và công thức toán học.
+                            2. Đảm bảo các ký hiệu toán học phức tạp được chuyển sang LaTeX chính xác.
+                            3. Nếu có bảng, hãy tái cấu trúc đúng định dạng bảng Markdown.
+                            4. Đầu ra: Chỉ trả về nội dung Markdown.
+                            '''
                         ),
                     },
                 ],
@@ -273,10 +281,15 @@ class HybridPDFParser:
           2. Trang có ≥ 15 vector drawings (đường nét, hình vẽ) → complex.
           3. Trang chứa nhiều ký hiệu toán học (> 3) → complex.
         """
-        # Check 1: Image blocks
-        image_list = page.get_images(full=False)
-        if image_list:
-            return True
+        # Check 1: Image blocks (bỏ qua logo nhỏ/watermark)
+        images = page.get_image_info()
+        for img in images:
+            bbox = img.get("bbox")
+            if bbox:
+                w = bbox[2] - bbox[0]
+                h = bbox[3] - bbox[1]
+                if w > 50 and h > 50:
+                    return True
 
         # Check 2: Vector drawings (tables, diagrams, math figures)
         try:
@@ -351,18 +364,32 @@ class HybridPDFParser:
 
         results: dict[int, str] = {}
 
-        for page_num in page_indices:
-            try:
-                md_text: str = pymupdf4llm.to_markdown(
-                    doc,
-                    pages=[page_num],
-                )
-                results[page_num] = md_text
-            except Exception as exc:
+        try:
+            chunks = pymupdf4llm.to_markdown(
+                doc,
+                pages=page_indices,
+                page_chunks=True,
+            )
+            for chunk in chunks:
+                page_num = chunk.get("metadata", {}).get("page", 0) - 1
+                if page_num in page_indices:
+                    results[page_num] = chunk.get("text", "")
+            
+            # Identify missing pages in the results due to errors
+            missing = set(page_indices) - set(results.keys())
+            for page_num in missing:
                 logger.warning(
-                    f"⚠️ pymupdf4llm thất bại trang {page_num + 1}: {exc}. "
+                    f"⚠️ pymupdf4llm thiếu trang {page_num + 1}. "
                     f"Fallback sang fitz raw text."
                 )
+                results[page_num] = doc[page_num].get_text("text")
+
+        except Exception as exc:
+            logger.warning(
+                f"⚠️ pymupdf4llm batch processing thất bại: {exc}. "
+                f"Fallback sang fitz raw text."
+            )
+            for page_num in page_indices:
                 results[page_num] = doc[page_num].get_text("text")
 
         return results
