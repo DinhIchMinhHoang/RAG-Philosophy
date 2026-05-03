@@ -1,0 +1,177 @@
+<!-- Page 2 (Fast) -->
+# **ReAct:
+
+Synergizing Reasoning and ** **Acting in Language Models. **
+### I. ​ Cấu trúc paper:
+
+Bối cảnh : Các Mô hình Ngôn ngữ Lớn (LLM) trước đây thường tách biệt hai luồng
+
+khả năng. Nếu chỉ dùng suy luận (Reasoning - ví dụ kỹ thuật *Chain-of-Thought* ), mô hình dễ bị "ảo giác" (hallucination) do không có khả năng cập nhật thông tin thực tế. Ngược lại, nếu chỉ có khả năng tương tác (Acting), mô hình lại thiếu đi tầm nhìn dài hạn và khả năng lập kế hoạch.
+​
+### Đề xuất :
+
+ReAct ( Reason + Act): một kỹ thuật prompt (prompt technique) kết hợp chặt
+
+chẽ việc tạo ra các bước suy luận (reasoning traces) đan xen với các hành động (actions) tương tác với môi trường bên ngoài để thu thập thông tin thực tế.
+
+<!-- Page 3 (Fast) -->
+### **ReAct là gì ? **
+## ReAct = Reason + Act
+
+Cách tiếp cận truyền thống:
+
+Trong học tăng cường (Reinforcement Learning) hoặc AI Agent định nghĩa một hệ thống qua 3 yếu tố:
+
+   - ​ **Môi trường (Environment):** Thế giới bên ngoài (ví dụ: Wikipedia, trình duyệt
+
+web).
+
+   - ​ **Quan sát (Observation - o_t):** Những gì Agent nhìn thấy từ môi trường ở bước t.
+
+   - ​ **Hành động (Action - a_t):** Các thao tác làm thay đổi môi trường (ví dụ:
+
+Search("AI"), Click(Button)). Không gian hành động này được gọi là A.
+
+=> Sáng kiến cốt lõi của ReAct trong Phần 2 là **Mở rộng không gian hành động** . Tác giả đưa thêm một không gian mới là L (Không gian Ngôn ngữ - Language Space).
+
+   - ​ Lúc này, không gian hành động tổng hợp của Agent sẽ là: $\mathcal{\hat{A}} =
+
+\mathcal{A} \cup \mathcal{L}$.
+
+   - ​ Bất kỳ hành động $\hat{a}_t \in \mathcal{L}$ nào đều được gọi là một **"Suy**
+
+**nghĩ" (Thought)** .
+
+**Điểm khác biệt:** Khác với Action tác động ra bên ngoài, một Thought KHÔNG làm thay
+đổi môi trường bên ngoài do đó không tạo ra Observation feedback. Thay vào đó, nó đóng vai trò cập nhật **Ngữ cảnh nội bộ (Internal Context)** của Agent.
+
+<!-- Page 4 (Fast) -->
+### **Ưu điểm của ReAct:**
+
+**● ​** **Trực quan và dễ thiết kế (Intuitive and easy to design):** Việc tạo prompt cho ReAct
+
+diễn ra rất tự nhiên. Người thiết kế chỉ cần viết lại các suy nghĩ và hành động theo ngôn ngữ thông thường mà không cần phải tuân theo các định dạng cấu trúc phức tạp hay gò
+
+bó.
+
+**● ​** **Đa dụng và linh hoạt (General and flexible):** Không gian suy nghĩ mở cho phép ReAct
+
+hoạt động hiệu quả trên nhiều loại tác vụ có đặc thù khác nhau, từ trả lời câu hỏi (QA), kiểm chứng thông tin, cho đến chơi trò chơi văn bản hay điều hướng web. **=> Có tính**
+**ứng dụng cao cho đa dạng các tác vụ**
+
+<!-- Page 5 (Fast) -->
+- ​ **Hiệu suất cao và ổn định (Performant and robust):** ReAct có khả năng thích ứng xuất
+
+sắc (generalization) với các tác vụ mới chỉ thông qua việc học từ 1 đến 6 ví dụ mẫu (few-shot learning). => **Nhanh chóng thích ứng với tác vụ mới**
+
+- ​ Luôn vượt trội hơn các mô hình cơ sở (baselines) chỉ sử dụng đơn lẻ Suy luận
+
+hoặc Hành động.
+- ​ Mô hình duy trì sự ổn định ngay cả khi thay đổi prompt và có thể tối ưu hóa sâu
+
+hơn nếu được tinh chỉnh (fine-tuning).
+
+   - ​ **Minh bạch và dễ kiểm soát bởi con người (Human aligned and controllable):** Tính
+
+tuần tự của ReAct (think1 -> act1 -> observe1 -> think2 ->...) giúp quá trình ra quyết định trở nên rõ ràng (interpretable) và có thể diễn giải, cho phép con người dễ dàng đọc, kiểm tra logic suy luận và tính chính xác của dữ kiện.
+
+- ​ Đặc biệt, con người có thể trực tiếp can thiệp, điều khiển hoặc sửa lỗi cho Agent
+
+ngay trong lúc nó đang hoạt động bằng cách chỉnh sửa các bước "suy nghĩ" (thought editing).
+### **RESULT:
+
+Knowledge-Intensive Tasks (Tác vụ đòi hỏi Kiến thức) **
+
+Phần này **kiểm tra khả năng tra cứu và xử lý thông tin** của ReAct thông qua 2 bài test khó:
+
+   - ​ **HotpotQA** (Hỏi đáp đa bước/Multi-hop QA)
+
+   - ​ **FEVER** (Kiểm chứng sự thật/Fact Verification). Môi trường tương tác là API tìm kiếm
+
+của Wikipedia.
+
+<!-- Page 6 (Fast) -->
+**Các phát hiện cốt lõi từ kết quả thực nghiệm:**
+
+   - ​ ReAct outperforms Act consistently (on both benchmarks)
+
+   - ​ ReAct outperforms CoT on FEVER but lags on HotpotQA
+
+   - ​ Sự kết hợp giữa ReAct và CoT - SC (chain of thought - self consistency) cho ra kết quả
+
+tốt nhất
+
+**Sự khác biệt trong hành vi giữa ReAct và CoT:**
+
+**● ​** **Hallucination is a serious problem for CoT:**
+
+   - ​ **ReAct mắc "Lỗi suy luận" (Reasoning Error):** Cấu trúc ép buộc phải xen kẽ Suy
+
+nghĩ -> Hành động -> Quan sát làm giảm sự linh hoạt của ReAct. Một lỗi cực kỳ phổ biến của ReAct là "kẹt trong vòng lặp": mô hình bị bế tắc và liên tục lặp lại các suy nghĩ và hành động cũ mà không biết cách thoát ra để thử hướng đi mới.
+
+**● ​** **ReAct phụ thuộc vào thông tin thu thập được:**
+
+        - ​ Non-informative search results derail the model reasoning
+
+        - ​ Struggles to recover and reformulating thoughts
+
+<!-- Page 7 (Fast) -->
+​ ​
+
+**ReAct + CoT-SC:**
+
+   - ​ ReAct và CoT bù trừ hoàn hảo cho nhau.
+
+   - ​ Khi kết hợp hai phương pháp (Dùng thuật toán heuristic: Nếu ReAct trả lời không tự tin
+
+thì dùng CoT hỗ trợ, hoặc dùng CoT tạo nhiều câu trả lời (Self-Consistency) rồi dùng ReAct để kiểm chứng lại), mô hình đạt **State-of-the-Art**, vượt qua tất cả các mô hình cơ sở thời điểm đó.
+
+**Hiệu quả của Fine-tuning:**
+
+   - ​ Khi dùng dữ liệu quỹ đạo của ReAct (khoảng 3.000 ví dụ) để tinh chỉnh các mô hình nhỏ
+
+hơn (như PaLM-8B hay 62B), kết quả cho thấy mô hình nhỏ này có thể hoạt động hiệu quả ngang ngửa, thậm chí **vượt qua các mô hình khổng lồ (PaLM-540B)** khi không được tinh chỉnh. Điều này chứng minh tiềm năng thương mại hóa cực lớn: bạn có thể tạo ra các Agent thông minh bằng những mô hình nhỏ và rẻ.
+
+<!-- Page 8 (Fast) -->
+### **RESULT:
+
+Decision Making Tasks (Tác vụ Ra quyết định) **
+
+Phần này kiểm tra khả năng "hành động và lập kế hoạch" trong môi trường tương tác thực tế qua 2 giả lập:
+
+   - ​ **ALFWorld** (Điều khiển Agent đi vòng quanh nhà ảo để lấy đồ vật qua văn bản)
+
+   - ​ **WebShop** (Một trang thương mại điện tử ảo, yêu cầu Agent click chuột, tìm kiếm, chọn
+
+size/màu để mua đúng món đồ người dùng cần).
+
+**Các phát hiện cốt lõi từ kết quả thực nghiệm:**
+
+<!-- Page 9 (Fast) -->
+- ​ **Vượt trội tuyệt đối so với Act-only (Chỉ hành động):**
+
+- ​ Trong ALFWorld, ReAct đạt tỷ lệ thành công (Success Rate) **71%** chỉ với 1
+
+hoặc 2 ví dụ Few-shot, trong khi phương pháp Act-only (chỉ ra lệnh mà không có suy nghĩ) chỉ đạt 45%.
+- ​ Trong WebShop, ReAct vượt qua Act-only khoảng 10% tỷ lệ thành công tuyệt
+
+đối và nhỉnh hơn cả một số phương pháp học tăng cường (Imitation Learning/ IM - RL) vốn cần hàng ngàn dữ liệu để huấn luyện.
+- ​ *Phân tích:* Việc có không gian "Thought" giúp Agent duy trì được **mục tiêu**
+
+**dài hạn (long-term memory/planning)** . Trong khi rảo bước qua nhiều phòng
+hoặc click qua nhiều trang web, các mô hình Act-only bị "quên" mất mình đang tìm cái gì, còn ReAct luôn tự nhắc nhở bản thân thông qua các câu Thought.
+
+- ​ **Khả năng "Tự nhận diện và Thoát khỏi ngõ cụt":**
+
+- ​ Kết quả phân tích log (nhật ký hoạt động) cho thấy ReAct cực kỳ xuất sắc
+
+trong việc đối phó với môi trường nhiễu. Nếu nó cố gắng mở một cái tủ trong ALFWorld nhưng tủ bị khóa (Observation báo lỗi), thay vì cố đập cửa liên tục như Act-only, ReAct sẽ tự sinh ra một Thought: *"Tủ bị khóa rồi, mình cần đi*
+*tìm chìa khóa ở phòng khách"* .
+
+- ​ **Human-in-the-loop:**
+
+- ​ Tác giả thực hiện một thí nghiệm thú vị: Cho một Agent đang chạy sai hướng
+
+(ví dụ: đang tìm nhầm đồ), sau đó một con người nhảy vào chỉnh sửa **đúng**
+**một dòng Thought** của nó. Ngay lập tức, Agent "tỉnh ngộ" và tiếp tục chuỗi
+hành động đúng đắn từ điểm đó trở đi. Điều này chứng minh tính minh bạch và khả năng can thiệp trực tiếp vào tư duy của Agent – một tính năng mà các mô hình mạng nơ-ron "hộp đen" truyền thống không thể có được.
