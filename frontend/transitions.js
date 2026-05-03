@@ -48,7 +48,7 @@ class TransitionManager {
     }
 
     isAuthenticated() {
-        return Boolean(this.currentUser && (this.currentUser.email || this.currentUser.username));
+        return API.isAuthenticated();
     }
 
     updateAuthUI() {
@@ -388,46 +388,146 @@ class TransitionManager {
             btn.addEventListener('click', () => this.transitionTo('landing'));
         });
 
+<<<<<<< HEAD
         /*
         // Sign-in form submit -> set current user and transition to dashboard
+=======
+        // Sign-in form submit -> authenticate with backend and transition to dashboard
+>>>>>>> ff54caf5fcc4b072850a25a0d1f561c441748afc
         const signInForm = document.querySelector('#scene-signin .auth-form');
         if (signInForm) {
-                signInForm.addEventListener('submit', (e) => {
+                signInForm.addEventListener('submit', async (e) => {
                 e.preventDefault();
+                const signInScene = document.querySelector('#scene-signin');
+                const errorDiv = signInScene.querySelector('.form-error');
                 const emailInput = signInForm.querySelector('input[type="email"]');
+                const passwordInput = signInForm.querySelector('input[type="password"]');
                 const email = emailInput ? emailInput.value.trim() : '';
-                const usernameGuess = email ? (email.split('@')[0] || '') : '';
-                this.currentUser = Object.assign({}, this.currentUser, {
-                    username: this.currentUser.username || usernameGuess,
-                    email: email,
-                    displayName: this.currentUser.displayName || usernameGuess
-                });
-                localStorage.setItem('currentUser', JSON.stringify(this.currentUser));
-                    // update UI to reflect logged-in state
+                const password = passwordInput ? passwordInput.value : '';
+
+                // Clear previous errors
+                if (errorDiv) {
+                    errorDiv.textContent = '';
+                    errorDiv.style.display = 'none';
+                }
+
+                if (!email || !password) {
+                    if (errorDiv) {
+                        errorDiv.textContent = 'Please enter email and password';
+                        errorDiv.style.display = 'block';
+                    }
+                    return;
+                }
+
+                try {
+                    // Call backend login endpoint
+                    const response = await API.login(email, password);
+                    
+                    // Extract username from email if not provided by backend
+                    const usernameGuess = email.split('@')[0] || 'user';
+                    
+                    // Store user info
+                    this.currentUser = {
+                        username: usernameGuess,
+                        email: email,
+                        displayName: usernameGuess,
+                        bio: ''
+                    };
+                    localStorage.setItem('currentUser', JSON.stringify(this.currentUser));
+                    
+                    // Update UI to reflect logged-in state
                     this.updateAuthUI();
-                this.transitionTo('dashboard');
+                    
+                    // Clear form
+                    signInForm.reset();
+                    
+                    // Transition to dashboard
+                    this.transitionTo('dashboard');
+                } catch (error) {
+                    if (errorDiv) {
+                        errorDiv.textContent = error.message;
+                        errorDiv.style.display = 'block';
+                    }
+                    if (passwordInput) passwordInput.value = '';
+                }
             });
         }
 
-        // Sign-up form submit -> persist new user and transition to dashboard
+        // Sign-up form submit -> register with backend and transition to dashboard
         const signUpForm = document.querySelector('#scene-signup .auth-form');
         if (signUpForm) {
-                signUpForm.addEventListener('submit', (e) => {
+                signUpForm.addEventListener('submit', async (e) => {
                 e.preventDefault();
+                const signUpScene = document.querySelector('#scene-signup');
+                const errorDiv = signUpScene.querySelector('.form-error');
                 const usernameInput = signUpForm.querySelector('input[placeholder="User name"]') || signUpForm.querySelector('input[type="text"]');
                 const emailInput = signUpForm.querySelector('input[type="email"]');
+                const passwordInputs = signUpForm.querySelectorAll('input[type="password"]');
+                const password = passwordInputs[0] ? passwordInputs[0].value : '';
+                const confirmPassword = passwordInputs[1] ? passwordInputs[1].value : '';
                 const username = usernameInput ? usernameInput.value.trim() : '';
                 const email = emailInput ? emailInput.value.trim() : '';
-                this.currentUser = {
-                    username: username || (email ? email.split('@')[0] : ''),
-                    email: email,
-                    displayName: username || (email ? email.split('@')[0] : ''),
-                    bio: ''
-                };
-                localStorage.setItem('currentUser', JSON.stringify(this.currentUser));
-                    // update UI to reflect logged-in state
+
+                // Clear previous errors
+                if (errorDiv) {
+                    errorDiv.textContent = '';
+                    errorDiv.style.display = 'none';
+                }
+
+                // Validation
+                if (!username || !email || !password || !confirmPassword) {
+                    const msg = 'Please fill in all fields';
+                    if (errorDiv) {
+                        errorDiv.textContent = msg;
+                        errorDiv.style.display = 'block';
+                    }
+                    return;
+                }
+                if (password !== confirmPassword) {
+                    const msg = 'Passwords do not match';
+                    if (errorDiv) {
+                        errorDiv.textContent = msg;
+                        errorDiv.style.display = 'block';
+                    }
+                    return;
+                }
+                if (password.length < 6) {
+                    const msg = 'Password must be at least 6 characters';
+                    if (errorDiv) {
+                        errorDiv.textContent = msg;
+                        errorDiv.style.display = 'block';
+                    }
+                    return;
+                }
+
+                try {
+                    // Call backend signup endpoint
+                    const response = await API.signup(username, email, password);
+                    
+                    // Store user info
+                    this.currentUser = {
+                        username: username,
+                        email: email,
+                        displayName: username,
+                        bio: ''
+                    };
+                    localStorage.setItem('currentUser', JSON.stringify(this.currentUser));
+                    
+                    // Update UI to reflect logged-in state
                     this.updateAuthUI();
-                this.transitionTo('dashboard');
+                    
+                    // Clear form
+                    signUpForm.reset();
+                    
+                    // Transition to dashboard
+                    this.transitionTo('dashboard');
+                } catch (error) {
+                    if (errorDiv) {
+                        errorDiv.textContent = error.message;
+                        errorDiv.style.display = 'block';
+                    }
+                    passwordInputs.forEach(input => input.value = '');
+                }
             });
         }
         */
@@ -535,8 +635,74 @@ class TransitionManager {
                         cancelBtn.addEventListener('click', () => this.transitionTo('dashboard'));
                     }
 
+                    // Password change button handler
+                    const changePasswordBtn = accountScene.querySelector('.change-password-button');
+                    if (changePasswordBtn) {
+                        changePasswordBtn.addEventListener('click', async () => {
+                            const errorDiv = accountScene.querySelector('.form-error');
+                            const successDiv = accountScene.querySelector('.form-success');
+                            const currentPassword = accountScene.querySelector('#current-password')?.value || '';
+                            const newPassword = accountScene.querySelector('#new-password')?.value || '';
+                            const confirmNewPassword = accountScene.querySelector('#confirm-new-password')?.value || '';
+
+                            // Clear previous messages
+                            if (errorDiv) { errorDiv.textContent = ''; errorDiv.style.display = 'none'; }
+                            if (successDiv) { successDiv.textContent = ''; successDiv.style.display = 'none'; }
+
+                            // Validation
+                            if (!currentPassword || !newPassword || !confirmNewPassword) {
+                                if (errorDiv) {
+                                    errorDiv.textContent = 'Please fill in all password fields';
+                                    errorDiv.style.display = 'block';
+                                }
+                                return;
+                            }
+                            if (newPassword !== confirmNewPassword) {
+                                if (errorDiv) {
+                                    errorDiv.textContent = 'New passwords do not match';
+                                    errorDiv.style.display = 'block';
+                                }
+                                return;
+                            }
+                            if (newPassword.length < 6) {
+                                if (errorDiv) {
+                                    errorDiv.textContent = 'New password must be at least 6 characters';
+                                    errorDiv.style.display = 'block';
+                                }
+                                return;
+                            }
+
+                            try {
+                                const response = await API.changePassword(currentPassword, newPassword);
+                                if (successDiv) {
+                                    successDiv.textContent = 'Password changed successfully!';
+                                    successDiv.style.display = 'block';
+                                }
+                                // Clear password fields
+                                accountScene.querySelector('#current-password').value = '';
+                                accountScene.querySelector('#new-password').value = '';
+                                accountScene.querySelector('#confirm-new-password').value = '';
+                                // Auto-hide success message after 3 seconds
+                                setTimeout(() => {
+                                    if (successDiv) {
+                                        successDiv.style.display = 'none';
+                                    }
+                                }, 3000);
+                            } catch (error) {
+                                if (errorDiv) {
+                                    errorDiv.textContent = error.message;
+                                    errorDiv.style.display = 'block';
+                                }
+                                accountScene.querySelector('#current-password').value = '';
+                            }
+                        });
+                    }
+
                     if (logoutBtn) {
                         logoutBtn.addEventListener('click', () => {
+                            // Clear API token
+                            API.clearToken();
+                            // Clear localStorage
                             localStorage.removeItem('currentUser');
                             this.currentUser = { username: '', email: '', displayName: '', bio: '' };
                             this.updateAuthUI();
@@ -629,6 +795,382 @@ class TransitionManager {
                     }
                 });
             }
+            // Create shared contextual menu for notebook items
+            const moreMenu = document.createElement('div');
+            moreMenu.className = 'more-menu';
+            moreMenu.innerHTML = `
+                <button class="menu-item rename">Rename</button>
+                <button class="menu-item change-image">Change image</button>
+                <button class="menu-item delete">Delete</button>
+            `;
+            document.body.appendChild(moreMenu);
+
+            let currentMenuTarget = null;
+
+            const hideMenu = () => {
+                currentMenuTarget = null;
+                moreMenu.classList.remove('visible');
+                moreMenu.style.display = 'none';
+            };
+
+            // --- Image / Color picker modal wiring ---
+            const imageModal = document.getElementById('imageModal');
+            const imageFileInput = document.getElementById('imageFileInput');
+            const imagePreview = document.getElementById('imagePreview');
+            const chooseFileBtn = document.getElementById('chooseFileBtn');
+            const imageModeSelect = document.getElementById('imageMode');
+            const colorPicker = document.getElementById('colorPicker');
+            const colorPreview = document.getElementById('colorPreview');
+            const applyCoverBtn = document.getElementById('applyCoverBtn');
+            const cancelCoverBtn = document.getElementById('cancelCoverBtn');
+            const tabButtons = document.querySelectorAll('.image-modal-tabs .tab');
+            const tabPanels = document.querySelectorAll('.tab-panel');
+
+            let currentModalTarget = null;
+
+            function extractUrlFromCss(cssValue) {
+                if (!cssValue) return '';
+                const m = cssValue.match(/^url\((?:\"|'|)?(.+?)(?:\"|'|)?\)$/);
+                return m ? m[1] : '';
+            }
+
+            function showImageModal(target) {
+                currentModalTarget = target;
+                if (!imageModal) return;
+                // reset previews
+                if (imagePreview) { imagePreview.style.backgroundImage = ''; imagePreview.dataset.image = ''; }
+                if (colorPreview) { colorPreview.style.backgroundColor = ''; colorPreview.dataset.color = ''; }
+                // default to upload tab
+                tabButtons.forEach(tb => tb.classList.remove('active'));
+                tabPanels.forEach(p => p.classList.add('hidden'));
+                if (tabButtons[0]) tabButtons[0].classList.add('active');
+                if (tabPanels[0]) tabPanels[0].classList.remove('hidden');
+
+                // populate from existing cover if any
+                const cover = target.querySelector('.cover');
+                if (cover) {
+                    const comp = window.getComputedStyle(cover);
+                    const inlineBg = cover.style.backgroundImage || comp.backgroundImage || '';
+                    const url = extractUrlFromCss(inlineBg);
+                    if (url) {
+                        if (imagePreview) { imagePreview.style.backgroundImage = `url(${url})`; imagePreview.dataset.image = url; }
+                        if (imageModeSelect) imageModeSelect.value = target.getAttribute('data-cover-mode') || 'cover';
+                    } else {
+                        const bc = comp.backgroundColor || '';
+                        if (bc && bc !== 'rgba(0, 0, 0, 0)' && bc !== 'transparent') {
+                            if (colorPreview) { colorPreview.style.backgroundColor = bc; colorPreview.dataset.color = bc; }
+                            // switch to color tab
+                            tabButtons.forEach(tb => tb.classList.remove('active'));
+                            tabPanels.forEach(p => p.classList.add('hidden'));
+                            const tbColor = document.querySelector('.image-modal-tabs .tab[data-tab="color"]');
+                            if (tbColor) tbColor.classList.add('active');
+                            const pnlColor = document.querySelector('.tab-panel[data-panel="color"]');
+                            if (pnlColor) pnlColor.classList.remove('hidden');
+                        }
+                    }
+                }
+                imageModal.classList.add('open');
+                imageModal.style.display = 'flex';
+                imageModal.setAttribute('aria-hidden', 'false');
+            }
+
+            function hideImageModal() {
+                currentModalTarget = null;
+                if (!imageModal) return;
+                imageModal.classList.remove('open');
+                imageModal.style.display = 'none';
+                imageModal.setAttribute('aria-hidden', 'true');
+            }
+
+            // wire modal controls
+            if (chooseFileBtn && imageFileInput) {
+                chooseFileBtn.addEventListener('click', () => imageFileInput.click());
+            }
+            if (imageFileInput) {
+                imageFileInput.addEventListener('change', (ev) => {
+                    const f = ev.target.files && ev.target.files[0];
+                    if (!f) return;
+                    const reader = new FileReader();
+                    reader.onload = (rEv) => {
+                        if (imagePreview) { imagePreview.style.backgroundImage = `url(${rEv.target.result})`; imagePreview.dataset.image = rEv.target.result; }
+                    };
+                    reader.readAsDataURL(f);
+                });
+            }
+            if (colorPicker) {
+                colorPicker.addEventListener('input', (e) => {
+                    const v = e.target.value;
+                    if (colorPreview) { colorPreview.style.backgroundColor = v; colorPreview.dataset.color = v; }
+                });
+            }
+            // tab switching
+            tabButtons.forEach(tb => tb.addEventListener('click', () => {
+                const t = tb.getAttribute('data-tab');
+                tabButtons.forEach(b => b.classList.remove('active'));
+                tb.classList.add('active');
+                tabPanels.forEach(p => {
+                    if (p.getAttribute('data-panel') === t) p.classList.remove('hidden'); else p.classList.add('hidden');
+                });
+            }));
+            // apply/cancel
+            if (applyCoverBtn) {
+                applyCoverBtn.addEventListener('click', () => {
+                    if (!currentModalTarget) { hideImageModal(); return; }
+                    const coverEl = currentModalTarget.querySelector('.cover');
+                    if (!coverEl) { hideImageModal(); return; }
+                    const activeTab = document.querySelector('.image-modal-tabs .tab.active')?.getAttribute('data-tab') || 'upload';
+                    if (activeTab === 'upload') {
+                        const data = imagePreview?.dataset?.image || '';
+                        if (!data) {
+                            coverEl.style.backgroundImage = '';
+                            coverEl.style.backgroundColor = '';
+                            currentModalTarget.removeAttribute('data-cover');
+                            currentModalTarget.removeAttribute('data-cover-mode');
+                        } else {
+                            coverEl.style.backgroundImage = `url(${data})`;
+                            coverEl.style.backgroundSize = (imageModeSelect ? imageModeSelect.value : 'cover');
+                            coverEl.style.backgroundPosition = 'center';
+                            coverEl.style.backgroundColor = '';
+                            currentModalTarget.setAttribute('data-cover', data);
+                            currentModalTarget.setAttribute('data-cover-mode', imageModeSelect ? imageModeSelect.value : 'cover');
+                        }
+                    } else {
+                        const color = colorPreview?.dataset?.color || colorPicker?.value || '#000000';
+                        coverEl.style.backgroundImage = '';
+                        coverEl.style.backgroundColor = color;
+                        currentModalTarget.setAttribute('data-cover-color', color);
+                        currentModalTarget.removeAttribute('data-cover');
+                        currentModalTarget.removeAttribute('data-cover-mode');
+                    }
+                    hideImageModal();
+                    hideMenu();
+                });
+            }
+            if (cancelCoverBtn) { cancelCoverBtn.addEventListener('click', hideImageModal); }
+
+            // Handle menu clicks
+            moreMenu.addEventListener('click', (ev) => {
+                ev.stopPropagation();
+                const actionEl = ev.target.closest('.menu-item');
+                if (!actionEl || !currentMenuTarget) return;
+                const action = actionEl.classList.contains('rename') ? 'rename' : (actionEl.classList.contains('change-image') ? 'change-image' : 'delete');
+                if (action === 'rename') {
+                    const newTitle = prompt('Rename notebook', currentMenuTarget.querySelector('.item-title')?.textContent || currentMenuTarget.getAttribute('data-title') || '');
+                    if (newTitle !== null) {
+                        const titleEl = currentMenuTarget.querySelector('.item-title');
+                        if (titleEl) titleEl.textContent = newTitle;
+                        currentMenuTarget.setAttribute('data-title', newTitle);
+                    }
+                } else if (action === 'change-image') {
+                    // open modal to allow upload or color pick
+                    showImageModal(currentMenuTarget);
+                } else if (action === 'delete') {
+                    if (confirm('Delete this notebook?')) {
+                        const parent = currentMenuTarget.parentElement;
+                        if (parent) parent.removeChild(currentMenuTarget);
+                    }
+                }
+                // ensure menu hidden
+                hideMenu();
+            });
+
+            // Hide on outside click or escape
+            document.addEventListener('click', (ev) => {
+                if (!moreMenu.contains(ev.target)) hideMenu();
+            });
+            window.addEventListener('resize', hideMenu);
+            document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') hideMenu(); });
+
+            // Attach more-btn handlers for notebook items (delegation)
+            const attachMoreHandlers = () => {
+                document.querySelectorAll('.notebook-item .more-btn').forEach(btn => {
+                    // avoid attaching multiple times
+                    if (btn._hasMenuHandler) return;
+                    btn._hasMenuHandler = true;
+                    btn.addEventListener('click', (ev) => {
+                        ev.stopPropagation();
+                        const item = btn.closest('.notebook-item');
+                        if (!item) return;
+                        currentMenuTarget = item;
+                        // show menu near button
+                        moreMenu.style.display = 'block';
+                        moreMenu.classList.remove('visible');
+                        // position
+                        const rect = btn.getBoundingClientRect();
+                        // measure after display
+                        const mw = moreMenu.offsetWidth || 160;
+                        let left = rect.right - mw;
+                        if (left < 8) left = rect.left;
+                        if (left + mw > window.innerWidth - 8) left = window.innerWidth - mw - 8;
+                        moreMenu.style.left = `${Math.max(8, left)}px`;
+                        moreMenu.style.top = `${Math.min(window.innerHeight - 8, rect.bottom + 8)}px`;
+                        moreMenu.classList.add('visible');
+                    });
+                });
+            };
+
+            // Initial attach and also re-attach when dynamic changes occur
+            attachMoreHandlers();
+
+            // MutationObserver to attach handlers for newly added items
+            const gridObserver = new MutationObserver(() => attachMoreHandlers());
+            document.querySelectorAll('.notebook-grid').forEach(g => gridObserver.observe(g, { childList: true, subtree: true }));
+
+            // --- Show-All Scene Handling ---
+            // Get all notebook items from dashboard sections (sample data)
+            const getCommunityNotebooks = () => {
+                const grid = document.querySelector('.community-grid');
+                return grid ? Array.from(grid.querySelectorAll('.notebook-item')) : [];
+            };
+            const getMyNotebooks = () => {
+                const grid = document.querySelector('.my-grid');
+                return grid ? Array.from(grid.querySelectorAll('.notebook-item')) : [];
+            };
+
+            const showAllScene = document.getElementById('scene-showall');
+            const showAllGrid = document.querySelector('.showall-grid');
+            const closeShowallBtn = document.querySelector('.close-showall-btn');
+
+            let currentShowAllTarget = null; // 'community' or 'my'
+
+            const populateShowAllGrid = (target) => {
+                if (!showAllGrid) return;
+                showAllGrid.innerHTML = '';
+                let items = target === 'community' ? getCommunityNotebooks() : getMyNotebooks();
+                items.forEach(item => {
+                    const clone = item.cloneNode(true);
+                    // Reset handler flags on cloned items
+                    clone.querySelectorAll('.more-btn').forEach(btn => {
+                        btn._hasMenuHandler = false;
+                    });
+                    showAllGrid.appendChild(clone);
+                });
+                // Re-attach more handlers for cloned items
+                attachMoreHandlers();
+            };
+
+            // Wire show-all buttons
+            document.querySelectorAll('.show-all-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const target = btn.getAttribute('data-target');
+                    currentShowAllTarget = target;
+                    populateShowAllGrid(target);
+                    // Transition to show-all scene
+                    this.transitionTo('showall');
+                });
+            });
+
+            // Wire close button in show-all scene
+            if (closeShowallBtn) {
+                closeShowallBtn.addEventListener('click', () => {
+                    this.transitionTo('dashboard');
+                });
+            }
+
+            // Wire controls in show-all scene (sort, search, view toggles)
+            if (showAllScene) {
+                const showAllContainer = showAllScene.querySelector('.dashboard-container');
+                if (showAllContainer) {
+                    // Sort switch in show-all scene
+                    const showAllSortSwitch = showAllScene.querySelector('.sort-switch');
+                    if (showAllSortSwitch) {
+                        const showAllOptions = Array.from(showAllSortSwitch.querySelectorAll('.sort-option'));
+                        const showAllThumb = showAllSortSwitch.querySelector('.sort-thumb');
+                        const showAllPad = parseInt(getComputedStyle(showAllSortSwitch).getPropertyValue('--pad')) || 4;
+
+                        const showAllRepositionThumb = (opt) => {
+                            if (!showAllThumb || !opt) return;
+                            const left = opt.offsetLeft + showAllPad;
+                            const width = Math.max(24, opt.offsetWidth - showAllPad * 2);
+                            showAllThumb.style.left = `${left}px`;
+                            showAllThumb.style.width = `${width}px`;
+                        };
+
+                        const showAllSetThumb = (opt) => {
+                            showAllOptions.forEach(o => o.classList.remove('active'));
+                            opt.classList.add('active');
+                            showAllRepositionThumb(opt);
+                            setTimeout(() => showAllRepositionThumb(opt), 300);
+                        };
+
+                        showAllOptions.forEach(opt => {
+                            opt.addEventListener('click', () => showAllSetThumb(opt));
+                        });
+
+                        const showAllInitial = showAllSortSwitch.querySelector('.sort-option.active') || showAllOptions[0];
+                        if (showAllInitial) {
+                            setTimeout(() => showAllRepositionThumb(showAllInitial), 20);
+                            setTimeout(() => showAllRepositionThumb(showAllInitial), 340);
+                        }
+
+                        window.addEventListener('resize', () => {
+                            const showAllActive = showAllSortSwitch.querySelector('.sort-option.active') || showAllOptions[0];
+                            showAllRepositionThumb(showAllActive);
+                        });
+                    }
+
+                    // Search toggle in show-all scene
+                    const showAllSearchButton = showAllScene.querySelector('.search-button');
+                    const showAllSearchInput = showAllScene.querySelector('.search-input');
+                    if (showAllSearchButton && showAllSearchInput) {
+                        showAllSearchButton.addEventListener('click', () => {
+                            const isActive = showAllContainer.classList.toggle('search-active');
+                            const icon = showAllSearchButton.querySelector('.material-icons');
+                            if (isActive) {
+                                icon.textContent = 'close';
+                                setTimeout(() => showAllSearchInput.focus(), 200);
+                            } else {
+                                icon.textContent = 'search';
+                                showAllSearchInput.value = '';
+                            }
+                        });
+                    }
+
+                    // View toggle in show-all scene
+                    const showAllViewToggle = showAllScene.querySelector('.view-toggle');
+                    if (showAllViewToggle && showAllContainer) {
+                        const showAllViewOptions = Array.from(showAllViewToggle.querySelectorAll('.view-option'));
+                        const showAllViewThumb = showAllViewToggle.querySelector('.view-thumb');
+                        const showAllPadV = parseInt(getComputedStyle(showAllViewToggle).getPropertyValue('--pad')) || 4;
+
+                        const showAllSetView = (view) => {
+                            showAllViewOptions.forEach(o => o.classList.remove('active'));
+                            const opt = showAllViewToggle.querySelector(`.view-option[data-view="${view}"]`);
+                            if (opt) {
+                                opt.classList.add('active');
+                                showAllContainer.setAttribute('data-view', view);
+                                if (opt && showAllViewThumb) {
+                                    showAllViewThumb.style.left = `${opt.offsetLeft + showAllPadV}px`;
+                                    showAllViewThumb.style.width = `${Math.max(24, opt.offsetWidth - showAllPadV * 2)}px`;
+                                }
+                                setTimeout(() => {
+                                    if (opt && showAllViewThumb) {
+                                        showAllViewThumb.style.left = `${opt.offsetLeft + showAllPadV}px`;
+                                        showAllViewThumb.style.width = `${Math.max(24, opt.offsetWidth - showAllPadV * 2)}px`;
+                                    }
+                                }, 300);
+                            } else {
+                                showAllContainer.setAttribute('data-view', view);
+                            }
+                        };
+
+                        showAllViewOptions.forEach(o => {
+                            o.addEventListener('click', () => showAllSetView(o.getAttribute('data-view')));
+                        });
+
+                        setTimeout(() => showAllSetView('grid'), 20);
+
+                        window.addEventListener('resize', () => {
+                            const showAllActive = showAllViewToggle.querySelector('.view-option.active') || showAllViewOptions[0];
+                            if (showAllActive && showAllViewThumb) {
+                                showAllViewThumb.style.left = `${showAllActive.offsetLeft + showAllPadV}px`;
+                                showAllViewThumb.style.width = `${Math.max(24, showAllActive.offsetWidth - showAllPadV * 2)}px`;
+                            }
+                        });
+                    }
+                }
+            }
+
             // Ensure auth UI (account button) reflects current state on init
             this.updateAuthUI();
         }
