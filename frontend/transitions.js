@@ -370,6 +370,68 @@ class TransitionManager {
      * Initialize transition manager with event listeners
      */
     initialize() {
+        // Email validation helper
+        const isValidEmail = (email) => {
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            return emailRegex.test(email);
+        };
+
+        const setupEmailValidation = (formSelector) => {
+            const form = document.querySelector(formSelector);
+            if (!form) return;
+            const emailInput = form.querySelector('.email-input');
+            const errorMsg = form.querySelector('.form-field-error');
+            if (!emailInput) return;
+
+            const validateEmail = () => {
+                const email = emailInput.value.trim();
+                if (!email) {
+                    emailInput.classList.remove('email-error');
+                    if (errorMsg) errorMsg.classList.remove('show');
+                    return true;
+                }
+                if (!isValidEmail(email)) {
+                    emailInput.classList.add('email-error');
+                    if (errorMsg) {
+                        errorMsg.textContent = 'Please enter a valid email address';
+                        errorMsg.classList.add('show');
+                    }
+                    return false;
+                }
+                emailInput.classList.remove('email-error');
+                if (errorMsg) errorMsg.classList.remove('show');
+                return true;
+            };
+
+            // Real-time validation on input
+            emailInput.addEventListener('input', validateEmail);
+            emailInput.addEventListener('blur', validateEmail);
+
+            // Validate on form submit
+            form.addEventListener('submit', (e) => {
+                if (!validateEmail()) {
+                    e.preventDefault();
+                }
+            });
+        };
+
+        // Setup email validation for sign-up and sign-in forms
+        setupEmailValidation('#scene-signup .auth-form');
+        setupEmailValidation('#scene-signin .auth-form');
+
+        // Also setup for account form email
+        const accountForm = document.querySelector('#scene-account .account-form');
+        if (accountForm) {
+            const accountEmail = accountForm.querySelector('#account-email');
+            if (accountEmail) {
+                accountEmail.classList.add('email-input');
+                const errorDiv = document.createElement('div');
+                errorDiv.className = 'form-field-error';
+                accountEmail.parentElement.appendChild(errorDiv);
+                setupEmailValidation('#scene-account .account-form');
+            }
+        }
+
         // Sign Up button
         const signUpBtn = document.querySelector('[data-scene="signup"]');
         if (signUpBtn) {
@@ -395,7 +457,7 @@ class TransitionManager {
                 e.preventDefault();
                 const signInScene = document.querySelector('#scene-signin');
                 const errorDiv = signInScene.querySelector('.form-error');
-                const emailInput = signInForm.querySelector('input[type="email"]');
+                const emailInput = signInForm.querySelector('.email-input');
                 const passwordInput = signInForm.querySelector('input[type="password"]');
                 const email = emailInput ? emailInput.value.trim() : '';
                 const password = passwordInput ? passwordInput.value : '';
@@ -409,6 +471,15 @@ class TransitionManager {
                 if (!email || !password) {
                     if (errorDiv) {
                         errorDiv.textContent = 'Please enter email and password';
+                        errorDiv.style.display = 'block';
+                    }
+                    return;
+                }
+
+                // Validate email format
+                if (!isValidEmail(email)) {
+                    if (errorDiv) {
+                        errorDiv.textContent = 'Please enter a valid email address';
                         errorDiv.style.display = 'block';
                     }
                     return;
@@ -455,8 +526,8 @@ class TransitionManager {
                 e.preventDefault();
                 const signUpScene = document.querySelector('#scene-signup');
                 const errorDiv = signUpScene.querySelector('.form-error');
-                const usernameInput = signUpForm.querySelector('input[placeholder="User name"]') || signUpForm.querySelector('input[type="text"]');
-                const emailInput = signUpForm.querySelector('input[type="email"]');
+                const usernameInput = signUpForm.querySelector('input[placeholder="User name"]') || signUpForm.querySelector('input:not(.email-input)[type="text"]');
+                const emailInput = signUpForm.querySelector('.email-input');
                 const passwordInputs = signUpForm.querySelectorAll('input[type="password"]');
                 const password = passwordInputs[0] ? passwordInputs[0].value : '';
                 const confirmPassword = passwordInputs[1] ? passwordInputs[1].value : '';
@@ -472,6 +543,14 @@ class TransitionManager {
                 // Validation
                 if (!username || !email || !password || !confirmPassword) {
                     const msg = 'Please fill in all fields';
+                    if (errorDiv) {
+                        errorDiv.textContent = msg;
+                        errorDiv.style.display = 'block';
+                    }
+                    return;
+                }
+                if (!isValidEmail(email)) {
+                    const msg = 'Please enter a valid email address';
                     if (errorDiv) {
                         errorDiv.textContent = msg;
                         errorDiv.style.display = 'block';

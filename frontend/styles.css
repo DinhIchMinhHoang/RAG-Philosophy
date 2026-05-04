@@ -389,6 +389,30 @@ canvas {
                 inset 0 0 15px rgba(255, 255, 255, 0.1);
 }
 
+/* Email input validation error state */
+.form-input.email-error {
+    border: 1px solid rgba(255, 122, 122, 0.5);
+    background: rgba(255, 122, 122, 0.08);
+}
+
+.form-input.email-error:focus {
+    border: 1px solid rgba(255, 122, 122, 0.8);
+    box-shadow: 0 0 20px rgba(255, 122, 122, 0.2),
+                inset 0 0 15px rgba(255, 255, 255, 0.1);
+}
+
+/* Field error message */
+.form-field-error {
+    color: #ff7a7a;
+    font-size: 12px;
+    margin-top: 4px;
+    display: none;
+}
+
+.form-field-error.show {
+    display: block;
+}
+
 .form-buttons {
     display: flex;
     gap: 12px;
