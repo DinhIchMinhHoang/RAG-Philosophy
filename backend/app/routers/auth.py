@@ -1,14 +1,8 @@
-<<<<<<< HEAD
-from fastapi import APIRouter, Depends, HTTPException, status
-=======
 from fastapi import APIRouter, Depends, HTTPException, status, Header
->>>>>>> ff54caf5fcc4b072850a25a0d1f561c441748afc
 from sqlalchemy.orm import Session
 from .. import models, schemas, database
 from ..core import security
 
-<<<<<<< HEAD
-=======
 # Dependency để lấy user hiện tại từ token
 def get_current_user(authorization: str = Header(None), db: Session = Depends(database.get_db)):
     if not authorization or not authorization.startswith("Bearer "):
@@ -35,7 +29,6 @@ def get_current_user(authorization: str = Header(None), db: Session = Depends(da
     
     return db_user
 
->>>>>>> ff54caf5fcc4b072850a25a0d1f561c441748afc
 # Tạo một "nhóm" API chuyên xử lý vấn đề xác thực
 router = APIRouter(tags=["Authentication"])
 
@@ -87,9 +80,6 @@ def login(user: schemas.UserLogin, db: Session = Depends(database.get_db)):
     # 3. Nếu đúng hết, tạo vé thông hành JWT (tấm thẻ sẽ chứa định danh người dùng)
     access_token = security.create_access_token(subject=db_user.username)
     
-<<<<<<< HEAD
-    return {"access_token": access_token, "token_type": "bearer"}
-=======
     return {"access_token": access_token, "token_type": "bearer"}
 
 # API THAY ĐỔI MẬT KHẨU
@@ -122,4 +112,3 @@ def change_password(
     db.commit()
     
     return {"message": "Password changed successfully!"}
->>>>>>> ff54caf5fcc4b072850a25a0d1f561c441748afc
