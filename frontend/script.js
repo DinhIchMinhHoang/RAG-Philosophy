@@ -11,8 +11,40 @@ const COLORS = [
     '#1E40AF'   // Blue variant
 ];
 
-// Movement types
-const MOVEMENT_TYPES = ['linear', 'orbital', 'sine', 'bounce', 'spiral'];
+// Movement types - Lava lamp focused
+const MOVEMENT_TYPES = ['lavaLamp', 'lavaLamp', 'lavaLamp', 'orbital', 'sine'];
+
+// Helper: convert hex color (#rrggbb) to {r,g,b}
+function hexToRgb(hex) {
+    const h = hex.replace('#', '');
+    const bigint = parseInt(h, 16);
+    return {
+        r: (bigint >> 16) & 255,
+        g: (bigint >> 8) & 255,
+        b: bigint & 255
+    };
+}
+
+function rgbToCss(rgb) {
+    return `rgba(${Math.round(rgb.r)}, ${Math.round(rgb.g)}, ${Math.round(rgb.b)}, 1)`;
+}
+
+function lerp(a, b, t) { return a + (b - a) * t; }
+
+// Sample the palette smoothly: t in [0, paletteLength) where fractional part interpolates
+function samplePalette(palette, t) {
+    const n = palette.length;
+    const tt = (t % n + n) % n; // wrap
+    const idx = Math.floor(tt);
+    const frac = tt - idx;
+    const a = hexToRgb(palette[idx]);
+    const b = hexToRgb(palette[(idx + 1) % n]);
+    return {
+        r: lerp(a.r, b.r, frac),
+        g: lerp(a.g, b.g, frac),
+        b: lerp(a.b, b.b, frac)
+    };
+}
 
 // Advanced morphing blob configuration
 class MorphingBlob {
@@ -29,7 +61,28 @@ class MorphingBlob {
         this.movementType = MOVEMENT_TYPES[Math.floor(Math.random() * MOVEMENT_TYPES.length)];
         this.vx = (Math.random() - 0.5) * 1.5;
         this.vy = (Math.random() - 0.5) * 1.5;
-        
+
+        // Lava lamp parameters - progress-based vertical motion and smooth sway
+        // Use a normalized progress [0..1] so travel time is consistent across blobs.
+        this.lavaProgress = Math.random(); // start at random point in cycle
+        this.lavaDuration = 12 + Math.random() * 18; // seconds to travel from bottom to top
+        this.lavaSpeed = 1 / (this.lavaDuration * 60); // progress increment per frame (approx at 60fps)
+        this.lavaSwayFreq = 0.5 + Math.random() * 1.5; // number of sideways oscillations during travel
+        this.lavaSwayAmplitude = 30 + Math.random() * 80; // horizontal sway amplitude in px
+        this.lavaStartX = this.x; // base horizontal center for sway
+        this.lavaStartOffset = 80 + Math.random() * 160; // how far below the bottom the blob starts
+        this.lavaDir = 1; // 1 = rising, -1 = sinking (ping-pong)
+
+        // Layer (z) and shape scale for depth/shape dynamics
+        // Depth (z) kept static to avoid pop/reorder; use for subtle alpha/depth cue
+        this.z = Math.random(); // current normalized depth 0..1 (static)
+        // per-blob phase offset used for color sampling so blobs change together but slightly offset
+        this.phaseOffset = Math.random();
+
+        this.shapeScale = 1;
+        this.targetShapeScale = 0.9 + Math.random() * 0.3; // 0.9..1.2
+        this.shapeScaleLerp = 0.002 + Math.random() * 0.008;
+
         // Orbital motion parameters
         this.orbitCenterX = this.x;
         this.orbitCenterY = this.y;
@@ -110,9 +163,35 @@ class MorphingBlob {
         this.time += 1;
 
         switch (this.movementType) {
-            case 'linear':
-                this.x += this.vx;
-                this.y += this.vy;
+            case 'lavaLamp':
+                // Progress-based vertical motion (ping-pong): lavaProgress moves between 0 and 1
+                this.lavaProgress += this.lavaSpeed * this.lavaDir;
+
+                // Clamp and reverse direction at endpoints
+                if (this.lavaProgress >= 1) {
+                    this.lavaProgress = 1;
+                    this.lavaDir = -1; // start sinking
+                } else if (this.lavaProgress <= 0) {
+                    this.lavaProgress = 0;
+                    this.lavaDir = 1; // start rising
+                    // Randomize parameters for the next rise cycle, but keep lavaStartX to avoid horizontal teleport
+                    this.lavaDuration = 12 + Math.random() * 18;
+                    this.lavaSpeed = 1 / (this.lavaDuration * 60);
+                    this.lavaSwayFreq = 0.5 + Math.random() * 1.5;
+                    this.lavaSwayAmplitude = 30 + Math.random() * 80;
+                    this.lavaStartOffset = 80 + Math.random() * 160;
+                }
+
+                // Vertical position: lerp from just-below-bottom to just-above-top using smoothstep easing
+                const startY = this.canvas.height + this.lavaStartOffset;
+                const endY = -this.radius * 2;
+                const t = this.lavaProgress;
+                const smoothT = t * t * (3 - 2 * t);
+                this.y = startY + (endY - startY) * smoothT;
+
+                // Horizontal sway around lavaStartX using smooth sine oscillation
+                const sway = Math.sin(smoothT * Math.PI * 2 * this.lavaSwayFreq) * this.lavaSwayAmplitude;
+                this.x = this.lavaStartX + sway;
                 break;
                 
             case 'orbital':
@@ -156,18 +235,44 @@ class MorphingBlob {
                 break;
         }
 
-        // Wrap around edges for linear and sine movements
+        // Boundary handling: clamp and gently reflect velocities instead of wrapping
         if (['linear', 'sine'].includes(this.movementType)) {
-            if (this.x + this.radius < 0) this.x = this.canvas.width + this.radius;
-            if (this.x - this.radius > this.canvas.width) this.x = -this.radius;
-            if (this.y + this.radius < 0) this.y = this.canvas.height + this.radius;
-            if (this.y - this.radius > this.canvas.height) this.y = -this.radius;
+            if (this.x - this.radius < 0) {
+                this.x = this.radius;
+                this.vx *= -0.8;
+            }
+            if (this.x + this.radius > this.canvas.width) {
+                this.x = this.canvas.width - this.radius;
+                this.vx *= -0.8;
+            }
+            if (this.y - this.radius < 0) {
+                this.y = this.radius;
+                this.vy *= -0.8;
+            }
+            if (this.y + this.radius > this.canvas.height) {
+                this.y = this.canvas.height - this.radius;
+                this.vy *= -0.8;
+            }
+        }
+
+        if (this.movementType === 'orbital') {
+            // Keep orbit center in bounds so orbital motion remains visible
+            this.orbitCenterX = Math.max(this.radius, Math.min(this.canvas.width - this.radius, this.orbitCenterX));
+            this.orbitCenterY = Math.max(this.radius, Math.min(this.canvas.height - this.radius, this.orbitCenterY));
         }
     }
 
     update() {
         this.updateMovement();
         this.updateBlobShape();
+
+        // Depth is static now (no timed transitions) to avoid popping/reordering
+
+        // Smoothly interpolate overall shape scale for gentle shape variation
+        this.shapeScale += (this.targetShapeScale - this.shapeScale) * this.shapeScaleLerp;
+        if (Math.abs(this.targetShapeScale - this.shapeScale) < 0.01) {
+            this.targetShapeScale = 0.9 + Math.random() * 0.3;
+        }
 
         // Size oscillation without mouse interaction
         this.radius += this.radiusChangeRate * 0.3;
@@ -179,21 +284,28 @@ class MorphingBlob {
     }
 
     draw(ctx) {
-        ctx.fillStyle = this.color;
+        ctx.save();
+        // use shapeScale for gentle scaling, and z to affect opacity for depth perception
+        ctx.globalAlpha = 0.55 + this.z * 0.45;
+        // compute color from shared paletteProgress plus this blob's phase offset
+        const t = (paletteProgress + this.phaseOffset) * COLORS.length;
+        const rgb = samplePalette(COLORS, t);
+        ctx.fillStyle = rgbToCss(rgb);
+        ctx.translate(this.x, this.y);
+        ctx.scale(this.shapeScale, this.shapeScale);
         ctx.beginPath();
 
-        // Draw morphing blob shape
+        // Draw morphing blob shape around origin (0,0)
         for (let i = 0; i < this.blobPoints.length; i++) {
             const point = this.blobPoints[i];
             const nextPoint = this.blobPoints[(i + 1) % this.blobPoints.length];
-            
-            // Smooth curve between points
-            const x = this.x + Math.cos(point.angle) * point.distance;
-            const y = this.y + Math.sin(point.angle) * point.distance;
-            
-            const nextX = this.x + Math.cos(nextPoint.angle) * nextPoint.distance;
-            const nextY = this.y + Math.sin(nextPoint.angle) * nextPoint.distance;
-            
+
+            const x = Math.cos(point.angle) * point.distance;
+            const y = Math.sin(point.angle) * point.distance;
+
+            const nextX = Math.cos(nextPoint.angle) * nextPoint.distance;
+            const nextY = Math.sin(nextPoint.angle) * nextPoint.distance;
+
             const cpX = (x + nextX) / 2;
             const cpY = (y + nextY) / 2;
 
@@ -206,6 +318,7 @@ class MorphingBlob {
 
         ctx.closePath();
         ctx.fill();
+        ctx.restore();
     }
 }
 
@@ -277,6 +390,10 @@ function initDotGrid() {
 // wire resize
 resizeCanvases();
 window.addEventListener('resize', resizeCanvases);
+
+// Frame counter used to reduce how often we reorder draw layers
+let frameCounter = 0;
+let paletteProgress = 0;
 
 // Mouse / touch handling for the spotlight
 function updatePointerFromEvent(e) {
@@ -374,9 +491,9 @@ function drawDotGrid() {
     }
 }
 
-// Create morphing blobs
+// Create morphing blobs (keep a compact set for performance/visual clarity)
 const blobs = [];
-for (let i = 0; i < 12; i++) {
+for (let i = 0; i < 10; i++) {
     blobs.push(new MorphingBlob(canvas));
 }
 
@@ -390,10 +507,16 @@ function animate() {
     ctx.filter = 'blur(50px)';
 
     // Update and draw blobs (back to front for layering)
-    blobs.forEach(blob => {
-        blob.update();
-        blob.draw(ctx);
-    });
+    // advance palette progress for synchronized smooth color cycling
+    paletteProgress = (paletteProgress + 0.0006) % 1;
+    // Update z/shape first then occasionally sort by z to draw back-to-front
+    blobs.forEach(blob => blob.update());
+    frameCounter++;
+    // Sort only every 8 frames to prevent rapid reordering visual pops
+    if (frameCounter % 8 === 0) {
+        blobs.sort((a, b) => a.z - b.z);
+    }
+    blobs.forEach(blob => blob.draw(ctx));
 
     // Reset filter
     ctx.filter = 'none';
