@@ -166,3 +166,14 @@ websockets==16.0
 xlsxwriter==3.2.9
 yarl==1.23.0
 zstandard==0.23.0
+
+# backend requirements:
+fastapi
+uvicorn
+sqlalchemy
+pydantic[email]
+email-validator
+passlib[bcrypt]
+python-jose[cryptography]
+python-multipart
+python-dotenv

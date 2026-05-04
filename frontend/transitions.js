@@ -450,6 +450,28 @@ class TransitionManager {
             btn.addEventListener('click', () => this.transitionTo('landing'));
         });
 
+        // Click outside form to close (sign-in scene)
+        const signInScene = document.getElementById('scene-signin');
+        if (signInScene) {
+            signInScene.addEventListener('click', (e) => {
+                // Only close if clicking directly on the scene background, not on the form
+                if (e.target === signInScene) {
+                    this.transitionTo('landing');
+                }
+            });
+        }
+
+        // Click outside form to close (sign-up scene)
+        const signUpScene = document.getElementById('scene-signup');
+        if (signUpScene) {
+            signUpScene.addEventListener('click', (e) => {
+                // Only close if clicking directly on the scene background, not on the form
+                if (e.target === signUpScene) {
+                    this.transitionTo('landing');
+                }
+            });
+        }
+
         // Sign-in form submit -> authenticate with backend and transition to dashboard
         const signInForm = document.querySelector('#scene-signin .auth-form');
         if (signInForm) {
