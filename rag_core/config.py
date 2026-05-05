@@ -9,8 +9,19 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
-# Load biến môi trường từ file .env (cùng thư mục với config.py)
-_ENV_PATH = Path(__file__).resolve().parent / ".env"
+# Load biến môi trường từ file .env (ở thư mục gốc của dự án)
+_ENV_PATH = Path(__file__).resolve().parent.parent / ".env"
+
+if not _ENV_PATH.exists():
+    print(
+        f"\033[93m\n{'='*60}\n"
+        f"⚠️  CẢNH BÁO TỚI DEVELOPER: KHÔNG TÌM THẤY FILE .env!\n\n"
+        f"Hệ thống yêu cầu các biến môi trường từ file .env tại đường dẫn:\n"
+        f"👉  {_ENV_PATH}\n\n"
+        f"Hãy đảm bảo bạn đã tạo file này và thiết lập các cấu hình cần thiết (ví dụ: GEMINI_API_KEY).\n"
+        f"{'='*60}\n\033[0m"
+    )
+
 load_dotenv(dotenv_path=_ENV_PATH)
 
 
@@ -36,9 +47,12 @@ class Config:
     LLM_MODEL: str = "gemini-3.1-flash-lite-preview"
 
     # ── Vector Database (Qdrant) ─────────────────────────────
-    QDRANT_LOCATION: str = ":memory:"   # ":memory:" cho local test, URL cho production
     QDRANT_COLLECTION: str = "rag_philosophy"
     TOP_K_RESULTS: int = 3          # Số kết quả trả về khi truy xuất
+    EMBEDDING_DIM: int = 640        # Dimension của microsoft/harrier-oss-v1-270m
+
+    # ── Hybrid Search ─────────────────────────────────────────
+    HYBRID_ALPHA: float = 0.5       # 0.0 = pure BM25, 1.0 = pure Dense
 
 
     # ── Ollama OCR Engine (Heavy Track) ────────────────────────

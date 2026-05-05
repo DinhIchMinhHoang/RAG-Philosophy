@@ -1,4 +1,4 @@
-"""
+r"""
 main_test.py - Kịch bản chạy thử toàn bộ RAG pipeline.
 
 Full flow: Load PDF → Chunking → Embedding + Qdrant → RAG Chain → Chat loop.
@@ -92,11 +92,11 @@ def build_pipeline(target_pdf: str | None = None):
 
     print(f"\n[Step 3] Đang xây dựng vector DB...")
     print(f"         {len(all_child_docs)} child docs | {len(all_parent_docs)} parent docs")
-    retriever = build_vector_db(all_child_docs, all_parent_docs)
+    docstore, vectorstore, child_docs_out = build_vector_db(all_child_docs, all_parent_docs)
 
     # ── Step 4: RAG Chain ─────────────────────────────────────────────
     print(f"\n[Step 4] Đang khởi tạo RAG chain...")
-    rag_chain = setup_rag_chain(retriever)
+    rag_chain = setup_rag_chain(docstore, vectorstore, child_docs_out)
 
     print(f"\n{'='*60}")
     print("✅ Pipeline sẵn sàng!")
@@ -159,6 +159,9 @@ def main():
         python main_test.py                                 # tất cả PDF
         python main_test.py path/to/file.pdf               # 1 file cụ thể
     """
+    from config import Config
+    Config.validate()
+    
     # Đọc argument dòng lệnh (tuỳ chọn)
     target_pdf: str | None = None
     if len(sys.argv) >= 2:

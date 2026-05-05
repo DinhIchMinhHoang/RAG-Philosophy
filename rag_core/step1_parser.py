@@ -721,7 +721,7 @@ if __name__ == "__main__":
     print("🧪 HYBRID TWO-PASS CONCURRENT PDF PARSER — SELF TEST")
     print("=" * 60)
 
-    sample_pdf_name = "1706.03762v7.pdf"
+    sample_pdf_name = "Deep Learning-trang-1.pdf"
     sample_pdf_path = os.path.join(Config.RAW_DIR, sample_pdf_name)
 
     if not os.path.exists(sample_pdf_path):
