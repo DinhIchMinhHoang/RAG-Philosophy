@@ -3,7 +3,7 @@ class TransitionManager {
     constructor() {
         this.currentScene = 'landing';
         this.isTransitioning = false;
-        this.transitionDuration = 300; // milliseconds
+        this.transitionDuration = 150; // milliseconds (50% faster)
         // Load persisted user or use empty defaults
         this.currentUser = JSON.parse(localStorage.getItem('currentUser')) || { username: '', email: '', displayName: '', bio: '' };
     }
@@ -1726,7 +1726,7 @@ class TransitionManager {
                 const addMessage = (role, text) => {
                     if (!chatThread) return;
                     const msg = document.createElement('div');
-                    msg.className = `message ${role}`;
+                    msg.className = role === 'ai' ? 'ai-response' : `message ${role}`;
                     msg.innerHTML = `
                         <div class="message-text"></div>
                         <div class="message-meta"></div>
