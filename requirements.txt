@@ -1,62 +1,3 @@
-<<<<<<< HEAD
-python-docx  # read/write .docx documents
-
-python-pptx  # read/write PowerPoint (.pptx) slides
-
-openpyxl  # read/write Excel .xlsx files
-
-pandas  # dataframes for table flattening and Excel processing
-
-PyMuPDF  # PDF parsing and text extraction (fitz)
-
-pdfplumber  # layout-aware PDF text extraction
-
-Pillow  # image processing (PIL)
-
-pytesseract  # Tesseract OCR wrapper (images -> text)
-
-easyocr  # alternative OCR with language support (e.g., Vietnamese)
-
-openai-whisper  # Whisper speech-to-text (STT)
-
-faster-whisper  # faster local Whisper implementation
-
-tiktoken  # token counting for OpenAI tokenizers
-
-underthesea  # Vietnamese NLP (sentence/word tokenization)
-
-pyvi  # Vietnamese tokenizer (alternative)
-
-rich  # pretty CLI output and logging
-
-python-magic-bin  # file type detection (libmagic wrapper)
-
-pydub  # audio file conversions (requires ffmpeg)
-
-tqdm  # progress bars
-
-# PyTorch (CPU mode - for EasyOCR, Whisper)
-# For GPU support (CUDA 12.8): pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
-torch  # deep learning framework (CPU-only, set use_gpu=True in converter for GPU)
-torchvision  # computer vision utilities (required by EasyOCR)
-torchaudio  # audio processing (required by Whisper)
-
-# Optional system dependencies (install separately):
-# - Tesseract OCR (for pytesseract / easyocr)
-# - ffmpeg (for pydub / audio conversion)
-# On Windows: you may prefer python-magic-bin instead of python-magic
-
-# backend requierments:
-fastapi
-uvicorn
-sqlalchemy
-pydantic[email]
-email-validator
-passlib[bcrypt]
-python-jose[cryptography]
-python-multipart
-python-dotenv
-=======
 accelerate==1.13.0
 aiohappyeyeballs==2.6.1
 aiohttp==3.13.5
@@ -225,7 +166,6 @@ websockets==16.0
 xlsxwriter==3.2.9
 yarl==1.23.0
 zstandard==0.23.0
->>>>>>> ff54caf5fcc4b072850a25a0d1f561c441748afc
 
 # backend requirements:
 fastapi
