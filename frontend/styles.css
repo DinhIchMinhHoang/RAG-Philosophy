@@ -890,28 +890,6 @@ body::before {
     box-shadow: 0 8px 20px rgba(0,0,0,0.45);
 }
 
-<<<<<<< HEAD
-.field-error {
-    color: #ff4d4d;
-    font-size: 11px;
-    margin-top: 4px;
-    text-align: left;
-    min-height: 16px; /* Giữ vị trí để form không bị nhảy */
-}
-
-.form-input.input-error {
-    border-color: #ff4d4d !important;
-}
-
-.general-error {
-    color: #ff4d4d;
-    font-size: 13px;
-    margin: 10px 0;
-    text-align: center;
-    min-height: 20px;
-    font-weight: 600;
-}
-=======
 /* Grid view (normal card display) */
 .dashboard-container[data-view="grid"] .notebook-item,
 .dashboard-container[data-view="grid"] .showall-grid .notebook-item {
@@ -1139,4 +1117,3 @@ body::before {
 .color-preview { width: 80px; height: 48px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.15); box-shadow: inset 0 0 10px rgba(255, 255, 255, 0.1), 0 4px 12px rgba(2, 6, 23, 0.5); }
 
 
->>>>>>> ff54caf5fcc4b072850a25a0d1f561c441748afc
