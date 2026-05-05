@@ -7,6 +7,7 @@ build/
 *.egg
 
 # ===== Virtual Environment =====
+RAG_env/
 venv/
 .venv/
 env/

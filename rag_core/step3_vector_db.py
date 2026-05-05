@@ -23,7 +23,18 @@ from langchain_core.documents import Document
 from langchain_core.stores import InMemoryStore
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_qdrant import QdrantVectorStore
-from langchain.retrievers.multi_vector import MultiVectorRetriever
+try:
+    # LangChain may expose MultiVectorRetriever at different locations depending on version
+    from langchain.retrievers.multi_vector import MultiVectorRetriever
+except Exception:
+    try:
+        from langchain.retrievers import MultiVectorRetriever
+    except Exception:
+        # Provide clear ImportError when unavailable
+        raise ImportError(
+            "MultiVectorRetriever not found in langchain. Install a compatible langchain version."
+        )
+
 
 from config import Config
 
