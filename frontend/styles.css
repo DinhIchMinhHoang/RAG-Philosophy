@@ -1130,6 +1130,7 @@ body::before {
     display: inline-flex;
     align-items: center;
     gap: 8px;
+    font-size: 17px;
 }
 
 .chat-title-wrap {
@@ -1138,7 +1139,7 @@ body::before {
     gap: 8px;
     color: #FFFFFF;
     font-weight: 700;
-    font-size: 16px;
+    font-size: 20px;
     letter-spacing: 0.2px;
 }
 
@@ -1247,7 +1248,7 @@ body.is-resizing * {
     gap: 8px;
     color: #FFFFFF;
     font-weight: 700;
-    font-size: 14px;
+    font-size: 18px;
 }
 
 .panel-title .material-icons {
@@ -1331,10 +1332,11 @@ body.is-resizing * {
     font-weight: 700;
     color: #FFFFFF;
     margin-bottom: 4px;
+    font-size: 17px;
 }
 
 .source-drop-subtitle {
-    font-size: 12px;
+    font-size: 15px;
     color: rgba(255, 255, 255, 0.65);
     margin-bottom: 10px;
 }
@@ -1400,14 +1402,14 @@ body.is-resizing * {
 .source-name {
     color: #FFFFFF;
     font-weight: 600;
-    font-size: 13px;
+    font-size: 17px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
 .source-type {
-    font-size: 11px;
+    font-size: 14px;
     color: rgba(255, 255, 255, 0.6);
 }
 
@@ -1451,12 +1453,12 @@ body.is-resizing * {
 
 .message-text {
     color: #FFFFFF;
-    font-size: 14px;
+    font-size: 18px;
     line-height: 1.4;
 }
 
 .message-meta {
-    font-size: 11px;
+    font-size: 15px;
     color: rgba(255, 255, 255, 0.6);
 }
 
@@ -1471,6 +1473,7 @@ body.is-resizing * {
     min-height: 48px;
     max-height: 140px;
     resize: none;
+    font-size: 19px;
 }
 
 .send-button {
@@ -1507,10 +1510,11 @@ body.is-resizing * {
 .tool-title {
     font-weight: 700;
     margin-bottom: 4px;
+    font-size: 17px;
 }
 
 .tool-subtitle {
-    font-size: 12px;
+    font-size: 15px;
     color: rgba(255, 255, 255, 0.65);
 }
 
@@ -1557,7 +1561,7 @@ body.is-resizing * {
     padding: 12px 10px 8px 10px;
     font-weight: 700;
     color: #FFFFFF;
-    font-size: 13px;
+    font-size: 17px;
 }
 
 .outputs-header .material-icons {
@@ -1572,7 +1576,7 @@ body.is-resizing * {
 .outputs-empty {
     text-align: center;
     color: rgba(255, 255, 255, 0.5);
-    font-size: 13px;
+    font-size: 16px;
     padding: 32px 12px;
     font-style: italic;
 }
