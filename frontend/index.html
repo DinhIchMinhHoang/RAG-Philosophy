@@ -320,6 +320,150 @@
         </div>
     </div>
 
+    <!-- Chat Scene -->
+    <div id="scene-chat" class="scene" style="display: none;">
+        <div class="chat-shell">
+            <div class="chat-topbar">
+                <button class="auth-button chat-back-button" title="Back to dashboard">
+                    <span class="material-icons">arrow_back</span>
+                    Dashboard
+                </button>
+                <div class="chat-title-wrap">
+                    <span class="material-icons">auto_awesome</span>
+                    <span class="chat-title">Untitled notebook</span>
+                </div>
+                <div class="chat-top-actions">
+                    <button class="panel-icon-button" title="Share">
+                        <span class="material-icons">ios_share</span>
+                    </button>
+                    <button class="panel-icon-button" title="Notebook settings">
+                        <span class="material-icons">tune</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="chat-layout">
+                <section class="chat-panel panel-left" data-panel="sources">
+                    <div class="panel-header">
+                        <div class="panel-title">
+                            <span class="material-icons">inventory_2</span>
+                            Sources
+                        </div>
+                        <div class="panel-actions">
+                            <button class="panel-icon-button source-add-button" title="Add source">
+                                <span class="material-icons">add</span>
+                            </button>
+                            <button class="panel-icon-button panel-toggle" data-collapse="sources" title="Collapse">
+                                <span class="material-icons">chevron_left</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="panel-body">
+                        <div class="source-drop">
+                            <div class="source-drop-title">Drop files or add a source</div>
+                            <div class="source-drop-subtitle">Images, PDF, or text files are supported.</div>
+                            <div class="source-drop-actions">
+                                <button class="auth-button source-add-button">Add source</button>
+                                <button class="auth-button source-note-button">New note</button>
+                            </div>
+                            <input id="sourceFileInput" type="file" multiple accept="image/*,.pdf,.txt,.md,.docx" />
+                        </div>
+                        <div class="source-empty">No sources yet</div>
+                        <div class="source-list"></div>
+                    </div>
+                    <div class="panel-rail">
+                        <button class="panel-rail-button" data-expand="sources" title="Expand sources">
+                            <span class="material-icons">inventory_2</span>
+                            <span class="rail-label">Sources</span>
+                            <span class="material-icons">chevron_right</span>
+                        </button>
+                    </div>
+                </section>
+
+                <div class="chat-resizer" data-resize="left" role="separator" aria-label="Resize sources panel"></div>
+
+                <section class="chat-panel panel-center" data-panel="chat">
+                    <div class="panel-header">
+                        <div class="panel-title">
+                            <span class="material-icons">forum</span>
+                            Conversation
+                        </div>
+                        <div class="panel-actions">
+                            <button class="panel-icon-button" data-action="clear-chat" title="Clear chat">
+                                <span class="material-icons">delete_sweep</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="panel-body chat-body">
+                        <div class="chat-thread">
+                            <div class="message ai">
+                                <div class="message-text">Hi, I can help you explore your sources. Add files on the left, then ask a question.</div>
+                                <div class="message-meta">Lumina</div>
+                            </div>
+                        </div>
+                        <form class="chat-input">
+                            <textarea id="chatPrompt" class="form-input" rows="2" placeholder="Ask anything about your sources..."></textarea>
+                            <button type="submit" class="auth-button send-button" title="Send">
+                                <span class="material-icons">north_east</span>
+                            </button>
+                        </form>
+                    </div>
+                </section>
+
+                <div class="chat-resizer" data-resize="right" role="separator" aria-label="Resize tools panel"></div>
+
+                <section class="chat-panel panel-right" data-panel="tools">
+                    <div class="panel-header">
+                        <div class="panel-title">
+                            <span class="material-icons">tune</span>
+                            Tools
+                        </div>
+                        <div class="panel-actions">
+                            <button class="panel-icon-button panel-toggle" data-collapse="tools" title="Collapse">
+                                <span class="material-icons">chevron_right</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="panel-body">
+                        <div class="tool-grid">
+                            <button class="tool-card">
+                                <div class="tool-title">Summarize</div>
+                                <div class="tool-subtitle">Quick overview</div>
+                            </button>
+                            <button class="tool-card">
+                                <div class="tool-title">Outline</div>
+                                <div class="tool-subtitle">Key sections</div>
+                            </button>
+                            <button class="tool-card">
+                                <div class="tool-title">Test</div>
+                                <div class="tool-subtitle">Quiz yourself</div>
+                            </button>
+                            <button class="tool-card">
+                                <div class="tool-title">Mind map</div>
+                                <div class="tool-subtitle">Visual flow</div>
+                            </button>
+                        </div>
+                        <div class="outputs-section">
+                            <div class="outputs-header">
+                                <span class="material-icons">output</span>
+                                <div class="outputs-title">Outputs</div>
+                            </div>
+                            <div class="outputs-empty">No outputs yet</div>
+                            <div class="outputs-list" role="list"></div>
+                        </div>
+                    </div>
+                    <div class="panel-rail">
+                        <button class="panel-rail-button" data-expand="tools" title="Expand tools">
+                            <span class="material-icons">tune</span>
+                            <span class="rail-label">Tools</span>
+                            <span class="material-icons">chevron_left</span>
+                        </button>
+                    </div>
+                </section>
+            </div>
+        </div>
+    </div>
+
     <!-- Image / Color picker modal (handles upload or color selection) -->
     <div id="imageModal" class="image-modal" aria-hidden="true" style="display:none;">
         <div class="image-modal-backdrop"></div>

@@ -3,7 +3,7 @@ class TransitionManager {
     constructor() {
         this.currentScene = 'landing';
         this.isTransitioning = false;
-        this.transitionDuration = 500; // milliseconds
+        this.transitionDuration = 300; // milliseconds
         // Load persisted user or use empty defaults
         this.currentUser = JSON.parse(localStorage.getItem('currentUser')) || { username: '', email: '', displayName: '', bio: '' };
     }
@@ -58,6 +58,19 @@ class TransitionManager {
             accountBtn.style.display = '';
         } else {
             accountBtn.style.display = 'none';
+        }
+    }
+
+    openNotebook(title) {
+        const safeTitle = (title || '').trim() || 'Untitled notebook';
+        const titleEl = document.querySelector('.chat-title');
+        if (titleEl) {
+            titleEl.textContent = safeTitle;
+        }
+        this.transitionTo('chat');
+        const prompt = document.getElementById('chatPrompt');
+        if (prompt) {
+            setTimeout(() => prompt.focus(), 420);
         }
     }
 
@@ -801,8 +814,7 @@ class TransitionManager {
             if (createBtn) {
                 createBtn.addEventListener('click', (e) => {
                     e.preventDefault();
-                    // placeholder action
-                    console.log('Create new notebook');
+                    this.openNotebook('Untitled notebook');
                 });
             }
 
@@ -879,8 +891,14 @@ class TransitionManager {
             document.body.appendChild(moreMenu);
 
             let currentMenuTarget = null;
+            let lastFakeMenuTarget = null; // holds temporary notebook element used by chat settings
 
             const hideMenu = () => {
+                // remove any temporary fake target created for chat settings
+                if (lastFakeMenuTarget && lastFakeMenuTarget.parentElement) {
+                    try { lastFakeMenuTarget.parentElement.removeChild(lastFakeMenuTarget); } catch (e) { }
+                    lastFakeMenuTarget = null;
+                }
                 currentMenuTarget = null;
                 moreMenu.classList.remove('visible');
                 moreMenu.style.display = 'none';
@@ -1015,6 +1033,34 @@ class TransitionManager {
                         currentModalTarget.removeAttribute('data-cover');
                         currentModalTarget.removeAttribute('data-cover-mode');
                     }
+                    // If the modal was opened for the chat fake target, reflect the change in the chat header
+                    if (currentModalTarget === lastFakeMenuTarget) {
+                        const chatWrap = document.querySelector('#scene-chat .chat-title-wrap');
+                        if (chatWrap) {
+                            const appliedImage = (activeTab === 'upload') ? (imagePreview?.dataset?.image || '') : null;
+                            const appliedColor = (activeTab === 'color') ? (colorPreview?.dataset?.color || colorPicker?.value || '') : null;
+                            if (appliedImage) {
+                                chatWrap.style.backgroundImage = `url(${appliedImage})`;
+                                chatWrap.style.backgroundSize = (imageModeSelect ? imageModeSelect.value : 'cover');
+                                chatWrap.style.backgroundPosition = 'center';
+                                chatWrap.style.borderRadius = '8px';
+                                const icon = chatWrap.querySelector('.material-icons');
+                                if (icon) icon.style.display = 'none';
+                            } else if (appliedColor) {
+                                chatWrap.style.backgroundImage = '';
+                                chatWrap.style.backgroundColor = appliedColor;
+                                chatWrap.style.borderRadius = '8px';
+                                const icon = chatWrap.querySelector('.material-icons');
+                                if (icon) icon.style.display = '';
+                            } else {
+                                // cleared
+                                chatWrap.style.backgroundImage = '';
+                                chatWrap.style.backgroundColor = '';
+                                const icon = chatWrap.querySelector('.material-icons');
+                                if (icon) icon.style.display = '';
+                            }
+                        }
+                    }
                     hideImageModal();
                     hideMenu();
                 });
@@ -1033,6 +1079,11 @@ class TransitionManager {
                         const titleEl = currentMenuTarget.querySelector('.item-title');
                         if (titleEl) titleEl.textContent = newTitle;
                         currentMenuTarget.setAttribute('data-title', newTitle);
+                        // If this menu was opened for the chat scene, update the chat header too
+                        if (currentMenuTarget === lastFakeMenuTarget) {
+                            const chatTitleEl = document.querySelector('#scene-chat .chat-title');
+                            if (chatTitleEl) chatTitleEl.textContent = newTitle;
+                        }
                     }
                 } else if (action === 'change-image') {
                     // open modal to allow upload or color pick
@@ -1088,6 +1139,18 @@ class TransitionManager {
             // MutationObserver to attach handlers for newly added items
             const gridObserver = new MutationObserver(() => attachMoreHandlers());
             document.querySelectorAll('.notebook-grid').forEach(g => gridObserver.observe(g, { childList: true, subtree: true }));
+
+            const openNotebookFromItem = (item) => {
+                const title = item.getAttribute('data-title') || item.querySelector('.item-title')?.textContent || 'Untitled notebook';
+                this.openNotebook(title);
+            };
+
+            document.addEventListener('click', (ev) => {
+                const item = ev.target.closest('.notebook-item');
+                if (!item) return;
+                if (ev.target.closest('.more-btn') || ev.target.closest('.more-menu') || ev.target.closest('#imageModal')) return;
+                openNotebookFromItem(item);
+            });
 
             // --- Show-All Scene Handling ---
             // Get all notebook items from dashboard sections (sample data)
@@ -1241,6 +1304,444 @@ class TransitionManager {
                             }
                         });
                     }
+                }
+            }
+
+            // --- Chat Scene Handling ---
+            const chatScene = document.getElementById('scene-chat');
+            if (chatScene) {
+                const chatShell = chatScene.querySelector('.chat-shell');
+                const chatLayout = chatScene.querySelector('.chat-layout');
+                const leftPanel = chatScene.querySelector('.panel-left');
+                const rightPanel = chatScene.querySelector('.panel-right');
+                const backBtn = chatScene.querySelector('.chat-back-button');
+
+                if (backBtn) {
+                    backBtn.addEventListener('click', () => this.transitionTo('dashboard'));
+                }
+
+                if (chatShell && chatLayout) {
+                    let leftWidth = parseInt(getComputedStyle(chatShell).getPropertyValue('--left-user-width'), 10) || 320;
+                    let rightWidth = parseInt(getComputedStyle(chatShell).getPropertyValue('--right-user-width'), 10) || 280;
+                    const resizerWidth = parseInt(getComputedStyle(chatShell).getPropertyValue('--resizer-width'), 10) || 10;
+                    const minSide = 200;
+                    const minCenter = 320;
+
+                    const setLeftWidth = (width) => {
+                        leftWidth = width;
+                        chatShell.style.setProperty('--left-user-width', `${width}px`);
+                    };
+
+                    const setRightWidth = (width) => {
+                        rightWidth = width;
+                        chatShell.style.setProperty('--right-user-width', `${width}px`);
+                    };
+
+                    const setCollapsed = (side, collapsed) => {
+                        if (side === 'left') {
+                            if (collapsed) {
+                                leftWidth = leftPanel?.getBoundingClientRect().width || leftWidth;
+                                chatShell.setAttribute('data-left-collapsed', 'true');
+                                leftPanel?.classList.add('is-collapsed');
+                            } else {
+                                chatShell.removeAttribute('data-left-collapsed');
+                                leftPanel?.classList.remove('is-collapsed');
+                                setLeftWidth(leftWidth);
+                            }
+                        } else if (side === 'right') {
+                            if (collapsed) {
+                                rightWidth = rightPanel?.getBoundingClientRect().width || rightWidth;
+                                chatShell.setAttribute('data-right-collapsed', 'true');
+                                rightPanel?.classList.add('is-collapsed');
+                            } else {
+                                chatShell.removeAttribute('data-right-collapsed');
+                                rightPanel?.classList.remove('is-collapsed');
+                                setRightWidth(rightWidth);
+                            }
+                        }
+                    };
+
+                    const leftToggle = chatScene.querySelector('[data-collapse="sources"]');
+                    const rightToggle = chatScene.querySelector('[data-collapse="tools"]');
+                    const leftExpand = chatScene.querySelector('[data-expand="sources"]');
+                    const rightExpand = chatScene.querySelector('[data-expand="tools"]');
+
+                    if (leftToggle) leftToggle.addEventListener('click', () => setCollapsed('left', true));
+                    if (rightToggle) rightToggle.addEventListener('click', () => setCollapsed('right', true));
+                    if (leftExpand) leftExpand.addEventListener('click', () => setCollapsed('left', false));
+                    if (rightExpand) rightExpand.addEventListener('click', () => setCollapsed('right', false));
+
+                    const resizers = chatScene.querySelectorAll('.chat-resizer');
+                    resizers.forEach(resizer => {
+                        resizer.addEventListener('pointerdown', (ev) => {
+                            ev.preventDefault();
+                            const side = resizer.getAttribute('data-resize');
+                            if (!side) return;
+
+                            if (side === 'left' && chatShell.getAttribute('data-left-collapsed') === 'true') {
+                                setCollapsed('left', false);
+                            }
+                            if (side === 'right' && chatShell.getAttribute('data-right-collapsed') === 'true') {
+                                setCollapsed('right', false);
+                            }
+
+                            const layoutRect = chatLayout.getBoundingClientRect();
+                            const startX = ev.clientX;
+                            const startLeft = leftPanel?.getBoundingClientRect().width || leftWidth;
+                            const startRight = rightPanel?.getBoundingClientRect().width || rightWidth;
+                            const totalWidth = layoutRect.width;
+                            const resizerTotal = resizerWidth * 2;
+
+                            const onMove = (moveEv) => {
+                                const delta = moveEv.clientX - startX;
+                                if (side === 'left') {
+                                    const maxLeft = totalWidth - startRight - minCenter - resizerTotal;
+                                    const next = Math.min(Math.max(startLeft + delta, minSide), maxLeft);
+                                    setLeftWidth(next);
+                                } else {
+                                    const maxRight = totalWidth - startLeft - minCenter - resizerTotal;
+                                    const next = Math.min(Math.max(startRight - delta, minSide), maxRight);
+                                    setRightWidth(next);
+                                }
+                            };
+
+                            const onUp = () => {
+                                document.body.classList.remove('is-resizing');
+                                window.removeEventListener('pointermove', onMove);
+                                window.removeEventListener('pointerup', onUp);
+                            };
+
+                            document.body.classList.add('is-resizing');
+                            window.addEventListener('pointermove', onMove);
+                            window.addEventListener('pointerup', onUp, { once: true });
+                        });
+
+                        resizer.addEventListener('dblclick', () => {
+                            if (resizer.getAttribute('data-resize') === 'left') {
+                                setLeftWidth(320);
+                            } else {
+                                setRightWidth(280);
+                            }
+                        });
+                    });
+
+                    // Chat settings button: reuse moreMenu by creating a temporary notebook-item
+                    const settingsBtn = chatScene.querySelector('.panel-icon-button[title="Notebook settings"]');
+                    if (settingsBtn) {
+                        settingsBtn.addEventListener('click', (ev) => {
+                            ev.stopPropagation();
+                            // create a hidden notebook-item reflecting current chat title
+                            const chatTitle = chatScene.querySelector('.chat-title')?.textContent || 'Untitled notebook';
+                            const fake = document.createElement('div');
+                            fake.className = 'notebook-item';
+                            fake.style.position = 'absolute';
+                            fake.style.left = '-9999px';
+                            fake.style.top = '-9999px';
+                            fake.innerHTML = `
+                                <div class="cover" style="background: transparent;"></div>
+                                <div class="item-title">${chatTitle}</div>
+                            `;
+                            document.body.appendChild(fake);
+                            // set as current menu target and mark for cleanup
+                            currentMenuTarget = fake;
+                            lastFakeMenuTarget = fake;
+
+                            // position and show the shared moreMenu near the settings button
+                            moreMenu.style.display = 'block';
+                            moreMenu.classList.remove('visible');
+                            const rect = settingsBtn.getBoundingClientRect();
+                            const mw = moreMenu.offsetWidth || 160;
+                            let left = rect.right - mw;
+                            if (left < 8) left = rect.left;
+                            if (left + mw > window.innerWidth - 8) left = window.innerWidth - mw - 8;
+                            moreMenu.style.left = `${Math.max(8, left)}px`;
+                            moreMenu.style.top = `${Math.min(window.innerHeight - 8, rect.bottom + 8)}px`;
+                            moreMenu.classList.add('visible');
+                        });
+                    }
+
+                    const clampPanels = () => {
+                        const layoutRect = chatLayout.getBoundingClientRect();
+                        const totalWidth = layoutRect.width;
+                        const resizerTotal = resizerWidth * 2;
+                        const maxLeft = totalWidth - rightWidth - minCenter - resizerTotal;
+                        const maxRight = totalWidth - leftWidth - minCenter - resizerTotal;
+
+                        if (leftWidth > maxLeft) setLeftWidth(Math.max(minSide, maxLeft));
+                        if (rightWidth > maxRight) setRightWidth(Math.max(minSide, maxRight));
+                    };
+
+                    window.addEventListener('resize', clampPanels);
+                }
+
+                const sourceInput = chatScene.querySelector('#sourceFileInput');
+                const sourceDrop = chatScene.querySelector('.source-drop');
+                const sourceList = chatScene.querySelector('.source-list');
+                const sourceEmpty = chatScene.querySelector('.source-empty');
+                const sourceAddButtons = chatScene.querySelectorAll('.source-add-button');
+                const sourceNoteButton = chatScene.querySelector('.source-note-button');
+
+                const updateSourceEmpty = () => {
+                    if (!sourceEmpty || !sourceList) return;
+                    sourceEmpty.style.display = sourceList.children.length ? 'none' : 'block';
+                };
+
+                const addSourceItem = (name, meta, icon) => {
+                    if (!sourceList) return;
+                    const item = document.createElement('div');
+                    item.className = 'source-item';
+                    item.innerHTML = `
+                        <div class="source-icon"><span class="material-icons">${icon}</span></div>
+                        <div class="source-meta">
+                            <div class="source-name"></div>
+                            <div class="source-type"></div>
+                        </div>
+                    `;
+                    const nameEl = item.querySelector('.source-name');
+                    const metaEl = item.querySelector('.source-type');
+                    if (nameEl) nameEl.textContent = name;
+                    if (metaEl) metaEl.textContent = meta;
+                    sourceList.appendChild(item);
+                    updateSourceEmpty();
+                };
+
+                const handleFiles = (files) => {
+                    const list = Array.from(files || []);
+                    list.forEach((file) => {
+                        const isImage = file.type && file.type.startsWith('image/');
+                        const icon = isImage ? 'image' : 'description';
+                        const meta = file.type || (file.name.split('.').pop() || 'file');
+                        addSourceItem(file.name, meta, icon);
+                    });
+                };
+
+                sourceAddButtons.forEach(btn => {
+                    btn.addEventListener('click', () => sourceInput && sourceInput.click());
+                });
+
+                if (sourceInput) {
+                    sourceInput.addEventListener('change', (ev) => {
+                        handleFiles(ev.target.files);
+                        sourceInput.value = '';
+                    });
+                }
+
+                if (sourceNoteButton) {
+                    sourceNoteButton.addEventListener('click', () => {
+                        const note = prompt('New note');
+                        if (!note) return;
+                        addSourceItem(note, 'Note', 'edit_note');
+                    });
+                }
+
+                if (sourceDrop) {
+                    sourceDrop.addEventListener('dragover', (ev) => {
+                        ev.preventDefault();
+                        sourceDrop.classList.add('is-dragover');
+                    });
+                    sourceDrop.addEventListener('dragleave', () => sourceDrop.classList.remove('is-dragover'));
+                    sourceDrop.addEventListener('drop', (ev) => {
+                        ev.preventDefault();
+                        sourceDrop.classList.remove('is-dragover');
+                        if (ev.dataTransfer) handleFiles(ev.dataTransfer.files);
+                    });
+                }
+
+                updateSourceEmpty();
+
+                // Outputs management
+                const outputsList = chatScene.querySelector('.outputs-list');
+                const outputsEmpty = chatScene.querySelector('.outputs-empty');
+                const toolCards = chatScene.querySelectorAll('.tool-card');
+                let outputCounter = 0;
+
+                const updateOutputsEmpty = () => {
+                    if (!outputsEmpty || !outputsList) return;
+                    outputsEmpty.style.display = outputsList.children.length ? 'none' : 'block';
+                };
+
+                const addOutput = (type, customName) => {
+                    if (!outputsList) return;
+                    outputCounter++;
+                    const outputName = customName || `${type} ${outputCounter}`;
+                    const item = document.createElement('div');
+                    item.className = 'output-item';
+                    item.draggable = true;
+                    item.innerHTML = `
+                        <div class="output-item-drag">
+                            <span class="material-icons">drag_indicator</span>
+                        </div>
+                        <div class="output-item-content">
+                            <div class="output-item-name">${outputName}</div>
+                            <div class="output-item-type">${type}</div>
+                        </div>
+                        <div class="output-item-actions">
+                            <button class="output-item-button" data-action="pin" title="Pin">
+                                <span class="material-icons">push_pin</span>
+                            </button>
+                            <button class="output-item-button" data-action="rename" title="Rename">
+                                <span class="material-icons">edit</span>
+                            </button>
+                            <button class="output-item-button" data-action="delete" title="Delete">
+                                <span class="material-icons">close</span>
+                            </button>
+                        </div>
+                    `;
+
+                    const reorderPinned = () => {
+                        if (!outputsList) return;
+                        const all = Array.from(outputsList.children);
+                        const pinned = all.filter(el => el.classList.contains('pinned'));
+                        const unpinned = all.filter(el => !el.classList.contains('pinned'));
+                        pinned.concat(unpinned).forEach(el => outputsList.appendChild(el));
+                    };
+
+                    // Rename handler
+                    const renameBtn = item.querySelector('[data-action="rename"]');
+                    if (renameBtn) {
+                        renameBtn.addEventListener('click', () => {
+                            const nameEl = item.querySelector('.output-item-name');
+                            const current = nameEl.textContent;
+                            const newName = prompt('Rename output', current);
+                            if (newName !== null && newName.trim()) {
+                                nameEl.textContent = newName.trim();
+                            }
+                        });
+                    }
+
+                    // Delete handler
+                    const deleteBtn = item.querySelector('[data-action="delete"]');
+                    if (deleteBtn) {
+                        deleteBtn.addEventListener('click', () => {
+                            item.remove();
+                            updateOutputsEmpty();
+                            reorderPinned();
+                        });
+                    }
+
+                    // Pin handler
+                    const pinBtn = item.querySelector('[data-action="pin"]');
+                    if (pinBtn) {
+                        pinBtn.addEventListener('click', () => {
+                            const isPinned = item.classList.toggle('pinned');
+                            // visual cue handled by CSS; reorder list so pinned items are first
+                            reorderPinned();
+                        });
+                    }
+
+                    // Drag handlers
+                    let draggedItem = null;
+
+                    item.addEventListener('dragstart', (ev) => {
+                        draggedItem = item;
+                        item.classList.add('dragging');
+                        ev.dataTransfer.effectAllowed = 'move';
+                    });
+
+                    item.addEventListener('dragend', () => {
+                        item.classList.remove('dragging');
+                        document.querySelectorAll('.output-item').forEach(el => el.classList.remove('drag-over'));
+                        draggedItem = null;
+                    });
+
+                    item.addEventListener('dragover', (ev) => {
+                        ev.preventDefault();
+                        if (draggedItem && draggedItem !== item) {
+                            item.classList.add('drag-over');
+                            ev.dataTransfer.dropEffect = 'move';
+                        }
+                    });
+
+                    item.addEventListener('dragleave', () => {
+                        item.classList.remove('drag-over');
+                    });
+
+                    item.addEventListener('drop', (ev) => {
+                        ev.preventDefault();
+                        item.classList.remove('drag-over');
+                        if (draggedItem && draggedItem !== item) {
+                            const allItems = Array.from(outputsList.children);
+                            const draggedIndex = allItems.indexOf(draggedItem);
+                            const targetIndex = allItems.indexOf(item);
+                            if (draggedIndex < targetIndex) {
+                                item.parentNode.insertBefore(draggedItem, item.nextSibling);
+                            } else {
+                                item.parentNode.insertBefore(draggedItem, item);
+                            }
+                            // after any drop, ensure pinned items stay grouped at the top
+                            reorderPinned();
+                        }
+                    });
+
+                    outputsList.appendChild(item);
+                    updateOutputsEmpty();
+                };
+
+                // Tool card click handlers
+                toolCards.forEach(card => {
+                    card.addEventListener('click', () => {
+                        const toolTitle = card.querySelector('.tool-title')?.textContent || 'Tool';
+                        addOutput(toolTitle);
+                    });
+                });
+
+                const chatForm = chatScene.querySelector('.chat-input');
+                const chatPrompt = chatScene.querySelector('#chatPrompt');
+                const chatThread = chatScene.querySelector('.chat-thread');
+                const clearChatBtn = chatScene.querySelector('[data-action="clear-chat"]');
+
+                const addMessage = (role, text) => {
+                    if (!chatThread) return;
+                    const msg = document.createElement('div');
+                    msg.className = `message ${role}`;
+                    msg.innerHTML = `
+                        <div class="message-text"></div>
+                        <div class="message-meta"></div>
+                    `;
+                    const textEl = msg.querySelector('.message-text');
+                    const metaEl = msg.querySelector('.message-meta');
+                    if (textEl) textEl.textContent = text;
+                    if (metaEl) metaEl.textContent = role === 'user' ? 'You' : 'Lumina';
+                    chatThread.appendChild(msg);
+                    chatThread.scrollTop = chatThread.scrollHeight;
+                };
+
+                if (chatForm && chatPrompt) {
+                    chatForm.addEventListener('submit', (ev) => {
+                        ev.preventDefault();
+                        const text = chatPrompt.value.trim();
+                        if (!text) return;
+                        addMessage('user', text);
+                        chatPrompt.value = '';
+                        chatPrompt.style.height = '';
+                        setTimeout(() => {
+                            addMessage('ai', 'Got it. I will analyze the sources and respond with a focused answer.');
+                        }, 600);
+                    });
+
+                    chatPrompt.addEventListener('keydown', (ev) => {
+                        if (ev.key === 'Enter' && !ev.shiftKey) {
+                            ev.preventDefault();
+                            if (chatForm.requestSubmit) {
+                                chatForm.requestSubmit();
+                            } else {
+                                chatForm.dispatchEvent(new Event('submit', { cancelable: true }));
+                            }
+                        }
+                    });
+
+                    chatPrompt.addEventListener('input', () => {
+                        chatPrompt.style.height = 'auto';
+                        chatPrompt.style.height = `${Math.min(chatPrompt.scrollHeight, 140)}px`;
+                    });
+                }
+
+                if (clearChatBtn) {
+                    clearChatBtn.addEventListener('click', () => {
+                        if (!chatThread) return;
+                        chatThread.innerHTML = '';
+                        addMessage('ai', 'Chat cleared. How can I help next?');
+                    });
                 }
             }
 
