@@ -450,6 +450,7 @@ class TransitionManager {
             btn.addEventListener('click', () => this.transitionTo('landing'));
         });
 
+<<<<<<< HEAD
         // Click outside form to close (sign-in scene)
         const signInScene = document.getElementById('scene-signin');
         if (signInScene) {
@@ -472,7 +473,14 @@ class TransitionManager {
             });
         }
 
+=======
+<<<<<<< HEAD
+        /*
+        // Sign-in form submit -> set current user and transition to dashboard
+=======
+>>>>>>> 1d5ef64e7a5c8d30f8f050a152ebe4a9d1f13838
         // Sign-in form submit -> authenticate with backend and transition to dashboard
+>>>>>>> ff54caf5fcc4b072850a25a0d1f561c441748afc
         const signInForm = document.querySelector('#scene-signin .auth-form');
         if (signInForm) {
                 signInForm.addEventListener('submit', async (e) => {
@@ -626,7 +634,8 @@ class TransitionManager {
                 }
             });
         }
-
+        */
+       
         // Dashboard UI interactions
         const dashboard = document.getElementById('scene-dashboard');
         if (dashboard) {

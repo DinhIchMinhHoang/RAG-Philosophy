@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RAG Philosophy - Mesh Gradient Background</title>
+    <title>RAG Philosophy - Lumina</title>
     <link rel="stylesheet" href="styles.css">
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
 </head>
@@ -33,7 +33,6 @@
         </div>
     </header>
 
-    <!-- Landing Scene -->
     <div id="scene-landing" class="scene">
         <div class="text-container">
             <div class="logo-text-wrapper">
@@ -48,7 +47,6 @@
         </div>
     </div>
     
-    <!-- Account Scene -->
     <div id="scene-account" class="scene" style="display: none;">
         <div class="form-container account-form-container">
             <h2 class="form-title">Account</h2>
@@ -111,29 +109,41 @@
         </div>
     </div>
 
-    <!-- Sign Up Scene -->
     <div id="scene-signup" class="scene" style="display: none;">
         <div class="form-container">
             <h2 class="form-title">Create Account</h2>
+<<<<<<< HEAD
+            <form id="signup-form" class="auth-form">
+=======
             <div class="form-error" style="display: none; color: #ff4444; font-weight: bold; margin-bottom: 12px; padding: 8px; background: rgba(255,68,68,0.1); border-radius: 4px;"></div>
             <form class="auth-form">
+>>>>>>> ff54caf5fcc4b072850a25a0d1f561c441748afc
                 <div class="form-group">
                     <label class="form-label"><span class="material-icons">account_circle</span> User name</label>
-                    <input type="text" class="form-input" placeholder="User name" required>
+                    <input type="text" id="signup-username" class="form-input" placeholder="User name" required>
+                    <div id="signup-username-error" class="field-error"></div>
                 </div>
                 <div class="form-group">
                     <label class="form-label"><span class="material-icons">alternate_email</span> Email</label>
+<<<<<<< HEAD
                     <input type="text" class="form-input email-input" placeholder="Email" required>
                     <div class="form-field-error" style="display: none; color: #ff7a7a; font-size: 12px; margin-top: 4px;"></div>
+=======
+                    <input type="email" id="signup-email" class="form-input" placeholder="Email" required>
+                    <div id="signup-email-error" class="field-error"></div>
+>>>>>>> 1d5ef64e7a5c8d30f8f050a152ebe4a9d1f13838
                 </div>
                 <div class="form-group">
                     <label class="form-label"><span class="material-icons">lock</span> Password</label>
-                    <input type="password" class="form-input" placeholder="Password" required>
+                    <input type="password" id="signup-password" class="form-input" placeholder="Password" required>
+                    <div id="signup-password-error" class="field-error"></div>
                 </div>
                 <div class="form-group">
                     <label class="form-label"><span class="material-icons">lock</span> Confirm Password</label>
-                    <input type="password" class="form-input" placeholder="Confirm Password" required>
+                    <input type="password" id="signup-confirm-password" class="form-input" placeholder="Confirm Password" required>
+                    <div id="signup-confirm-password-error" class="field-error"></div>
                 </div>
+                <div id="signup-general-error" class="general-error"></div>
                 <div class="form-buttons">
                     <button type="submit" class="auth-button">Confirm</button>
                     <button type="button" class="auth-button" data-back-to="landing">Back</button>
@@ -142,21 +152,31 @@
         </div>
     </div>
 
-    <!-- Sign In Scene -->
     <div id="scene-signin" class="scene" style="display: none;">
         <div class="form-container">
             <h2 class="form-title">Sign In</h2>
+<<<<<<< HEAD
+            <form id="signin-form" class="auth-form">
+=======
             <div class="form-error" style="display: none; color: #ff4444; font-weight: bold; margin-bottom: 12px; padding: 8px; background: rgba(255,68,68,0.1); border-radius: 4px;"></div>
             <form class="auth-form">
+>>>>>>> ff54caf5fcc4b072850a25a0d1f561c441748afc
                 <div class="form-group">
                     <label class="form-label"><span class="material-icons">alternate_email</span> Email</label>
+<<<<<<< HEAD
                     <input type="text" class="form-input email-input" placeholder="Email" required>
                     <div class="form-field-error" style="display: none; color: #ff7a7a; font-size: 12px; margin-top: 4px;"></div>
+=======
+                    <input id="signin-email" type="email" class="form-input" placeholder="Email" required>
+                    <div id="signin-email-error" class="field-error"></div>
+>>>>>>> 1d5ef64e7a5c8d30f8f050a152ebe4a9d1f13838
                 </div>
                 <div class="form-group">
                     <label class="form-label"><span class="material-icons">lock</span> Password</label>
-                    <input type="password" class="form-input" placeholder="Password" required>
+                    <input id="signin-password" type="password" class="form-input" placeholder="Password" required>
+                    <div id="signin-password-error" class="field-error"></div>
                 </div>
+                <div id="signin-general-error" class="general-error"></div>
                 <div class="form-buttons">
                     <button type="submit" class="auth-button">Sign In</button>
                     <button type="button" class="auth-button" data-back-to="landing">Back</button>
@@ -165,7 +185,6 @@
         </div>
     </div>
 
-    <!-- Dashboard Scene (shown after login) -->
     <div id="scene-dashboard" class="scene" style="display: none;">
         <div class="dashboard-container">
 
@@ -363,5 +382,6 @@
     <script src="api.js"></script>
     <script src="transitions.js"></script>
     <script src="script.js"></script>
+    <script src="api.js"></script>
 </body>
 </html>
