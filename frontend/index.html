@@ -113,6 +113,7 @@
         <div class="form-container">
             <h2 class="form-title">Create Account</h2>
             <form id="signup-form" class="auth-form">
+                <div class="form-error" style="display: none; color: #ff7a7a; font-weight: bold; margin-bottom: 12px; padding: 8px; background: rgba(255,68,68,0.1); border-radius: 4px;"></div>
                 <div class="form-group">
                     <label class="form-label"><span class="material-icons">account_circle</span> User name</label>
                     <input type="text" id="signup-username" class="form-input" placeholder="User name" required>
@@ -120,7 +121,7 @@
                 </div>
                 <div class="form-group">
                     <label class="form-label"><span class="material-icons">alternate_email</span> Email</label>
-                    <input type="text" class="form-input email-input" placeholder="Email" required>
+                    <input type="text" id="signup-email" class="form-input email-input" placeholder="Email" required>
                     <div class="form-field-error" style="display: none; color: #ff7a7a; font-size: 12px; margin-top: 4px;"></div>
                 </div>
                 <div class="form-group">
@@ -146,9 +147,10 @@
         <div class="form-container">
             <h2 class="form-title">Sign In</h2>
             <form id="signin-form" class="auth-form">
+                <div class="form-error" style="display: none; color: #ff7a7a; font-weight: bold; margin-bottom: 12px; padding: 8px; background: rgba(255,68,68,0.1); border-radius: 4px;"></div>
                 <div class="form-group">
                     <label class="form-label"><span class="material-icons">alternate_email</span> Email</label>
-                    <input type="text" class="form-input email-input" placeholder="Email" required>
+                    <input type="text" id="signin-email" class="form-input email-input" placeholder="Email" required>
                     <div class="form-field-error" style="display: none; color: #ff7a7a; font-size: 12px; margin-top: 4px;"></div>
                 </div>
                 <div class="form-group">
@@ -506,6 +508,6 @@
     <script src="api.js"></script>
     <script src="transitions.js"></script>
     <script src="script.js"></script>
-    <script src="api.js"></script>
+
 </body>
 </html>
