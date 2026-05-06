@@ -3,6 +3,7 @@ class TransitionManager {
     constructor() {
         this.currentScene = 'landing';
         this.isTransitioning = false;
+        this.transitionToken = 0;
         this.transitionDuration = 150; // milliseconds (50% faster)
         // Load persisted user or use empty defaults
         this.currentUser = JSON.parse(localStorage.getItem('currentUser')) || { username: '', email: '', displayName: '', bio: '' };
@@ -13,36 +14,86 @@ class TransitionManager {
      * @param {string} targetScene - The scene to transition to
      */
     transitionTo(targetScene) {
-        if (this.isTransitioning || targetScene === this.currentScene) return;
-        // Prevent accessing account scene when not authenticated
+        console.log(`[DEBUG] transitionTo called with targetScene = '${targetScene}'`);
+        console.log(`[DEBUG] Current state: isTransitioning = ${this.isTransitioning}, currentScene = '${this.currentScene}'`);
+
+        // 1. Chặn click spam hoặc state đang lơ lửng
+        if (this.isTransitioning) {
+            console.error(`[DEBUG] ABORT: isTransitioning is TRUE! Transition is stuck.`);
+            return;
+        }
+        if (targetScene === this.currentScene) {
+            console.log(`[DEBUG] ABORT: targetScene is already currentScene`);
+            return;
+        }
+
+        // 2. Route guard
         if (targetScene === 'account' && !this.isAuthenticated()) {
-            // redirect to sign-in instead
             targetScene = 'signin';
         }
 
+        const transitionToken = ++this.transitionToken;
+        const isCurrentTransition = () => transitionToken === this.transitionToken;
+
         this.isTransitioning = true;
+        console.log(`[DEBUG] isTransitioning set to TRUE`);
+        
+        // 3. Force UI Layout tức thời (Fix lỗi vỡ layout pic 2)
+        // Thay vì đợi switchScene, ta ép body nhận diện layout của scene mới ngay lập tức.
+        if (targetScene === 'chat') {
+            document.body.classList.add('chat-active');
+        } else {
+            document.body.classList.remove('chat-active');
+            // Dọn dẹp focus để tránh ảo ma trigger event từ ô chatPrompt
+            if (document.activeElement && typeof document.activeElement.blur === 'function') {
+                document.activeElement.blur(); 
+            }
+        }
 
-        // Step 1: Fade out current scene (bottom to top)
+        // 4. Bắt đầu chuỗi animation
+        console.log(`[DEBUG] Starting fadeOutScene for '${this.currentScene}'...`);
         this.fadeOutScene(this.currentScene, () => {
-            // Step 2: Switch scenes in DOM (hide all scenes)
-            this.switchScene(targetScene);
+            if (!isCurrentTransition()) {
+                return;
+            }
+            console.log(`[DEBUG] fadeOutScene callback executed! Hiding all .scene elements.`);
+            // Ép ẩn SẠCH SẼ mọi scene thừa thãi
+            document.querySelectorAll('.scene').forEach(scene => {
+                scene.style.display = 'none';
+            });
 
-            // Step 3: Orchestrate navbar + scene fade-in so navbar appears first
+            // Pre-emptive state update: Cập nhật currentScene NGAY lúc DOM switch, 
+            // KHÔNG đợi đến khi animation finish
+            this.currentScene = targetScene;
+            console.log(`[DEBUG] this.currentScene updated to '${this.currentScene}'`);
+
             const finish = () => {
-                this.currentScene = targetScene;
+                if (!isCurrentTransition()) {
+                    return;
+                }
                 this.isTransitioning = false;
+                console.log(`[DEBUG] Transition FULLY FINISHED. isTransitioning = false`);
             };
 
-            if (targetScene === 'landing') {
-                // When going to landing, ensure navbar fades out first then show landing
+            // 5. Fade In logic
+            if (targetScene === 'landing' || targetScene === 'chat') {
+                console.log(`[DEBUG] Calling fadeNavbarOut...`);
                 this.fadeNavbarOut(() => {
+                    if (!isCurrentTransition()) {
+                        return;
+                    }
+                    console.log(`[DEBUG] fadeNavbarOut callback executed! Calling fadeInScene for '${targetScene}'...`);
                     this.fadeInScene(targetScene, finish);
-                });
+                }, isCurrentTransition);
             } else {
-                // For auth scenes: show navbar first, then scene children
+                console.log(`[DEBUG] Calling fadeNavbarIn...`);
                 this.fadeNavbarIn(() => {
+                    if (!isCurrentTransition()) {
+                        return;
+                    }
+                    console.log(`[DEBUG] fadeNavbarIn callback executed! Calling fadeInScene for '${targetScene}'...`);
                     this.fadeInScene(targetScene, finish);
-                });
+                }, isCurrentTransition);
             }
         });
     }
@@ -302,7 +353,7 @@ class TransitionManager {
     /**
      * Fade navbar in and call callback after animation completes
      */
-    fadeNavbarIn(callback) {
+    fadeNavbarIn(callback, isCurrentTransition = () => true) {
         const navbar = document.querySelector('.navbar');
         if (!navbar) {
             callback();
@@ -326,6 +377,7 @@ class TransitionManager {
         let safetyTimer;
         const onEnd = (e) => {
             if (e.propertyName !== 'opacity') return;
+            if (!isCurrentTransition()) return;
             if (safetyTimer) clearTimeout(safetyTimer);
             navbar.removeEventListener('transitionend', onEnd);
             navbar.classList.remove('pre-hidden');
@@ -337,6 +389,7 @@ class TransitionManager {
 
         // Safety fallback if transitionend doesn't fire
         safetyTimer = setTimeout(() => {
+            if (!isCurrentTransition()) return;
             navbar.classList.remove('pre-hidden');
             navbar.style.removeProperty('--anim-y');
             navbar.style.removeProperty('--anim-opacity');
@@ -347,7 +400,7 @@ class TransitionManager {
     /**
      * Fade navbar out and call callback after animation completes
      */
-    fadeNavbarOut(callback) {
+    fadeNavbarOut(callback, isCurrentTransition = () => true) {
         const navbar = document.querySelector('.navbar');
         if (!navbar) {
             callback();
@@ -361,6 +414,7 @@ class TransitionManager {
         let safetyTimer;
         const onEnd = (e) => {
             if (e.propertyName !== 'opacity') return;
+            if (!isCurrentTransition()) return;
             if (safetyTimer) clearTimeout(safetyTimer);
             navbar.removeEventListener('transitionend', onEnd);
             navbar.style.display = 'none';
@@ -372,6 +426,7 @@ class TransitionManager {
 
         // Safety fallback if transitionend doesn't fire
         safetyTimer = setTimeout(() => {
+            if (!isCurrentTransition()) return;
             navbar.style.display = 'none';
             navbar.style.removeProperty('--anim-y');
             navbar.style.removeProperty('--anim-opacity');
@@ -1349,10 +1404,6 @@ class TransitionManager {
                 const rightPanel = chatScene.querySelector('.panel-right');
                 const backBtn = chatScene.querySelector('.chat-back-button');
 
-                if (backBtn) {
-                    backBtn.addEventListener('click', () => this.transitionTo('dashboard'));
-                }
-
                 if (chatShell && chatLayout) {
                     let leftWidth = parseInt(getComputedStyle(chatShell).getPropertyValue('--left-user-width'), 10) || 320;
                     let rightWidth = parseInt(getComputedStyle(chatShell).getPropertyValue('--right-user-width'), 10) || 280;
@@ -1538,13 +1589,143 @@ class TransitionManager {
                     updateSourceEmpty();
                 };
 
+                const viewerState = {
+                    filename: null,
+                    page: 1,
+                    zoom: 1.0,
+                    totalPages: 1
+                };
+
+                const updateViewerUI = () => {
+                    const viewer = chatScene.querySelector('#sourceViewer');
+                    const empty = viewer?.querySelector('.viewer-empty');
+                    const content = viewer?.querySelector('.viewer-content');
+                    const img = viewer?.querySelector('#viewerImage');
+                    const nameEl = viewer?.querySelector('#viewerFileName');
+                    const pageEl = viewer?.querySelector('#viewerPageNum');
+                    const zoomEl = viewer?.querySelector('#viewerZoomLevel');
+
+                    if (!viewer || !img || !viewerState.filename) return;
+
+                    if (empty) empty.style.display = 'none';
+                    if (content) content.style.display = 'flex';
+                    if (nameEl) nameEl.textContent = viewerState.filename;
+                    if (pageEl) pageEl.textContent = `Page ${viewerState.page}`;
+                    if (zoomEl) zoomEl.textContent = `${Math.round(viewerState.zoom * 100)}%`;
+
+                    const url = `${API.BASE_URL}/documents/page-image/${encodeURIComponent(viewerState.filename)}/${viewerState.page}`;
+                    if (img.src !== url) {
+                        img.src = url;
+                    }
+                    
+                    // If zoom is 1, fit to container. If > 1, allow overflow.
+                    if (viewerState.zoom === 1.0) {
+                        img.style.maxWidth = '100%';
+                        img.style.transform = 'scale(1)';
+                    } else {
+                        img.style.maxWidth = 'none';
+                        img.style.transform = `scale(${viewerState.zoom})`;
+                    }
+                };
+
+                const showPagePreview = (filename, pageNum) => {
+                    viewerState.filename = filename;
+                    viewerState.page = pageNum || 1;
+                    viewerState.zoom = 1.0;
+                    
+                    updateViewerUI();
+                    
+                    if (chatShell.getAttribute('data-right-collapsed') === 'true') {
+                        setCollapsed('right', false);
+                    }
+                };
+
+                // Viewer Control Listeners
+                const setupViewerControls = () => {
+                    const prevBtn = chatScene.querySelector('#viewerPrevPage');
+                    const nextBtn = chatScene.querySelector('#viewerNextPage');
+                    const zoomInBtn = chatScene.querySelector('#viewerZoomIn');
+                    const zoomOutBtn = chatScene.querySelector('#viewerZoomOut');
+                    const zoomResetBtn = chatScene.querySelector('#viewerZoomReset');
+
+                    if (prevBtn) {
+                        prevBtn.addEventListener('click', () => {
+                            if (viewerState.page > 1) {
+                                viewerState.page--;
+                                updateViewerUI();
+                            }
+                        });
+                    }
+                    if (nextBtn) {
+                        nextBtn.addEventListener('click', () => {
+                            viewerState.page++;
+                            updateViewerUI();
+                        });
+                    }
+                    if (zoomInBtn) {
+                        zoomInBtn.addEventListener('click', () => {
+                            viewerState.zoom = Math.min(viewerState.zoom + 0.2, 3.0);
+                            updateViewerUI();
+                        });
+                    }
+                    if (zoomOutBtn) {
+                        zoomOutBtn.addEventListener('click', () => {
+                            viewerState.zoom = Math.max(viewerState.zoom - 0.2, 0.4);
+                            updateViewerUI();
+                        });
+                    }
+                    if (zoomResetBtn) {
+                        zoomResetBtn.addEventListener('click', () => {
+                            viewerState.zoom = 1.0;
+                            updateViewerUI();
+                        });
+                    }
+                };
+
+                setupViewerControls();
+
                 const handleFiles = (files) => {
                     const list = Array.from(files || []);
-                    list.forEach((file) => {
-                        const isImage = file.type && file.type.startsWith('image/');
-                        const icon = isImage ? 'image' : 'description';
-                        const meta = file.type || (file.name.split('.').pop() || 'file');
-                        addSourceItem(file.name, meta, icon);
+                    list.forEach(async (file) => {
+                        const isPDF = file.name.toLowerCase().endsWith('.pdf');
+                        const icon = isPDF ? 'picture_as_pdf' : 'description';
+                        const meta = isPDF ? 'Uploading…' : (file.type || 'file');
+                        
+                        // Create item and add click listener for preview
+                        const item = document.createElement('div');
+                        item.className = 'source-item';
+                        item.style.cursor = 'pointer';
+                        item.innerHTML = `
+                            <div class="source-icon"><span class="material-icons">${icon}</span></div>
+                            <div class="source-meta">
+                                <div class="source-name">${file.name}</div>
+                                <div class="source-type uploading">${meta}</div>
+                            </div>
+                        `;
+                        
+                        item.addEventListener('click', () => {
+                            if (isPDF) showPagePreview(file.name, 1);
+                        });
+
+                        sourceList.appendChild(item);
+                        updateSourceEmpty();
+
+                        if (isPDF) {
+                            const metaEl = item.querySelector('.source-type');
+                            try {
+                                const result = await API.uploadDocument(file);
+                                if (metaEl) {
+                                    metaEl.classList.remove('uploading');
+                                    metaEl.textContent = `✅ ${result.pages} pages, ${result.chunks} chunks`;
+                                }
+                            } catch (err) {
+                                console.error('[Upload]', err);
+                                if (metaEl) {
+                                    metaEl.classList.remove('uploading');
+                                    metaEl.textContent = `❌ ${err.message}`;
+                                }
+                            }
+                        }
                     });
                 };
 
@@ -1582,149 +1763,73 @@ class TransitionManager {
 
                 updateSourceEmpty();
 
-                // Outputs management
-                const outputsList = chatScene.querySelector('.outputs-list');
-                const outputsEmpty = chatScene.querySelector('.outputs-empty');
-                const toolCards = chatScene.querySelectorAll('.tool-card');
-                let outputCounter = 0;
-
-                const updateOutputsEmpty = () => {
-                    if (!outputsEmpty || !outputsList) return;
-                    outputsEmpty.style.display = outputsList.children.length ? 'none' : 'block';
-                };
-
-                const addOutput = (type, customName) => {
-                    if (!outputsList) return;
-                    outputCounter++;
-                    const outputName = customName || `${type} ${outputCounter}`;
-                    const item = document.createElement('div');
-                    item.className = 'output-item';
-                    item.draggable = true;
-                    item.innerHTML = `
-                        <div class="output-item-drag">
-                            <span class="material-icons">drag_indicator</span>
-                        </div>
-                        <div class="output-item-content">
-                            <div class="output-item-name">${outputName}</div>
-                            <div class="output-item-type">${type}</div>
-                        </div>
-                        <div class="output-item-actions">
-                            <button class="output-item-button" data-action="pin" title="Pin">
-                                <span class="material-icons">push_pin</span>
-                            </button>
-                            <button class="output-item-button" data-action="rename" title="Rename">
-                                <span class="material-icons">edit</span>
-                            </button>
-                            <button class="output-item-button" data-action="delete" title="Delete">
-                                <span class="material-icons">close</span>
-                            </button>
-                        </div>
-                    `;
-
-                    const reorderPinned = () => {
-                        if (!outputsList) return;
-                        const all = Array.from(outputsList.children);
-                        const pinned = all.filter(el => el.classList.contains('pinned'));
-                        const unpinned = all.filter(el => !el.classList.contains('pinned'));
-                        pinned.concat(unpinned).forEach(el => outputsList.appendChild(el));
-                    };
-
-                    // Rename handler
-                    const renameBtn = item.querySelector('[data-action="rename"]');
-                    if (renameBtn) {
-                        renameBtn.addEventListener('click', () => {
-                            const nameEl = item.querySelector('.output-item-name');
-                            const current = nameEl.textContent;
-                            const newName = prompt('Rename output', current);
-                            if (newName !== null && newName.trim()) {
-                                nameEl.textContent = newName.trim();
-                            }
-                        });
-                    }
-
-                    // Delete handler
-                    const deleteBtn = item.querySelector('[data-action="delete"]');
-                    if (deleteBtn) {
-                        deleteBtn.addEventListener('click', () => {
-                            item.remove();
-                            updateOutputsEmpty();
-                            reorderPinned();
-                        });
-                    }
-
-                    // Pin handler
-                    const pinBtn = item.querySelector('[data-action="pin"]');
-                    if (pinBtn) {
-                        pinBtn.addEventListener('click', () => {
-                            const isPinned = item.classList.toggle('pinned');
-                            // visual cue handled by CSS; reorder list so pinned items are first
-                            reorderPinned();
-                        });
-                    }
-
-                    // Drag handlers
-                    let draggedItem = null;
-
-                    item.addEventListener('dragstart', (ev) => {
-                        draggedItem = item;
-                        item.classList.add('dragging');
-                        ev.dataTransfer.effectAllowed = 'move';
-                    });
-
-                    item.addEventListener('dragend', () => {
-                        item.classList.remove('dragging');
-                        document.querySelectorAll('.output-item').forEach(el => el.classList.remove('drag-over'));
-                        draggedItem = null;
-                    });
-
-                    item.addEventListener('dragover', (ev) => {
-                        ev.preventDefault();
-                        if (draggedItem && draggedItem !== item) {
-                            item.classList.add('drag-over');
-                            ev.dataTransfer.dropEffect = 'move';
-                        }
-                    });
-
-                    item.addEventListener('dragleave', () => {
-                        item.classList.remove('drag-over');
-                    });
-
-                    item.addEventListener('drop', (ev) => {
-                        ev.preventDefault();
-                        item.classList.remove('drag-over');
-                        if (draggedItem && draggedItem !== item) {
-                            const allItems = Array.from(outputsList.children);
-                            const draggedIndex = allItems.indexOf(draggedItem);
-                            const targetIndex = allItems.indexOf(item);
-                            if (draggedIndex < targetIndex) {
-                                item.parentNode.insertBefore(draggedItem, item.nextSibling);
-                            } else {
-                                item.parentNode.insertBefore(draggedItem, item);
-                            }
-                            // after any drop, ensure pinned items stay grouped at the top
-                            reorderPinned();
-                        }
-                    });
-
-                    outputsList.appendChild(item);
-                    updateOutputsEmpty();
-                };
-
-                // Tool card click handlers
-                toolCards.forEach(card => {
-                    card.addEventListener('click', () => {
-                        const toolTitle = card.querySelector('.tool-title')?.textContent || 'Tool';
-                        addOutput(toolTitle);
-                    });
-                });
+                // Remove old Output/Tool logic entirely as requested
 
                 const chatForm = chatScene.querySelector('.chat-input');
                 const chatPrompt = chatScene.querySelector('#chatPrompt');
                 const chatThread = chatScene.querySelector('.chat-thread');
                 const clearChatBtn = chatScene.querySelector('[data-action="clear-chat"]');
 
+                // Track active SSE stream so we can abort if needed
+                let activeStreamController = null;
+
+                // Process markdown, citations, and latex
+                const processRichText = (container, text) => {
+                    // 1. Convert citations [Trang X] or Trang X to buttons
+                    // Regex for [Trang X]
+                    let html = text.replace(/\[Trang (\d+)\]/g, (match, p1) => {
+                        return `<button class="citation-btn" data-page="${p1}"><span class="material-icons">find_in_page</span>Trang ${p1}</button>`;
+                    });
+
+                    // 2. Handle the "Nguồn tham khảo" footer section
+                    // Looks for "- filename, Trang X"
+                    html = html.replace(/- ([^,\n]+),\s*Trang\s*(\d+)/g, (match, file, page) => {
+                        return `<button class="citation-btn" data-file="${file.trim()}" data-page="${page}"><span class="material-icons">description</span> ${file.trim()} (P. ${page})</button>`;
+                    });
+
+                    // 3. Handle sources footer title
+                    html = html.replace(/📚 \*\*Nguồn tham khảo:\*\*/g, '<div class="sources-footer-title"><span class="material-icons">auto_stories</span> Nguồn tham khảo</div>');
+
+                    // 4. Use marked for basic markdown (bold, etc.)
+                    if (window.marked) {
+                        // Configure marked to be safe and preserve our buttons
+                        container.innerHTML = marked.parse(html);
+                    } else {
+                        container.textContent = text;
+                    }
+
+                    // 5. Render LaTeX
+                    if (window.renderMathInElement) {
+                        renderMathInElement(container, {
+                            delimiters: [
+                                {left: '$$', right: '$$', display: true},
+                                {left: '$', right: '$', display: false},
+                                {left: '\\(', right: '\\)', display: false},
+                                {left: '\\[', right: '\\]', display: true}
+                            ],
+                            throwOnError : false
+                        });
+                    }
+
+                    // 6. Attach click listeners to all buttons in this message
+                    container.querySelectorAll('.citation-btn').forEach(btn => {
+                        btn.addEventListener('click', () => {
+                            const page = btn.getAttribute('data-page');
+                            const file = btn.getAttribute('data-file');
+                            
+                            // If file isn't in data-file, try to find the last uploaded file or inferred from context
+                            // For now, if file is not specified, use the first source available
+                            const targetFile = file || rag_service_filenames?.[0] || ""; 
+                            // Wait, rag_service_filenames isn't here. Let's get it from the source list.
+                            const firstSource = chatScene.querySelector('.source-name')?.textContent;
+                            
+                            showPagePreview(file || firstSource, parseInt(page));
+                        });
+                    });
+                };
+
                 const addMessage = (role, text) => {
-                    if (!chatThread) return;
+                    if (!chatThread) return null;
                     const msg = document.createElement('div');
                     msg.className = role === 'ai' ? 'ai-response' : `message ${role}`;
                     msg.innerHTML = `
@@ -1733,10 +1838,55 @@ class TransitionManager {
                     `;
                     const textEl = msg.querySelector('.message-text');
                     const metaEl = msg.querySelector('.message-meta');
-                    if (textEl) textEl.textContent = text;
+                    
+                    if (textEl) {
+                        if (role === 'ai') {
+                            processRichText(textEl, text);
+                        } else {
+                            textEl.textContent = text;
+                        }
+                    }
+                    
                     if (metaEl) metaEl.textContent = role === 'user' ? 'You' : 'Lumina';
                     chatThread.appendChild(msg);
                     chatThread.scrollTop = chatThread.scrollHeight;
+                    return msg;
+                };
+
+                // Create a placeholder AI message for streaming tokens into
+                const addStreamingMessage = () => {
+                    if (!chatThread) return null;
+                    const msg = document.createElement('div');
+                    msg.className = 'ai-response streaming';
+                    msg.style.display = 'none'; // hidden until first token
+                    msg.innerHTML = `
+                        <div class="message-text"></div>
+                        <div class="message-meta">Lumina</div>
+                    `;
+                    chatThread.appendChild(msg);
+                    chatThread.scrollTop = chatThread.scrollHeight;
+                    return msg;
+                };
+
+                const showThinkingIndicator = (text = "Lumina is thinking") => {
+                    const indicator = document.createElement('div');
+                    indicator.className = 'thinking-indicator';
+                    indicator.id = 'thinkingIndicator';
+                    indicator.innerHTML = `
+                        <span>${text}</span>
+                        <div class="thinking-dots">
+                            <div class="thinking-dot"></div>
+                            <div class="thinking-dot"></div>
+                            <div class="thinking-dot"></div>
+                        </div>
+                    `;
+                    chatThread.appendChild(indicator);
+                    chatThread.scrollTop = chatThread.scrollHeight;
+                };
+
+                const hideThinkingIndicator = () => {
+                    const indicator = document.getElementById('thinkingIndicator');
+                    if (indicator) indicator.remove();
                 };
 
                 if (chatForm && chatPrompt) {
@@ -1744,12 +1894,69 @@ class TransitionManager {
                         ev.preventDefault();
                         const text = chatPrompt.value.trim();
                         if (!text) return;
+
+                        // Abort any previous stream
+                        if (activeStreamController) {
+                            activeStreamController.abort();
+                            activeStreamController = null;
+                        }
+
+                        // Add user message
                         addMessage('user', text);
                         chatPrompt.value = '';
                         chatPrompt.style.height = '';
-                        setTimeout(() => {
-                            addMessage('ai', 'Got it. I will analyze the sources and respond with a focused answer.');
-                        }, 600);
+
+                        // Create streaming AI message placeholder
+                        const aiMsg = addStreamingMessage();
+                        const textEl = aiMsg?.querySelector('.message-text');
+                        if (!textEl) return;
+
+                        // Disable send button while streaming
+                        const sendBtn = chatForm.querySelector('.send-button');
+                        if (sendBtn) sendBtn.disabled = true;
+
+                        // Show thinking indicator
+                        showThinkingIndicator("Lumina is thinking...");
+
+                        // Start SSE stream
+                        let fullText = '';
+                        let receivedFirstToken = false;
+                        
+                        activeStreamController = API.chatStream(text, {
+                            onToken(token) {
+                                if (!receivedFirstToken) {
+                                    receivedFirstToken = true;
+                                    hideThinkingIndicator();
+                                    aiMsg.style.display = 'flex';
+                                }
+                                
+                                fullText += token;
+                                textEl.innerHTML = '';
+                                processRichText(textEl, fullText + ' <span class="streaming-cursor"></span>');
+                                
+                                // Auto-scroll
+                                chatThread.scrollTop = chatThread.scrollHeight;
+                            },
+                            onDone() {
+                                hideThinkingIndicator();
+                                aiMsg.style.display = 'flex';
+                                // Final render without cursor
+                                textEl.innerHTML = '';
+                                processRichText(textEl, fullText);
+                                aiMsg.classList.remove('streaming');
+                                activeStreamController = null;
+                                if (sendBtn) sendBtn.disabled = false;
+                            },
+                            onError(err) {
+                                hideThinkingIndicator();
+                                aiMsg.style.display = 'flex';
+                                textEl.insertAdjacentText('beforeend',
+                                    `\n\n⚠️ Error: ${err.message}`);
+                                aiMsg.classList.remove('streaming');
+                                activeStreamController = null;
+                                if (sendBtn) sendBtn.disabled = false;
+                            },
+                        });
                     });
 
                     chatPrompt.addEventListener('keydown', (ev) => {
@@ -1790,4 +1997,17 @@ const transitionManager = new TransitionManager();
 // Initialize when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
     transitionManager.initialize();
+
+    // Gán 1 lần duy nhất lúc khởi tạo app
+    const chatBackBtn = document.querySelector('.chat-back-button');
+    if (chatBackBtn) {
+        // Dùng onclick để đè đứt mọi listener rác (nếu có)
+        chatBackBtn.onclick = (e) => {
+            e.preventDefault(); // Chặn default form submit nếu nút nằm trong form
+            console.log(`[DEBUG] --- BACK BUTTON CLICKED ---`);
+            transitionManager.transitionTo('dashboard');
+        };
+    } else {
+        console.error(`[DEBUG] ERROR: .chat-back-button NOT FOUND during DOMContentLoaded!`);
+    }
 });

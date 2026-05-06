@@ -1444,6 +1444,30 @@ body.is-resizing * {
     flex-direction: column;
     gap: 6px;
     max-width: 80%;
+    padding: 10px 14px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 14px;
+}
+
+.ai-response.streaming {
+    border-color: rgba(6, 182, 212, 0.3);
+    background: rgba(6, 182, 212, 0.02);
+}
+
+.streaming-cursor {
+    display: inline-block;
+    width: 2px;
+    height: 1.2em;
+    background-color: #06B6D4;
+    margin-left: 4px;
+    vertical-align: middle;
+    animation: blink 1s step-end infinite;
+}
+
+@keyframes blink {
+    from, to { opacity: 1; }
+    50% { opacity: 0; }
 }
 
 .message.user {
@@ -1455,6 +1479,7 @@ body.is-resizing * {
     color: #FFFFFF;
     font-size: 18px;
     line-height: 1.4;
+    white-space: pre-wrap; /* Preserve line breaks from LLM */
 }
 
 .message-meta {
@@ -1768,4 +1793,493 @@ body.is-resizing * {
 .tab-panel.hidden { display: none; }
 .color-preview { width: 80px; height: 48px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.15); box-shadow: inset 0 0 10px rgba(255, 255, 255, 0.1), 0 4px 12px rgba(2, 6, 23, 0.5); }
 
+
+
+/* Source Viewer Styles */
+.source-viewer {
+    background: rgba(2, 6, 23, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    flex: 1; /* Grow to fill panel body */
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    margin-bottom: 0;
+}
+
+.viewer-empty {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: rgba(255, 255, 255, 0.4);
+    gap: 12px;
+    padding: 40px 20px;
+}
+
+.viewer-empty .material-icons {
+    font-size: 48px;
+}
+
+.viewer-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.viewer-header {
+    padding: 8px 12px;
+    background: rgba(255, 255, 255, 0.05);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    display: flex;
+    justify-content: space-between;
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.viewer-image-wrap {
+    flex: 1;
+    overflow: auto;
+    padding: 10px;
+    display: flex;
+    justify-content: center;
+    background: #1e293b;
+    min-height: 250px;
+}
+
+.viewer-image-wrap img {
+    max-width: 100%;
+    height: auto;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+    border-radius: 4px;
+}
+
+/* Citation Buttons */
+.citation-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    margin: 0 2px;
+    background: rgba(6, 182, 212, 0.15);
+    border: 1px solid rgba(6, 182, 212, 0.3);
+    border-radius: 6px;
+    color: #06B6D4;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    vertical-align: middle;
+}
+
+.citation-btn:hover {
+    background: rgba(6, 182, 212, 0.3);
+    border-color: #06B6D4;
+    box-shadow: 0 0 10px rgba(6, 182, 212, 0.4);
+}
+
+.citation-btn .material-icons {
+    font-size: 14px;
+}
+
+/* Markdown Support Styles */
+.message-text h1, .message-text h2, .message-text h3 {
+    margin-top: 16px;
+    margin-bottom: 8px;
+}
+
+.message-text p {
+    margin-bottom: 8px;
+}
+
+.message-text strong {
+    color: #06B6D4;
+}
+
+.message-text blockquote {
+    border-left: 4px solid #7C3AED;
+    padding-left: 12px;
+    margin: 8px 0;
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.sources-footer-title {
+    font-weight: 700;
+    color: #06B6D4;
+    margin-top: 12px;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+
+/* Thinking / Loading Animation */
+.thinking-indicator {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 16px;
+    background: rgba(124, 58, 237, 0.1);
+    border: 1px solid rgba(124, 58, 237, 0.2);
+    border-radius: 14px;
+    align-self: flex-start;
+    margin-bottom: 10px;
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 15px;
+    font-weight: 500;
+}
+
+.thinking-dots {
+    display: flex;
+    gap: 4px;
+}
+
+.thinking-dot {
+    width: 6px;
+    height: 6px;
+    background-color: #06B6D4;
+    border-radius: 50%;
+    animation: thinking-bounce 1.4s infinite ease-in-out both;
+}
+
+.thinking-dot:nth-child(1) { animation-delay: -0.32s; }
+.thinking-dot:nth-child(2) { animation-delay: -0.16s; }
+
+@keyframes thinking-bounce {
+    0%, 80%, 100% { transform: scale(0); opacity: 0.3; }
+    40% { transform: scale(1); opacity: 1; }
+}
+
+/* Uploading State Animation */
+.source-type.uploading {
+    color: #06B6D4;
+    font-style: italic;
+    animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+    0% { opacity: 0.6; }
+    50% { opacity: 1; }
+    100% { opacity: 0.6; }
+}
+
+
+/* Enhanced Source Viewer Controls */
+.viewer-controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background: rgba(124, 58, 237, 0.1);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(10px);
+}
+
+.viewer-page-controls, .viewer-zoom-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.viewer-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: rgba(255, 255, 255, 0.05);
+    color: #FFFFFF;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.viewer-btn:hover {
+    background: rgba(124, 58, 237, 0.2);
+    border-color: #06B6D4;
+    color: #06B6D4;
+}
+
+.viewer-btn .material-icons {
+    font-size: 20px;
+}
+
+.viewer-pagenum, .viewer-zoomnum {
+    font-size: 14px;
+    font-weight: 600;
+    color: #06B6D4;
+    min-width: 50px;
+    text-align: center;
+}
+
+.viewer-header-info {
+    padding: 6px 12px;
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.5);
+    text-align: center;
+    background: rgba(0, 0, 0, 0.2);
+}
+
+.viewer-image-wrap {
+    flex: 1;
+    overflow: auto;
+    padding: 20px;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    background: #0f172a;
+    position: relative;
+}
+
+#viewerImage {
+    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    transform-origin: top center;
+    max-width: 100%;
+}
+
+
+/* Ensure viewer image fits container */
+.viewer-image-wrap {
+    overflow: auto;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 0; /* Remove padding to maximize fit */
+    background: #0f172a;
+}
+
+#viewerImage {
+    width: 100%; /* Fit to width by default */
+    height: auto;
+    object-fit: contain;
+    transition: transform 0.2s ease;
+    transform-origin: top center;
+}
+
+
+/* Robust Fit for Source Viewer */
+.viewer-content {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.viewer-image-wrap {
+    flex: 1;
+    overflow: auto;
+    background: #0f172a;
+    display: block; /* Allow normal flow for scaling */
+    text-align: center;
+}
+
+#viewerImage {
+    max-width: 100%;
+    height: auto;
+    display: inline-block;
+    vertical-align: top;
+}
+
+
+/* Improved Viewer Fitting */
+.viewer-image-wrap {
+    display: flex;
+    justify-content: center;
+    align-items: center; /* Center vertically for better inspection */
+    overflow: auto;
+    background: #020617; /* Match theme background */
+    padding: 0; /* Remove padding to maximize space */
+    height: 100%;
+}
+
+#viewerImage {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain; /* Ensure the page fits without cropping */
+    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    transform-origin: center center; /* Zoom from center for better UX */
+    box-shadow: 0 0 30px rgba(0,0,0,0.5);
+    background: white; /* Paper effect */
+}
+
+/* Handled by consolidated styles above */
+
+
+/* Robust Fit-to-Container logic */
+/* Handled by consolidated styles above */
+
+.viewer-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0; /* Important for nested flex scroll */
+}
+
+.viewer-image-wrap {
+    flex: 1;
+    overflow: auto;
+    background: #0f172a;
+    display: block; /* Back to block for proper scrollbars */
+    text-align: center;
+    padding: 15px;
+}
+
+#viewerImage {
+    display: inline-block;
+    max-width: 100%; /* Default fit */
+    height: auto;
+    background: white;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+    transition: transform 0.2s ease;
+    transform-origin: top center;
+}
+
+
+/* Fullscreen Chat Layout Optimization */
+body.chat-active .navbar {
+    display: none !important;
+}
+
+body.chat-active .chat-shell {
+    top: 15px !important; /* Small margin for aesthetics */
+    left: 15px !important;
+    right: 15px !important;
+    bottom: 15px !important;
+}
+
+/* Compact Chat Topbar */
+.chat-topbar {
+    height: 50px !important; /* Reduced from default */
+    padding: 0 15px !important;
+}
+
+.notebook-name-wrap {
+    gap: 8px !important;
+}
+
+.notebook-logo {
+    height: 28px !important;
+    width: 28px !important;
+}
+
+.notebook-name {
+    font-size: 16px !important;
+}
+
+/* Dynamic Source Viewer Container */
+.panel-right {
+    transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.source-viewer {
+    background: rgba(2, 6, 23, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 10px 40px rgba(0,0,0,0.4);
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.viewer-image-wrap {
+    flex: 1;
+    overflow: auto;
+    background: #020617;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+#viewerImage {
+    max-width: 100%;
+    max-height: 100%;
+    width: auto;
+    height: auto;
+    object-fit: contain;
+    transition: transform 0.3s ease;
+}
+
+/* Smart Grid Proportions */
+.chat-active .chat-layout {
+    grid-template-columns: 280px 8px 1fr 8px 350px; /* Account for resizers */
+}
+
+@media (min-width: 1600px) {
+    .chat-active .chat-layout {
+        grid-template-columns: 320px 10px 1fr 10px 450px; /* More space for viewer on large screens */
+    }
+}
+
+
+/* Fullscreen Chat Scene Optimization */
+body.chat-active .navbar {
+    display: none !important;
+}
+
+body.chat-active .chat-shell {
+    top: 10px !important;
+    left: 10px !important;
+    right: 10px !important;
+    bottom: 10px !important;
+    padding: 8px !important;
+    gap: 8px !important;
+}
+
+/* Reduced Topbar Size */
+.chat-topbar {
+    height: 44px !important;
+    padding: 0 10px !important;
+}
+
+.chat-back-button {
+    padding: 4px 12px !important;
+    min-height: 32px !important;
+    font-size: 14px !important;
+}
+
+.chat-title-wrap {
+    font-size: 16px !important;
+}
+
+.chat-title-wrap .material-icons {
+    font-size: 18px !important;
+}
+
+/* Maximize Panel Space */
+.chat-active .chat-layout {
+    gap: 0 !important;
+    grid-template-columns: var(--left-width) var(--resizer-width) 1fr var(--resizer-width) var(--right-width) !important;
+}
+
+.panel-header {
+    height: 38px !important;
+    padding: 0 10px !important;
+}
+
+.panel-title {
+    font-size: 14px !important;
+}
+
+.panel-title .material-icons {
+    font-size: 18px !important;
+}
+
+/* Dynamic Viewer Sizing Support */
+.chat-panel.panel-right {
+    transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    min-width: var(--panel-min);
+}
+
+/* Handled by consolidated styles above */
+
+.viewer-image-wrap {
+    background: #020617;
+}
+
+#viewerImage {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+}
 

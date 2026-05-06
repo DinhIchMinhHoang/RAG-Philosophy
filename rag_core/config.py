@@ -9,8 +9,9 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
-# Load biến môi trường từ file .env (cùng thư mục với config.py)
-_ENV_PATH = Path(__file__).resolve().parent / ".env"
+# Load biến môi trường từ file .env (tìm ở project root)
+_ROOT_DIR = Path(__file__).resolve().parent.parent
+_ENV_PATH = _ROOT_DIR / ".env"
 load_dotenv(dotenv_path=_ENV_PATH)
 
 
