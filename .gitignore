@@ -27,7 +27,8 @@ Thumbs.db
 
 # ===== Data (giữ folder, bỏ file nặng) =====
 data/*.pdf
-
+output/*
+converted/*
 # ===== HuggingFace Model Cache =====
 .cache/
 
