@@ -38,7 +38,7 @@ def _init_embeddings() -> HuggingFaceEmbeddings:
 
     Cấu hình:
       - model_name: Config.EMBEDDING_MODEL_NAME (microsoft/harrier-oss-v1-270m)
-      - device: cuda (chuyển sang 'cuda' nếu có GPU)
+      - device: Config.DEVICE (chuyển sang 'cuda' nếu có GPU)
       - trust_remote_code: True — bắt buộc cho Harrier custom architecture
       - normalize_embeddings: True — chuẩn hóa L2 cho Cosine Similarity chính xác
 
@@ -52,7 +52,7 @@ def _init_embeddings() -> HuggingFaceEmbeddings:
     embeddings = HuggingFaceEmbeddings(
         model_name=Config.EMBEDDING_MODEL_NAME,
         model_kwargs={
-            "device": "cuda",           # Thay bằng 'cuda' nếu có GPU
+            "device": Config.DEVICE,           # Thay bằng 'cuda' nếu có GPU
             "trust_remote_code": True, # Bắt buộc cho Harrier custom architecture
         },
         encode_kwargs={

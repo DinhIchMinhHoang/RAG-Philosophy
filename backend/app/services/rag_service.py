@@ -151,7 +151,7 @@ class RAGService:
             model=RAGConfig.LLM_MODEL,
             temperature=0.2,
             google_api_key=RAGConfig.GEMINI_API_KEY,
-            streaming=True,
+            # streaming=True,  # astream() sẽ tự động bật streaming mode
         )
 
         prompt = ChatPromptTemplate.from_messages([

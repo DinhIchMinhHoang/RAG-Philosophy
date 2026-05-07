@@ -32,6 +32,7 @@ class Config:
 
     # ── Embedding Model ──────────────────────────────────────
     EMBEDDING_MODEL_NAME: str = "microsoft/harrier-oss-v1-270m"
+    DEVICE: str = "cpu"  # Thay bằng 'cuda' nếu có GPU
 
     # ── LLM (Generator) ─────────────────────────────────────
     LLM_MODEL: str = "gemini-3.1-flash-lite-preview"
