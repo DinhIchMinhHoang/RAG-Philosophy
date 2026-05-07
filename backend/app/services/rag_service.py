@@ -37,10 +37,10 @@ _RAG_CORE_DIR = os.path.normpath(_RAG_CORE_DIR)
 if _RAG_CORE_DIR not in sys.path:
     sys.path.insert(0, _RAG_CORE_DIR)
 
-from config import Config as RAGConfig           # rag_core/config.py
-from step1_parser import HybridPDFParser          # rag_core/step1_parser.py
-from step2_chunker import chunk_documents         # rag_core/step2_chunker.py
-from step3_vector_db import build_vector_db       # rag_core/step3_vector_db.py
+from rag_core.config import Config as RAGConfig           # rag_core/config.py
+from rag_core.step1_parser import HybridPDFParser          # rag_core/step1_parser.py
+from rag_core.step2_chunker import chunk_documents         # rag_core/step2_chunker.py
+from rag_core.step3_vector_db import build_vector_db       # rag_core/step3_vector_db.py
 
 # ---------------------------------------------------------------------------
 # System Prompt for the streaming chain (matches step4_generator.py style)
@@ -151,7 +151,7 @@ class RAGService:
             model=RAGConfig.LLM_MODEL,
             temperature=0.2,
             google_api_key=RAGConfig.GEMINI_API_KEY,
-            streaming=True,
+            # streaming=True,  # astream() sẽ tự động bật streaming mode
         )
 
         prompt = ChatPromptTemplate.from_messages([
