@@ -23,17 +23,7 @@ from langchain_core.documents import Document
 from langchain_core.stores import InMemoryStore
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_qdrant import QdrantVectorStore
-try:
-    # LangChain may expose MultiVectorRetriever at different locations depending on version
-    from langchain.retrievers.multi_vector import MultiVectorRetriever
-except Exception:
-    try:
-        from langchain.retrievers import MultiVectorRetriever
-    except Exception:
-        # Provide clear ImportError when unavailable
-        raise ImportError(
-            "MultiVectorRetriever not found in langchain. Install a compatible langchain version."
-        )
+from langchain.retrievers import MultiVectorRetriever
 
 
 from config import Config
@@ -48,7 +38,7 @@ def _init_embeddings() -> HuggingFaceEmbeddings:
 
     Cấu hình:
       - model_name: Config.EMBEDDING_MODEL_NAME (microsoft/harrier-oss-v1-270m)
-      - device: cpu (chuyển sang 'cuda' nếu có GPU)
+      - device: cuda (chuyển sang 'cuda' nếu có GPU)
       - trust_remote_code: True — bắt buộc cho Harrier custom architecture
       - normalize_embeddings: True — chuẩn hóa L2 cho Cosine Similarity chính xác
 
@@ -62,7 +52,7 @@ def _init_embeddings() -> HuggingFaceEmbeddings:
     embeddings = HuggingFaceEmbeddings(
         model_name=Config.EMBEDDING_MODEL_NAME,
         model_kwargs={
-            "device": "cpu",           # Thay bằng 'cuda' nếu có GPU
+            "device": "cuda",           # Thay bằng 'cuda' nếu có GPU
             "trust_remote_code": True, # Bắt buộc cho Harrier custom architecture
         },
         encode_kwargs={
