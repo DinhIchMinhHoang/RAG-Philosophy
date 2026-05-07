@@ -51,7 +51,7 @@ def _init_embeddings() -> HuggingFaceEmbeddings:
     embeddings = HuggingFaceEmbeddings(
         model_name=Config.EMBEDDING_MODEL_NAME,
         model_kwargs={
-            "device": "cpu",           # Thay bằng 'cuda' nếu có GPU
+            "device": "cuda",           # Thay bằng 'cuda' nếu có GPU
             "trust_remote_code": True, # Bắt buộc cho Harrier custom architecture
         },
         encode_kwargs={

@@ -166,16 +166,21 @@ class OllamaOCREngine:
     Sử dụng ChatOllama từ langchain_community với đúng format multimodal.
     """
 
-    _SYSTEM_PROMPT: str = (
-        '''
-        Bạn là một chuyên gia số hóa tài liệu học thuật. Nhiệm vụ của bạn là trích xuất chính xác nội dung từ ảnh sang định dạng Markdown.
-        1. Giữ nguyên cấu trúc phân cấp (Headers #, ##).
-        2. Chuyển đổi bảng biểu sang Markdown table hoàn chỉnh.
-        3. Sử dụng LaTeX: $inline$ cho công thức trong dòng và $$display$$ cho công thức độc lập.
-        4. Tuyệt đối không thêm lời dẫn, không giải thích, không hội thoại dư thừa.
-        '''
+    # ── System Prompt (Phân tách RAG & Chit-chat) ────────────────────────────────
+    SYSTEM_PROMPT = (
+    "Bạn là chuyên gia AI, trợ lý học tập cho sinh viên "
+    "Đại học Công nghệ (UET). Bạn sẽ nhận được các đoạn trích dẫn "
+    "từ giáo trình. Hãy trả lời câu hỏi dựa TRỰC TIẾP trên "
+    "các đoạn văn được cung cấp dưới đây.\n\n"
+    "Quy tắc:\n"
+    "1. Chỉ sử dụng thông tin từ tài liệu được cung cấp.\n"
+    "2. Nếu thông tin không đủ, hãy chỉ ra phần nào thiếu "
+    "thay vì tự ý bổ sung.\n"
+    "3. Luôn đính kèm số trang (VD: [Trang X]) vào cuối "
+    "mỗi ý quan trọng trong câu trả lời.\n\n"
+    "Tài liệu tham khảo:\n"
+    "{context}"
     )
-
     def __init__(self) -> None:
         self._llm: Optional[ChatOllama] = None
 

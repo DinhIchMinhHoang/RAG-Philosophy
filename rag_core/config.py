@@ -31,6 +31,7 @@ class Config:
     # ── API Keys ──────────────────────────────────────────────
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
+    COHERE_API_KEY: str = os.getenv("COHERE_API_KEY", "")
 
     # ── Chunking — Parent Chunks (bảo toàn ngữ cảnh cho LLM) ──
     PARENT_CHUNK_SIZE: int = 2000    # Kích thước tối đa mỗi Parent Chunk
@@ -48,11 +49,15 @@ class Config:
 
     # ── Vector Database (Qdrant) ─────────────────────────────
     QDRANT_COLLECTION: str = "rag_philosophy"
-    TOP_K_RESULTS: int = 3          # Số kết quả trả về khi truy xuất
+    TOP_K_RESULTS: int = 10         # Số child docs cho Dense + BM25 (cấp input cho Reranker)
     EMBEDDING_DIM: int = 640        # Dimension của microsoft/harrier-oss-v1-270m
 
     # ── Hybrid Search ─────────────────────────────────────────
     HYBRID_ALPHA: float = 0.5       # 0.0 = pure BM25, 1.0 = pure Dense
+
+    # ── Cohere Reranker ────────────────────────────────────────
+    COHERE_RERANK_MODEL: str = "rerank-multilingual-v3.0"
+    TOP_K_RERANK: int = 3           # Số docs sau rerank → đưa vào Parent lookup
 
 
     # ── Ollama OCR Engine (Heavy Track) ────────────────────────
@@ -78,6 +83,11 @@ class Config:
         if not cls.GEMINI_API_KEY:
             raise EnvironmentError(
                 "GEMINI_API_KEY chưa được thiết lập. "
+                "Hãy thêm vào file .env hoặc đặt biến môi trường."
+            )
+        if not cls.COHERE_API_KEY:
+            raise EnvironmentError(
+                "COHERE_API_KEY chưa được thiết lập. "
                 "Hãy thêm vào file .env hoặc đặt biến môi trường."
             )
 

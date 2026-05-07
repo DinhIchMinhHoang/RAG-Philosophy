@@ -1,14 +1,19 @@
 """
-step4_generator.py - Hybrid Retrieval (BM25 + Dense Ensemble) & Generation.
+step4_generator.py - Hybrid Retrieval (BM25 + Dense Ensemble + Cohere Rerank) & Generation.
 
-Kiến trúc 2-Stage Hybrid Retrieval:
+Kiến trúc 3-Stage Hybrid Retrieval:
   Stage 1 — EnsembleRetriever (Weighted RRF):
     • Dense Retriever : Qdrant similarity search trên child_docs.
     • BM25 Retriever  : In-memory BM25 trên child_docs (ViTokenizer preprocessor).
     → Trả về Top-K fused CHILD Docs (cùng entity type → RRF hợp lệ).
 
-  Stage 2 — HybridMultiVectorRetriever (Parent-Child Lookup):
-    • Nhận fused child docs từ Stage 1.
+  Stage 2 — ContextualCompressionRetriever (Cohere Rerank):
+    • Nhận Top-K fused child docs từ Stage 1.
+    • CohereRerank re-score → trả về Top-N reranked child docs.
+    → Metadata (doc_id) được bảo toàn nguyên vẹn.
+
+  Stage 3 — HybridMultiVectorRetriever (Parent-Child Lookup):
+    • Nhận reranked child docs từ Stage 2.
     • Map doc_id metadata → InMemoryStore → trả về PARENT Docs.
     → LLM nhận Parent Docs (ngữ cảnh đầy đủ) để trả lời.
 
@@ -32,6 +37,8 @@ from langchain_qdrant import QdrantVectorStore
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain.chains.retrieval import create_retrieval_chain
 from langchain.retrievers import EnsembleRetriever
+from langchain.retrievers import ContextualCompressionRetriever
+from langchain_cohere import CohereRerank
 
 from config import Config
 
@@ -61,11 +68,11 @@ def vi_tokenize_for_bm25(text: str) -> list[str]:
 
 class HybridMultiVectorRetriever(BaseRetriever):
     """
-    Custom retriever kết hợp EnsembleRetriever (Child-level RRF)
+    Custom retriever kết hợp Reranked Retriever (Ensemble + Cohere Rerank)
     với Parent-Child doc_id lookup.
 
     Luồng:
-      1. ensemble_retriever.invoke(query) → Top-K fused child docs.
+      1. base_retriever.invoke(query) → Top-K reranked child docs.
       2. Extract doc_id từ mỗi child doc metadata.
       3. docstore.mget([doc_ids]) → Parent Docs tương ứng.
       4. Trả về Parent Docs (full context) cho LLM.
@@ -73,7 +80,7 @@ class HybridMultiVectorRetriever(BaseRetriever):
     Metadata (source, page, doc_id) được bảo toàn nguyên vẹn trên Parent Docs
     vì chúng được lấy trực tiếp từ InMemoryStore — không qua bất kỳ transform nào.
     """
-    ensemble_retriever: EnsembleRetriever
+    base_retriever: BaseRetriever
     docstore: InMemoryStore
     id_key: str = "doc_id"
 
@@ -87,23 +94,24 @@ class HybridMultiVectorRetriever(BaseRetriever):
         run_manager: CallbackManagerForRetrieverRun,
     ) -> List[Document]:
         """
-        Lấy Parent Documents thông qua 2-stage hybrid retrieval.
+        Lấy Parent Documents thông qua 3-stage hybrid retrieval.
 
         Stage 1: EnsembleRetriever (RRF trên child docs).
-        Stage 2: doc_id → Parent lookup từ InMemoryStore.
+        Stage 2: CohereRerank (re-score + filter).
+        Stage 3: doc_id → Parent lookup từ InMemoryStore.
         """
-        # Stage 1: Ensemble (Dense + BM25) → fused child docs
-        fused_children = self.ensemble_retriever.invoke(query)
+        # Stage 1+2: Ensemble + Rerank → reranked child docs
+        fused_children = self.base_retriever.invoke(query)
 
         if not fused_children:
-            logger.warning("[Step 4] EnsembleRetriever trả về 0 kết quả.")
+            logger.warning("[Step 4] Reranked Retriever trả về 0 kết quả.")
             return []
 
         logger.info(
-            f"[Step 4] EnsembleRetriever → {len(fused_children)} fused child docs"
+            f"[Step 4] Reranked Retriever → {len(fused_children)} reranked child docs"
         )
 
-        # Stage 2: Map doc_id → Parent Docs
+        # Stage 3: Map doc_id → Parent Docs
         doc_ids: list[str] = []
         for child in fused_children:
             doc_id = child.metadata.get(self.id_key)
@@ -220,9 +228,24 @@ def setup_rag_chain(
         f"weights=[Dense={dense_weight}, BM25={bm25_weight}]"
     )
 
+    # ── Cohere Reranker (Contextual Compression) ─────────────────────
+    cohere_reranker = CohereRerank(
+        cohere_api_key=Config.COHERE_API_KEY,
+        model=Config.COHERE_RERANK_MODEL,
+        top_n=Config.TOP_K_RERANK,
+    )
+    reranked_retriever = ContextualCompressionRetriever(
+        base_compressor=cohere_reranker,
+        base_retriever=ensemble_retriever,
+    )
+    logger.info(
+        f"[Step 4] CohereRerank: model={Config.COHERE_RERANK_MODEL}, "
+        f"top_n={Config.TOP_K_RERANK}"
+    )
+
     # ── Hybrid Multi-Vector Retriever (Child → Parent Lookup) ─────────
     hybrid_retriever = HybridMultiVectorRetriever(
-        ensemble_retriever=ensemble_retriever,
+        base_retriever=reranked_retriever,
         docstore=docstore,
         id_key="doc_id",
     )
