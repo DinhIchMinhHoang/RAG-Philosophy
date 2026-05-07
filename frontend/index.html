@@ -4,6 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RAG Philosophy - Lumina</title>
+    <!-- KaTeX for LaTeX rendering -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+
+    <!-- Marked for Markdown rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
     <link rel="stylesheet" href="styles.css">
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
 </head>
@@ -113,6 +121,7 @@
         <div class="form-container">
             <h2 class="form-title">Create Account</h2>
             <form id="signup-form" class="auth-form">
+                <div class="form-error" style="display: none; color: #ff7a7a; font-weight: bold; margin-bottom: 12px; padding: 8px; background: rgba(255,68,68,0.1); border-radius: 4px;"></div>
                 <div class="form-group">
                     <label class="form-label"><span class="material-icons">account_circle</span> User name</label>
                     <input type="text" id="signup-username" class="form-input" placeholder="User name" required>
@@ -120,7 +129,7 @@
                 </div>
                 <div class="form-group">
                     <label class="form-label"><span class="material-icons">alternate_email</span> Email</label>
-                    <input type="text" class="form-input email-input" placeholder="Email" required>
+                    <input type="text" id="signup-email" class="form-input email-input" placeholder="Email" required>
                     <div class="form-field-error" style="display: none; color: #ff7a7a; font-size: 12px; margin-top: 4px;"></div>
                 </div>
                 <div class="form-group">
@@ -146,9 +155,10 @@
         <div class="form-container">
             <h2 class="form-title">Sign In</h2>
             <form id="signin-form" class="auth-form">
+                <div class="form-error" style="display: none; color: #ff7a7a; font-weight: bold; margin-bottom: 12px; padding: 8px; background: rgba(255,68,68,0.1); border-radius: 4px;"></div>
                 <div class="form-group">
                     <label class="form-label"><span class="material-icons">alternate_email</span> Email</label>
-                    <input type="text" class="form-input email-input" placeholder="Email" required>
+                    <input type="text" id="signin-email" class="form-input email-input" placeholder="Email" required>
                     <div class="form-field-error" style="display: none; color: #ff7a7a; font-size: 12px; margin-top: 4px;"></div>
                 </div>
                 <div class="form-group">
@@ -414,8 +424,8 @@
                 <section class="chat-panel panel-right" data-panel="tools">
                     <div class="panel-header">
                         <div class="panel-title">
-                            <span class="material-icons">tune</span>
-                            Tools
+                            <span class="material-icons">preview</span>
+                            Source Viewer
                         </div>
                         <div class="panel-actions">
                             <button class="panel-icon-button panel-toggle" data-collapse="tools" title="Collapse">
@@ -424,37 +434,48 @@
                         </div>
                     </div>
                     <div class="panel-body">
-                        <div class="tool-grid">
-                            <button class="tool-card">
-                                <div class="tool-title">Summarize</div>
-                                <div class="tool-subtitle">Quick overview</div>
-                            </button>
-                            <button class="tool-card">
-                                <div class="tool-title">Outline</div>
-                                <div class="tool-subtitle">Key sections</div>
-                            </button>
-                            <button class="tool-card">
-                                <div class="tool-title">Test</div>
-                                <div class="tool-subtitle">Quiz yourself</div>
-                            </button>
-                            <button class="tool-card">
-                                <div class="tool-title">Mind map</div>
-                                <div class="tool-subtitle">Visual flow</div>
-                            </button>
-                        </div>
-                        <div class="outputs-section">
-                            <div class="outputs-header">
-                                <span class="material-icons">output</span>
-                                <div class="outputs-title">Outputs</div>
+                        <div id="sourceViewer" class="source-viewer">
+                            <div class="viewer-empty">
+                                <span class="material-icons">find_in_page</span>
+                                <p>Click a source or citation to view the page</p>
                             </div>
-                            <div class="outputs-empty">No outputs yet</div>
-                            <div class="outputs-list" role="list"></div>
+                            <div class="viewer-content" style="display: none;">
+                                <div class="viewer-controls">
+                                    <div class="viewer-page-controls">
+                                        <button id="viewerPrevPage" class="viewer-btn" title="Previous Page">
+                                            <span class="material-icons">chevron_left</span>
+                                        </button>
+                                        <span id="viewerPageNum" class="viewer-pagenum">Page 1</span>
+                                        <button id="viewerNextPage" class="viewer-btn" title="Next Page">
+                                            <span class="material-icons">chevron_right</span>
+                                        </button>
+                                    </div>
+                                    <div class="viewer-zoom-controls">
+                                        <button id="viewerZoomOut" class="viewer-btn" title="Zoom Out">
+                                            <span class="material-icons">remove</span>
+                                        </button>
+                                        <span id="viewerZoomLevel" class="viewer-zoomnum">100%</span>
+                                        <button id="viewerZoomIn" class="viewer-btn" title="Zoom In">
+                                            <span class="material-icons">add</span>
+                                        </button>
+                                        <button id="viewerZoomReset" class="viewer-btn" title="Reset Zoom">
+                                            <span class="material-icons">restart_alt</span>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="viewer-header-info">
+                                    <span id="viewerFileName" class="viewer-filename">filename.pdf</span>
+                                </div>
+                                <div class="viewer-image-wrap">
+                                    <img id="viewerImage" src="" alt="Page Preview">
+                                </div>
+                            </div>
                         </div>
                     </div>
                     <div class="panel-rail">
-                        <button class="panel-rail-button" data-expand="tools" title="Expand tools">
-                            <span class="material-icons">tune</span>
-                            <span class="rail-label">Tools</span>
+                        <button class="panel-rail-button" data-expand="tools" title="Expand viewer">
+                            <span class="material-icons">preview</span>
+                            <span class="rail-label">Source Viewer</span>
                             <span class="material-icons">chevron_left</span>
                         </button>
                     </div>
@@ -506,6 +527,6 @@
     <script src="api.js"></script>
     <script src="transitions.js"></script>
     <script src="script.js"></script>
-    <script src="api.js"></script>
+
 </body>
 </html>
