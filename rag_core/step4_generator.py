@@ -215,6 +215,9 @@ def setup_rag_chain(
         f"top_k={Config.TOP_K_RESULTS}, preprocessor=ViTokenizer"
     )
 
+    # ── Retrieve Feature Flags ────────────────────────────────────────
+    from config import FeatureFlags
+    
     # ── Ensemble Retriever (Weighted RRF) ─────────────────────────────
     dense_weight = Config.HYBRID_ALPHA
     bm25_weight = 1.0 - Config.HYBRID_ALPHA
@@ -228,24 +231,38 @@ def setup_rag_chain(
         f"weights=[Dense={dense_weight}, BM25={bm25_weight}]"
     )
 
-    # ── Cohere Reranker (Contextual Compression) ─────────────────────
-    cohere_reranker = CohereRerank(
-        cohere_api_key=Config.COHERE_API_KEY,
-        model=Config.COHERE_RERANK_MODEL,
-        top_n=Config.TOP_K_RERANK,
-    )
-    reranked_retriever = ContextualCompressionRetriever(
-        base_compressor=cohere_reranker,
-        base_retriever=ensemble_retriever,
-    )
-    logger.info(
-        f"[Step 4] CohereRerank: model={Config.COHERE_RERANK_MODEL}, "
-        f"top_n={Config.TOP_K_RERANK}"
-    )
+    if FeatureFlags.USE_RERANKER:
+        if Config.COHERE_API_KEY:
+            # ── Priority 1: Cohere Reranker ──────────────────────────────────
+            from langchain_cohere import CohereRerank
+            compressor = CohereRerank(
+                cohere_api_key=Config.COHERE_API_KEY,
+                model=Config.COHERE_RERANK_MODEL,
+                top_n=Config.TOP_K_RERANK,
+            )
+            logger.info(
+                f"[Step 4] CohereRerank initialized: model={Config.COHERE_RERANK_MODEL}, "
+                f"top_n={Config.TOP_K_RERANK}"
+            )
+        else:
+            # ── Priority 2: Flashrank Reranker (Fallback) ────────────────────
+            from langchain.retrievers.document_compressors import FlashrankRerank
+            compressor = FlashrankRerank(top_n=Config.TOP_K_RERANK)
+            logger.info(
+                f"[Step 4] FlashrankRerank initialized as fallback with top_n={Config.TOP_K_RERANK}"
+            )
+        
+        final_retriever = ContextualCompressionRetriever(
+            base_compressor=compressor,
+            base_retriever=ensemble_retriever,
+        )
+    else:
+        logger.info("[Step 4] Reranker is disabled via FeatureFlags. Using EnsembleRetriever directly.")
+        final_retriever = ensemble_retriever
 
     # ── Hybrid Multi-Vector Retriever (Child → Parent Lookup) ─────────
     hybrid_retriever = HybridMultiVectorRetriever(
-        base_retriever=reranked_retriever,
+        base_retriever=final_retriever,
         docstore=docstore,
         id_key="doc_id",
     )

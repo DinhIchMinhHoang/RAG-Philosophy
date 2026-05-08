@@ -45,7 +45,7 @@ class Config:
     EMBEDDING_MODEL_NAME: str = "microsoft/harrier-oss-v1-270m"
 
     # ── LLM (Generator) ─────────────────────────────────────
-    LLM_MODEL: str = "gemini-3.1-flash-lite-preview"
+    LLM_MODEL: str = "gemini-3.1-flash"
 
     # ── Vector Database (Qdrant) ─────────────────────────────
     QDRANT_COLLECTION: str = "rag_philosophy"
@@ -106,3 +106,24 @@ class Config:
             f")"
         )
 
+
+class EvaluationConfig(Config):
+    """Configuration for the RAGAS evaluation pipeline."""
+
+    # ── Evaluation LLM (deterministic judging) ────────────────
+    EVAL_LLM_MODEL: str = "gemini-3.1-flash-lite-preview"
+
+    # ── Evaluation Embedding Model ────────────────────────────
+    EVAL_EMBEDDING_MODEL: str = "microsoft/harrier-oss-v1-270m"
+
+    # ── Dataset & Report Paths ────────────────────────────────
+    _EVAL_ROOT: Path = Path(__file__).resolve().parent
+
+    EVAL_DATASET_PATH: str = str(_EVAL_ROOT / "golden_dataset.json")
+    EVAL_REPORT_PATH: str = str(_EVAL_ROOT / "ragas_report.csv")
+
+
+class FeatureFlags:
+    """Feature Flags for pipeline toggles."""
+    USE_RERANKER: bool = os.getenv("USE_RERANKER", "True").lower() in ("true", "1", "yes")
+    RUN_RAGAS_EVAL: bool = os.getenv("RUN_RAGAS_EVAL", "False").lower() in ("true", "1", "yes")

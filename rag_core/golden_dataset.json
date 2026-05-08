@@ -1,0 +1,26 @@
+[
+  {
+    "user_input": "Trình bày vấn đề cơ bản của triết học và các mặt của vấn đề này.",
+    "reference": "Theo Ăngghen, vấn đề cơ bản lớn của mọi triết học là vấn đề quan hệ giữa tư duy với tồn tại. Vấn đề này có hai mặt: Mặt thứ nhất trả lời câu hỏi giữa ý thức và vật chất thì cái nào có trước, cái nào có sau, cái nào quyết định cái nào; Mặt thứ hai trả lời câu hỏi con người có khả năng nhận thức được thế giới hay không."
+  },
+  {
+    "user_input": "Phật giáo giải thích nguyên nhân đau khổ và con đường giải thoát như thế nào qua thuyết Tứ diệu đế?",
+    "reference": "Thuyết Tứ diệu đế gồm 4 chân lý: Khổ đế (cuộc sống là khổ với 8 nỗi khổ); Tập đế (nguyên nhân của đau khổ là do thập nhị nhân duyên, bắt đầu từ vô minh); Diệt đế (mọi nỗi khổ có thể tiêu diệt để đạt tới trạng thái Niết bàn); và Đạo đế (con đường tu đạo tiêu diệt khổ bằng Bát chính đạo, có thể thâu tóm vào Giới - Định - Tuệ)."
+  },
+  {
+    "user_input": "Phân tích sự đối lập giữa phương pháp siêu hình và phương pháp biện chứng.",
+    "reference": "Phương pháp siêu hình nhận thức đối tượng ở trạng thái cô lập, tách rời và tĩnh tại; nếu có biến đổi thì chỉ là biến đổi về số lượng và nguyên nhân nằm ở bên ngoài đối tượng. Ngược lại, phương pháp biện chứng nhận thức đối tượng trong các mối liên hệ ràng buộc, ảnh hưởng lẫn nhau, ở trạng thái vận động biến đổi không ngừng do đấu tranh của các mặt đối lập để giải quyết mâu thuẫn nội tại."
+  },
+  {
+    "user_input": "Nguồn gốc lý luận trực tiếp cho sự ra đời của triết học Mác là gì?",
+    "reference": "Triết học cổ điển Đức là nguồn gốc lý luận trực tiếp của triết học Mác, đặc biệt là triết học của Hêghen và Phoiơbắc. C.Mác và Ph.Ăngghen đã kế thừa hạt nhân hợp lý trong phép biện chứng duy tâm của Hêghen bằng cách lột bỏ vỏ thần bí, đồng thời dựa vào truyền thống duy vật của Phoiơbắc để khắc phục tính siêu hình, từ đó xây dựng nên phép biện chứng duy vật."
+  },
+  {
+    "user_input": "Những phát minh khoa học tự nhiên nào trong thế kỷ XIX đã làm tiền đề cho sự ra đời của triết học Mác?",
+    "reference": "Ba phát minh lớn của khoa học tự nhiên làm tiền đề cho sự hình thành triết học duy vật biện chứng bao gồm: định luật bảo toàn và chuyển hóa năng lượng, thuyết tế bào và thuyết tiến hóa của Đácuyn. Những phát minh này vạch ra mối liên hệ thống nhất giữa các dạng tồn tại và tính biện chứng của sự vận động, phá bỏ ranh giới giả tạo do tôn giáo và chủ nghĩa duy tâm tạo ra."
+  },
+  {
+    "user_input": "Sự tha hóa của lao động dưới chủ nghĩa tư bản được C.Mác thể hiện như thế nào trong Bản thảo kinh tế - triết học năm 1844?",
+    "reference": "Sự tha hóa của lao động gắn liền với sở hữu tư nhân và phát triển cao độ trong chủ nghĩa tư bản. Nó thể hiện ở sức lao động bị biến thành hàng hóa, tha hóa ở quá trình hoạt động sản xuất và sản phẩm của lao động, từ đó dẫn tới sự tha hóa của con người khỏi con người. Việc giải phóng người công nhân bằng cách xóa bỏ chế độ sở hữu tư sản chính là khắc phục sự tha hóa này."
+  }
+]

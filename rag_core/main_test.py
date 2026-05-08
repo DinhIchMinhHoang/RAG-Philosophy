@@ -10,11 +10,40 @@ Cách dùng:
     # Xử lý tất cả PDF trong data/raw/ (mặc định):
     python main_test.py
 """
-
 import os
 import sys
+import ssl
+
+# ── 🚨 THIẾT QUÂN LUẬT: KHÓA CHẶT MỌI KẾT NỐI MẠNG GÂY CRASH 🚨 ──
+# 1. Ép HuggingFace Hub bỏ qua xác thực SSL
+os.environ["HF_HUB_DISABLE_SSL_VERIFICATION"] = "1"
+
+# 2. Vá trực tiếp urllib3 (Kẻ gây ra lỗi dòng 500)
+try:
+    import urllib3.util.ssl_
+    urllib3.util.ssl_.create_urllib3_context = lambda *args, **kwargs: ssl._create_unverified_context()
+except Exception:
+    pass
+
+# 3. Vá thư viện ssl gốc (Dự phòng)
+try:
+    ssl._create_default_https_context = ssl._create_unverified_context
+    ssl.create_default_context = ssl._create_unverified_context
+except Exception:
+    pass
+
+# ── Cấu hình môi trường C++ (Chống xung đột Arrow/OpenMP) ──
+os.environ["ARROW_MIMALLOC"] = "0"
+os.environ["ARROW_USER_SIMD_LEVEL"] = "NONE"
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
+
+import faulthandler
+faulthandler.enable()
+# ───────────────────────────────────────────────────────────────
+
 import glob
 import logging
+
 
 logging.basicConfig(
     level=logging.INFO,
@@ -145,6 +174,38 @@ def chat_loop(rag_chain):
                         seen.add(key)
                         filename = os.path.basename(src["source"])
                         print(f"   - {filename}, Trang {src['page']}")
+
+            from config import FeatureFlags
+            if FeatureFlags.RUN_RAGAS_EVAL:
+                from step5_evaluator import run_ragas_evaluation
+                print(f"\n📊 Đang chạy RAGAS evaluation cho câu trả lời...")
+                
+                # Context Mapping: Extract actual page_content from retrieved documents
+                retrieved_contexts = [doc.page_content for doc in result.get("context", [])]
+                
+                # Format the output for reference-free evaluation
+                eval_sample = {
+                    "user_input": question,
+                    "response": result["answer"],
+                    "retrieved_contexts": retrieved_contexts,
+                    "reference": None  # Live Chat mode: không có reference
+                }
+                
+                try:
+                    # Chạy evaluation với cấu hình metrics mặc định (Faithfulness + AnswerRelevancy)
+                    # Ví dụ cấu hình custom:
+                    #   run_ragas_evaluation([eval_sample], 
+                    #       is_live_chat=True,
+                    #       use_faithfulness=True,
+                    #       use_answer_relevancy=True,
+                    #       use_answer_correctness=False,
+                    #       use_context_recall=False)
+                    run_ragas_evaluation([eval_sample], is_live_chat=True)
+                    from config import EvaluationConfig
+                    print(f"✅ RAGAS evaluation đã hoàn tất. Xem báo cáo tại: {EvaluationConfig.EVAL_REPORT_PATH}")
+                except Exception as eval_e:
+                    logger.error(f"❌ Lỗi khi chạy evaluation: {eval_e}")
+                    print(f"⚠️ Không thể chạy evaluation: {eval_e}")
 
         except Exception as e:
             logger.error(f"❌ Lỗi khi xử lý câu hỏi: {e}")
