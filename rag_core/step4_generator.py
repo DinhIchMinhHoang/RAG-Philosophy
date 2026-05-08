@@ -24,8 +24,8 @@ SYSTEM_PROMPT = (
     "1. Chỉ sử dụng thông tin từ tài liệu được cung cấp.\n"
     "2. Nếu thông tin không đủ, hãy chỉ ra phần nào thiếu "
     "thay vì tự ý bổ sung.\n"
-    "3. Luôn đính kèm số trang (VD: [Trang X]) vào cuối "
-    "mỗi ý quan trọng trong câu trả lời.\n\n"
+    # "3. Luôn đính kèm số trang (VD: [Trang X]) vào cuối "
+    # "mỗi ý quan trọng trong câu trả lời.\n\n"
     "Tài liệu tham khảo:\n"
     "{context}"
 )

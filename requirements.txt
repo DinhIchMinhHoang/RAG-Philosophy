@@ -17,6 +17,10 @@ pillow==12.2.0
 # === 3. Vector Database & Storage ===
 qdrant-client==1.14.2
 
+# === 4. Evaluation ===
+ragas==0.1.19
+pandas==2.2.2
+
 # === 5. Machine Learning & Embedding (CPU/GPU) ===
 transformers==4.57.6
 tree-sitter==0.25.2
