@@ -15,8 +15,8 @@ import os
 import sys
 import logging
 
-from rag_core.common.logging_utils import configure_logging, get_logger
-from rag_core.pipeline import build_pipeline, query
+from common.logging_utils import configure_logging, get_logger
+from pipeline import build_pipeline, query
 
 configure_logging()
 logger = get_logger(__name__)

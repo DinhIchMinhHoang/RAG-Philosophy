@@ -3,6 +3,13 @@
 ## Current State
 The local RAG pipeline is fully implemented and functional. Recent improvements have enhanced the PDF parsing engine (handling Vietnamese text, math, and tables), refined markdown sanitization, and migrated to a high-performance Parent-Child retrieval architecture. The system successfully processes complex academic documents through a highly modular and configurable pipeline defined centrally in `config.py`.
 
+A pipeline refactor was completed (approach 3: full orchestration layer):
+- Added `rag_core/common/` with shared utilities: logging (`configure_logging`, `get_logger`), PDF discovery (`normalize_pdf_path`, `collect_pdf_paths`), and embeddings (`build_embeddings`)
+- Added `rag_core/pipeline.py` with `PipelineArtifacts` dataclass, `ingest()`, `build_pipeline()`, and `query()` functions
+- Refactored step1–step4 to use shared logging (eliminated duplicate `logging.basicConfig` calls)
+- Refactored `main_test.py` and `ragas_eval.py` to use the pipeline orchestrator
+- Added 4 unit test files with 9 tests, all passing
+
 ## Technical Pipeline Specs
 * **Step 1: Parser (`step1_parser.py`)**: Implements a Hybrid Two-Pass Concurrent Parser.
     * Uses `fitz` (PyMuPDF) to evaluate page complexity.

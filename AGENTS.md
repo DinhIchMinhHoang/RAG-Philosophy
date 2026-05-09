@@ -12,7 +12,26 @@ This document helps OpenCode understand your project's structure, conventions, a
 
 ### File Structure
 ```
-rag_core/        # RAG pipeline steps + config
+config.py                 # Stub config (main config is rag_core/config.py)
+rag_core/
+│   ├── config.py          # Central configuration
+│   ├── pipeline.py        # Pipeline orchestrator (ingest, build_pipeline, query)
+│   ├── common/            # Shared utilities
+│   │   ├── __init__.py
+│   │   ├── logging_utils.py  # configure_logging(), get_logger()
+│   │   ├── pdf_utils.py      # normalize_pdf_path(), collect_pdf_paths()
+│   │   └── embeddings.py    # build_embeddings()
+│   ├── step1_parser.py       # Hybrid Two-Pass Parser
+│   ├── step2_chunker.py      # Parent-Child Text Splitter
+│   ├── step3_vector_db.py    # Embedding + Qdrant storage
+│   ├── step4_generator.py    # Retrieval + LLM Chain
+│   ├── main_test.py          # Interactive pipeline test
+│   ├── ragas_eval.py         # RAGAS evaluation script
+│   └── tests/                # Unit tests
+│       ├── test_logging_utils.py
+│       ├── test_pdf_utils.py
+│       ├── test_embeddings.py
+│       └── test_pipeline.py
 backend/app/     # FastAPI app (routers, services, auth)
 frontend/        # Static HTML/CSS/JS client
 data/            # PDFs and stores (raw/processed/stores)
@@ -37,7 +56,8 @@ memory-bank/     # Project context + decisions
 ## Development Guidelines
 
 ### Testing
-- No formal test suite in repo; use `rag_core/main_test.py` for pipeline smoke tests
+- 4 unit test files in `rag_core/tests/`: `test_logging_utils`, `test_pdf_utils`, `test_embeddings`, `test_pipeline` (9 tests, all passing)
+- Use `rag_core/main_test.py` for pipeline smoke tests
 - For backend, do manual API checks on `/documents/upload` and `/chat/stream`
 
 ### Error Handling
@@ -58,7 +78,8 @@ memory-bank/     # Project context + decisions
 ### Do's
 - Read `memory-bank/rag_project/activeContext.md` and `memory-bank/rag_project/productContext.md` at the start of new tasks
 - Use `rag_core/config.py` for all parameters (no hardcoding in step modules)
-- Keep step files single-responsibility (step1–step4)
+- Keep step files single-responsibility (step1–step4); push shared logic to `rag_core/common/`
+- Add `rag_core/common/` and `rag_core/pipeline.py` to scope when modifying pipeline utilities
 - Preserve metadata keys: `source`, `page`, `doc_id`
 - Keep prompts strict and citations required
 - Keep SSE format stable in `/chat/stream`
@@ -122,6 +143,9 @@ uvicorn backend.app.main:app --reload
 
 # RAGAS eval (reuse cached records)
 python rag_core/ragas_eval.py --dataset data/dataset.json --out data/result.csv --records-in data/ragas_records.json
+
+# Unit tests
+cd rag_core/tests && python -m unittest test_logging_utils test_pdf_utils test_embeddings test_pipeline -v
 ```
 
 ## Contact & Support

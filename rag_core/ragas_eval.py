@@ -22,11 +22,11 @@ from ragas.run_config import RunConfig
 from ragas import evaluate
 from ragas.metrics import faithfulness, answer_relevancy, context_precision, context_recall
 
-from rag_core.config import Config
-from rag_core.common.logging_utils import configure_logging, get_logger
-from rag_core.common.embeddings import build_embeddings
-from rag_core.pipeline import ingest
-from rag_core.step4_generator import SYSTEM_PROMPT
+from config import Config
+from common.logging_utils import configure_logging, get_logger
+from common.embeddings import build_embeddings
+from pipeline import ingest
+from step4_generator import SYSTEM_PROMPT
 
 configure_logging()
 logger = get_logger(__name__)

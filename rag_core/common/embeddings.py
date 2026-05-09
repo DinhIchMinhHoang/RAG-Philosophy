@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from langchain_huggingface import HuggingFaceEmbeddings
 
-from rag_core.config import Config
+from config import Config
 
 
 def build_embeddings() -> HuggingFaceEmbeddings:

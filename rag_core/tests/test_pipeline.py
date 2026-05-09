@@ -1,15 +1,17 @@
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import unittest
 from unittest.mock import patch, MagicMock
 from langchain_core.documents import Document
 
-from rag_core.pipeline import PipelineArtifacts, ingest, build_pipeline
+from pipeline import PipelineArtifacts, ingest, build_pipeline
 
 
 class TestPipeline(unittest.TestCase):
-    @patch("rag_core.pipeline.build_vector_db")
-    @patch("rag_core.pipeline.chunk_documents")
-    @patch("rag_core.pipeline.HybridPDFParser")
-    @patch("rag_core.common.pdf_utils.collect_pdf_paths")
+    @patch("pipeline.build_vector_db")
+    @patch("pipeline.chunk_documents")
+    @patch("pipeline.HybridPDFParser")
+    @patch("common.pdf_utils.collect_pdf_paths")
     def test_ingest_builds_retriever(
         self,
         mock_collect,
@@ -38,8 +40,8 @@ class TestPipeline(unittest.TestCase):
         self.assertEqual(artifacts.retriever, "retriever")
         self.assertEqual(artifacts.pdf_paths, ["C:/tmp/a.pdf"])
 
-    @patch("rag_core.pipeline.setup_rag_chain")
-    @patch("rag_core.pipeline.ingest")
+    @patch("pipeline.setup_rag_chain")
+    @patch("pipeline.ingest")
     def test_build_pipeline_returns_chain(self, mock_ingest, mock_setup) -> None:
         mock_ingest.return_value = PipelineArtifacts(
             retriever="retriever",

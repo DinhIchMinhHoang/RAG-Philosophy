@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from typing import List, Optional
 
-from rag_core.config import Config
+from config import Config
 
 
 def normalize_pdf_path(path: str) -> str:

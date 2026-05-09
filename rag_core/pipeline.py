@@ -5,13 +5,13 @@ from typing import List, Optional
 
 from langchain_core.documents import Document
 
-from rag_core.config import Config
-from rag_core.common.logging_utils import configure_logging, get_logger
-from rag_core.common import pdf_utils
-from rag_core.step1_parser import HybridPDFParser
-from rag_core.step2_chunker import chunk_documents
-from rag_core.step3_vector_db import build_vector_db
-from rag_core.step4_generator import setup_rag_chain, ask
+from config import Config
+from common.logging_utils import configure_logging, get_logger
+from common import pdf_utils
+from step1_parser import HybridPDFParser
+from step2_chunker import chunk_documents
+from step3_vector_db import build_vector_db
+from step4_generator import setup_rag_chain, ask
 
 
 logger = get_logger(__name__)
@@ -65,7 +65,7 @@ def query(rag_chain, question: str) -> dict:
     return ask(rag_chain, question)
 
 
-# Re-exports for test mocking: tests patch rag_core.pipeline.xxx names
+# Re-exports for test mocking: tests patch pipeline.xxx names
 build_vector_db = build_vector_db
 chunk_documents = chunk_documents
 setup_rag_chain = setup_rag_chain

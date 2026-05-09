@@ -27,9 +27,9 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_qdrant import QdrantVectorStore
 from langchain.retrievers import MultiVectorRetriever
 
-from rag_core.common.logging_utils import configure_logging, get_logger
-from rag_core.common.embeddings import build_embeddings as build_embeddings_from_common
-from rag_core.config import Config
+from common.logging_utils import configure_logging, get_logger
+from common.embeddings import build_embeddings as build_embeddings_from_common
+from config import Config
 
 configure_logging()
 logger = get_logger(__name__)
