@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import base64
 import io
-import logging
 import os
 import re
 import time
@@ -25,20 +24,17 @@ from typing import List, Optional
 
 from PIL import Image
 
-import fitz                              # PyMuPDF
+import fitz
 import pymupdf4llm
 from langchain_community.chat_models import ChatOllama
 from langchain_core.documents import Document
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from config import Config
+from rag_core.common.logging_utils import configure_logging, get_logger
+from rag_core.config import Config
 
-# ── Logging ──────────────────────────────────────────────────────────
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-)
-logger = logging.getLogger(__name__)
+configure_logging()
+logger = get_logger(__name__)
 
 
 # =====================================================================

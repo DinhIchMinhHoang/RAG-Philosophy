@@ -16,6 +16,8 @@ Metadata BẢO TỒN:
   Mỗi Document trả về bởi retriever có đầy đủ {'source': str, 'page': int}.
 """
 
+from __future__ import annotations
+
 import logging
 from typing import List
 
@@ -25,11 +27,12 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_qdrant import QdrantVectorStore
 from langchain.retrievers import MultiVectorRetriever
 
+from rag_core.common.logging_utils import configure_logging, get_logger
+from rag_core.common.embeddings import build_embeddings as build_embeddings_from_common
+from rag_core.config import Config
 
-from config import Config
-
-# ── Logger ────────────────────────────────────────────────────────────────────
-logger = logging.getLogger(__name__)
+configure_logging()
+logger = get_logger(__name__)
 
 
 def _init_embeddings() -> HuggingFaceEmbeddings:
@@ -48,18 +51,7 @@ def _init_embeddings() -> HuggingFaceEmbeddings:
     logger.info(
         f"[Step 3] Đang tải embedding model: {Config.EMBEDDING_MODEL_NAME}"
     )
-
-    embeddings = HuggingFaceEmbeddings(
-        model_name=Config.EMBEDDING_MODEL_NAME,
-        model_kwargs={
-            "device": Config.DEVICE,           # Thay bằng 'cuda' nếu có GPU
-            "trust_remote_code": True, # Bắt buộc cho Harrier custom architecture
-        },
-        encode_kwargs={
-            "normalize_embeddings": True,
-        },
-    )
-
+    embeddings = build_embeddings_from_common()
     logger.info(
         f"[Step 3] ✅ Embedding model '{Config.EMBEDDING_MODEL_NAME}' đã tải thành công"
     )
