@@ -14,6 +14,7 @@ Cách dùng:
 import os
 import sys
 import logging
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 from common.logging_utils import configure_logging, get_logger
 from pipeline import build_pipeline, query
