@@ -34,3 +34,6 @@ converted/*
 
 # ===== Test files =====
 test_step1_step2.py
+
+# ===== Worktrees =====
+.worktrees/
