@@ -5,14 +5,19 @@ Sử dụng ChatGoogleGenerativeAI (Gemini) kết hợp với retriever
 để tạo RAG chain trả lời câu hỏi kèm citations.
 """
 
+from __future__ import annotations
+
 import logging
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain.chains.retrieval import create_retrieval_chain
+
+from common.logging_utils import configure_logging, get_logger
 from config import Config
 
-logger = logging.getLogger(__name__)
+configure_logging()
+logger = get_logger(__name__)
 
 # ── System Prompt ─────────────────────────────────────────────
 SYSTEM_PROMPT = (
@@ -24,8 +29,8 @@ SYSTEM_PROMPT = (
     "1. Chỉ sử dụng thông tin từ tài liệu được cung cấp.\n"
     "2. Nếu thông tin không đủ, hãy chỉ ra phần nào thiếu "
     "thay vì tự ý bổ sung.\n"
-    "3. Luôn đính kèm số trang (VD: [Trang X]) vào cuối "
-    "mỗi ý quan trọng trong câu trả lời.\n\n"
+    # "3. Luôn đính kèm số trang (VD: [Trang X]) vào cuối "
+    # "mỗi ý quan trọng trong câu trả lời.\n\n"
     "Tài liệu tham khảo:\n"
     "{context}"
 )

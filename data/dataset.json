@@ -1,0 +1,62 @@
+[
+    {
+        "question": "Kiến trúc mô hình Transformer được giới thiệu trong bài báo nào và nó có điểm gì đặc biệt so với các mô hình trước đó?",
+        "ground_truth": "Mô hình Transformer được giới thiệu trong bài báo 'Attention Is All You Need'[cite: 4]. Điểm đặc biệt của nó là loại bỏ hoàn toàn các lớp mạng nơ-ron hồi quy (RNN) và tích chập (CNN), thay vào đó dựa hoàn toàn vào cơ chế chú ý (attention mechanisms), cụ thể là multi-headed self-attention[cite: 4]. Điều này giúp mô hình dễ dàng tính toán song song hơn và giảm đáng kể thời gian huấn luyện[cite: 4]."
+    },
+    {
+        "question": "Điểm BLEU mà mô hình LSTM đạt được trên tác vụ dịch thuật từ tiếng Anh sang tiếng Pháp (tập dữ liệu WMT' 14) là bao nhiêu khi dịch trực tiếp?",
+        "ground_truth": "Khi dịch trực tiếp từ tiếng Anh sang tiếng Pháp trên tập dữ liệu WMT' 14, bản dịch do mô hình LSTM tạo ra đạt được điểm BLEU là 34.81 (sử dụng một tập hợp (ensemble) gồm 5 LSTMs sâu)[cite: 3]."
+    },
+    {
+        "question": "BLEU score sẽ tăng lên bao nhiêu khi sử dụng LSTM để đánh giá lại (rerank) danh sách 1000-best list từ hệ thống SMT?",
+        "ground_truth": "Khi sử dụng LSTM để đánh giá lại (rescore/rerank) 1000 giả thuyết (hypotheses) do hệ thống phrase-based SMT tạo ra, điểm BLEU của nó tăng lên 36.5[cite: 3]."
+    },
+    {
+        "question": "Việc đảo ngược câu đầu vào (reversing input sentences) ảnh hưởng như thế nào đến perplexity và BLEU score trong bài thử nghiệm Sequence to Sequence?",
+        "ground_truth": "Khi đảo ngược câu đầu vào, perplexity trên tập kiểm tra của LSTM giảm từ 5.8 xuống 4.7, và điểm test BLEU của các bản dịch do nó giải mã tăng từ 25.9 lên 30.6[cite: 3]."
+    },
+    {
+        "question": "Mô hình LSTM trong bài báo 'Sequence to Sequence Learning with Neural Networks' sử dụng bao nhiêu layer và mỗi layer có bao nhiêu cell?",
+        "ground_truth": "Mô hình sử dụng các LSTM sâu với 4 lớp (layers), mỗi lớp có 1000 ô (cells)[cite: 3]."
+    },
+    {
+        "question": "Kích thước từ vựng (vocabulary size) cho ngôn ngữ nguồn và ngôn ngữ đích trong thử nghiệm WMT'14 của mô hình Sequence to Sequence là bao nhiêu?",
+        "ground_truth": "Mô hình sử dụng 160.000 từ phổ biến nhất cho ngôn ngữ nguồn (đầu vào) và 80.000 từ phổ biến nhất cho ngôn ngữ đích (đầu ra)[cite: 3]."
+    },
+    {
+        "question": "Mô hình LSTM sâu (deep LSTM) của nhóm tác giả Sutskever có tổng cộng bao nhiêu tham số?",
+        "ground_truth": "Mô hình LSTM sâu này có 384 triệu tham số (384M parameters), trong đó 64 triệu là các kết nối hồi quy thuần túy (pure recurrent connections)[cite: 3]."
+    },
+    {
+        "question": "Nhóm tác giả xử lý vấn đề bùng nổ gradient (exploding gradients) trong quá trình huấn luyện mạng LSTM như thế nào?",
+        "ground_truth": "Họ áp dụng một ràng buộc cứng (hard constraint) lên chuẩn (norm) của gradient bằng cách chia tỷ lệ (scaling) nó khi chuẩn này vượt quá một ngưỡng nhất định[cite: 3]. Cụ thể, nếu chuẩn của gradient vượt quá 5, nó sẽ được thu nhỏ lại[cite: 3]."
+    },
+    {
+        "question": "Thuật toán nào được sử dụng để tìm bản dịch có khả năng xảy ra cao nhất từ mô hình LSTM sau khi huấn luyện?",
+        "ground_truth": "Hệ thống tìm kiếm bản dịch có khả năng nhất bằng cách sử dụng một bộ giải mã tìm kiếm chùm (beam search decoder) đơn giản từ trái sang phải[cite: 3]."
+    },
+    {
+        "question": "Tại sao độ phức tạp tính toán mỗi layer của Self-Attention lại nhanh hơn Recurrent layer trong đa số các tác vụ dịch máy hiện đại?",
+        "ground_truth": "Các lớp Self-attention có độ phức tạp là $O(n^2 \\cdot d)$ và nhanh hơn các lớp hồi quy có độ phức tạp $O(n \\cdot d^2)$ khi độ dài chuỗi $n$ nhỏ hơn số chiều biểu diễn $d$[cite: 4]. Điều này thường xảy ra với các biểu diễn câu được sử dụng bởi các mô hình tiên tiến trong dịch máy, chẳng hạn như word-piece hay byte-pair[cite: 4]."
+    },
+    {
+        "question": "Mô hình Transformer sử dụng thuật toán tối ưu hóa (optimizer) nào và với các tham số ra sao?",
+        "ground_truth": "Mô hình sử dụng thuật toán tối ưu hóa Adam với các siêu tham số $\\beta_1 = 0.9$, $\\beta_2 = 0.98$, và $\\epsilon = 10^{-9}$[cite: 4]."
+    },
+    {
+        "question": "Chiến lược điều chỉnh tốc độ học (learning rate schedule) trong quá trình huấn luyện Transformer hoạt động theo nguyên tắc nào?",
+        "ground_truth": "Tốc độ học (learning rate) tăng tuyến tính trong 4000 bước huấn luyện đầu tiên (warmup_steps), và sau đó giảm dần tỷ lệ thuận với nghịch đảo căn bậc hai của số bước (inverse square root of the step number)[cite: 4]."
+    },
+    {
+        "question": "Mô hình Transformer áp dụng những phương pháp điều chuẩn (regularization) nào để tránh hiện tượng overfitting?",
+        "ground_truth": "Transformer áp dụng ba loại điều chuẩn: Residual Dropout (áp dụng dropout cho đầu ra của mỗi sub-layer với tỷ lệ $P_{drop} = 0.1$ cho base model), Dropout trên tổng của embeddings và positional encodings, và Label Smoothing (với giá trị $\\epsilon_{ls} = 0.1$)[cite: 4]."
+    },
+    {
+        "question": "Việc sử dụng Label Smoothing mang lại tác động kép như thế nào đối với hiệu suất của mô hình Transformer?",
+        "ground_truth": "Label smoothing làm tổn hại (tăng) perplexity do mô hình học cách bớt chắc chắn hơn về dự đoán của mình, nhưng nó lại cải thiện độ chính xác (accuracy) và điểm BLEU[cite: 4]."
+    },
+    {
+        "question": "Tập dữ liệu chuẩn nào đã được sử dụng để đào tạo tác vụ dịch tiếng Anh sang tiếng Đức trong bài báo giới thiệu Transformer?",
+        "ground_truth": "Mô hình được huấn luyện trên tập dữ liệu tiêu chuẩn WMT 2014 English-German bao gồm khoảng 4.5 triệu cặp câu[cite: 4]."
+    }
+]

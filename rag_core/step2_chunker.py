@@ -20,21 +20,20 @@ Metadata được bảo toàn nghiêm ngặt:
   Child:  {'source': str, 'page': int, 'doc_id': str}
 """
 
-import uuid
+from __future__ import annotations
+
 import logging
+import uuid
 from typing import List, Tuple
 
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
+from common.logging_utils import configure_logging, get_logger
 from config import Config
 
-# ── Logger ────────────────────────────────────────────────────────────────────
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-)
-logger = logging.getLogger(__name__)
+configure_logging()
+logger = get_logger(__name__)
 
 # ── Splitter instances (khởi tạo 1 lần, tái sử dụng) ─────────────────────────
 _PARENT_SPLITTER = RecursiveCharacterTextSplitter(
