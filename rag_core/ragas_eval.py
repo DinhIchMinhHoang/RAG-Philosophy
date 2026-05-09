@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import logging
 import os
 import re
 from typing import List, Dict, Any
@@ -17,21 +16,20 @@ from typing import List, Dict, Any
 import pandas as pd
 from datasets import Dataset
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_core.documents import Document
-from langchain_huggingface import HuggingFaceEmbeddings
+
 from ragas.run_config import RunConfig
 
 from ragas import evaluate
 from ragas.metrics import faithfulness, answer_relevancy, context_precision, context_recall
 
-from config import Config
-from step1_parser import HybridPDFParser
-from step2_chunker import chunk_documents
-from step3_vector_db import build_vector_db
-from step4_generator import SYSTEM_PROMPT
+from rag_core.config import Config
+from rag_core.common.logging_utils import configure_logging, get_logger
+from rag_core.common.embeddings import build_embeddings
+from rag_core.pipeline import ingest
+from rag_core.step4_generator import SYSTEM_PROMPT
 
-
-logger = logging.getLogger(__name__)
+configure_logging()
+logger = get_logger(__name__)
 
 
 _CITATION_PATTERN = re.compile(r"\s*\[cite:\s*\d+\]\s*", re.IGNORECASE)
@@ -60,30 +58,8 @@ def _load_dataset(path: str) -> List[Dict[str, Any]]:
 
 def _build_retriever() -> Any:
     """Build retriever from all PDFs in Config.RAW_DIR."""
-    pdf_files = [
-        os.path.join(Config.RAW_DIR, f)
-        for f in os.listdir(Config.RAW_DIR)
-        if f.lower().endswith(".pdf")
-    ]
-    if not pdf_files:
-        raise FileNotFoundError(f"No PDF files found in {Config.RAW_DIR}")
-
-    parser = HybridPDFParser()
-    all_child_docs: List[Document] = []
-    all_parent_docs: List[Document] = []
-
-    for pdf_path in pdf_files:
-        pages = parser.parse_pdf(pdf_path)
-        if not pages:
-            continue
-        child_docs, parent_docs = chunk_documents(pages)
-        all_child_docs.extend(child_docs)
-        all_parent_docs.extend(parent_docs)
-
-    if not all_child_docs:
-        raise ValueError("No documents parsed from PDFs.")
-
-    return build_vector_db(all_child_docs, all_parent_docs)
+    artifacts = ingest()
+    return artifacts.retriever
 
 
 def _build_llm() -> ChatGoogleGenerativeAI:
@@ -96,17 +72,8 @@ def _build_llm() -> ChatGoogleGenerativeAI:
     )
 
 
-def _build_embeddings() -> HuggingFaceEmbeddings:
-    return HuggingFaceEmbeddings(
-        model_name=Config.EMBEDDING_MODEL_NAME,
-        model_kwargs={
-            "device": Config.DEVICE,
-            "trust_remote_code": True,
-        },
-        encode_kwargs={
-            "normalize_embeddings": True,
-        },
-    )
+def _build_embeddings() -> Any:
+    return build_embeddings()
 
 
 def _generate_answer(llm: ChatGoogleGenerativeAI, question: str, contexts: List[str]) -> str:
@@ -162,11 +129,6 @@ def _load_records(path: str) -> Dict[str, List[Any]]:
 
 
 def main() -> None:
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(levelname)s - %(message)s",
-    )
-
     parser = argparse.ArgumentParser(description="Run RAGAS evaluation.")
     parser.add_argument("--dataset", required=True, help="Path to dataset JSON")
     parser.add_argument("--out", required=True, help="Output CSV path")
