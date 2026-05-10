@@ -39,3 +39,4 @@ test_step1_step2.py
 .worktrees/
 
 .opencode/
+.context/

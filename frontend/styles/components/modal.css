@@ -1,0 +1,53 @@
+.image-modal {
+    position: fixed; inset: 0;
+    display: none; align-items: center; justify-content: center;
+    z-index: 10000;
+}
+.image-modal.open { display: flex; }
+
+.image-modal-backdrop {
+    position: absolute; inset: 0;
+    background: rgba(0,0,0,0.6);
+    backdrop-filter: blur(15px);
+}
+
+.image-modal-body {
+    position: relative; width: 420px; max-width: calc(100% - 32px);
+    background: linear-gradient(135deg, rgba(2, 6, 23, 0.6) 0%, rgba(124, 58, 237, 0.06) 100%);
+    border-radius: var(--radius-md); padding: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.7), inset 0 0 30px rgba(124, 58, 237, 0.15), 0 0 40px rgba(2, 6, 23, 0.5);
+    z-index: 10001; color: #fff;
+    backdrop-filter: var(--blur-lg); -webkit-backdrop-filter: var(--blur-lg);
+}
+
+.modal-title { font-size: 18px; font-weight: 700; color: #fff; margin-bottom: 12px; }
+
+.image-modal-tabs { display: flex; gap: 8px; margin-bottom: 12px; }
+.image-modal-tabs .tab {
+    background: linear-gradient(135deg, rgba(124, 58, 237, 0.08) 0%, rgba(6, 182, 212, 0.04) 100%);
+    border: 1px solid rgba(255, 255, 255, 0.15); color: #fff;
+    padding: 8px 12px; border-radius: var(--radius-sm);
+    cursor: pointer; font-weight: 700; transition: all 0.3s ease;
+}
+.image-modal-tabs .tab:hover { background: linear-gradient(135deg, rgba(2, 6, 23, 0.5) 0%, rgba(124, 58, 237, 0.1) 100%); border-color: rgba(255, 255, 255, 0.25); }
+.image-modal-tabs .tab.active {
+    background: linear-gradient(135deg, rgba(124, 58, 237, 0.2) 0%, rgba(6, 182, 212, 0.1) 100%);
+    color: var(--color-secondary); border-color: rgba(255, 255, 255, 0.3);
+    box-shadow: 0 4px 12px rgba(2, 6, 23, 0.5);
+}
+
+.image-modal-content { margin-top: 4px; }
+.tab-panel.hidden { display: none; }
+
+.image-preview {
+    width: 100%; height: 200px; border-radius: 10px;
+    background: #0a0a0a center center no-repeat; background-size: cover;
+    border: 1px solid rgba(255, 255, 255, 0.15); overflow: hidden;
+    box-shadow: inset 0 0 20px rgba(124, 58, 237, 0.15), 0 4px 12px rgba(124, 58, 237, 0.15);
+    backdrop-filter: blur(25px);
+}
+
+.color-preview { width: 80px; height: 48px; border-radius: var(--radius-sm); border: 1px solid rgba(255, 255, 255, 0.15); box-shadow: inset 0 0 10px rgba(255, 255, 255, 0.1), 0 4px 12px rgba(2, 6, 23, 0.5); }
+
+.image-modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
