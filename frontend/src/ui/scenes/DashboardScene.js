@@ -1,4 +1,4 @@
-import { hideImageModal } from '../components/Modal.js';
+import { hideImageModal, showImageModal } from '../components/Modal.js';
 import { isAuthenticated } from '../../api/client.js';
 
 function repositionThumb(thumb, opt, pad) {

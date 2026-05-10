@@ -1,4 +1,4 @@
-import { BASE_URL, request, getToken } from './client.js';
+import { BASE_URL, getToken } from './client.js';
 
 export async function uploadDocument(file) {
     const formData = new FormData();
