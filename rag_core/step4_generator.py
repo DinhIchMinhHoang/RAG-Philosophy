@@ -22,6 +22,8 @@ Public API:
   ask(rag_chain, question) -> dict with 'answer' and 'sources'
 """
 
+from __future__ import annotations
+
 import logging
 import os
 from typing import List
@@ -36,13 +38,10 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_qdrant import QdrantVectorStore
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain.chains.retrieval import create_retrieval_chain
-from langchain.retrievers import EnsembleRetriever
-from langchain.retrievers import ContextualCompressionRetriever
-from langchain_cohere import CohereRerank
-
 from config import Config
 
-logger = logging.getLogger(__name__)
+configure_logging()
+logger = get_logger(__name__)
 
 
 # ── Vietnamese BM25 Preprocessing ─────────────────────────────────────────────
@@ -162,8 +161,8 @@ SYSTEM_PROMPT = (
     "1. Chỉ sử dụng thông tin từ tài liệu được cung cấp.\n"
     "2. Nếu thông tin không đủ, hãy chỉ ra phần nào thiếu "
     "thay vì tự ý bổ sung.\n"
-    "3. Luôn đính kèm số trang (VD: [Trang X]) vào cuối "
-    "mỗi ý quan trọng trong câu trả lời.\n\n"
+    # "3. Luôn đính kèm số trang (VD: [Trang X]) vào cuối "
+    # "mỗi ý quan trọng trong câu trả lời.\n\n"
     "Tài liệu tham khảo:\n"
     "{context}"
 )

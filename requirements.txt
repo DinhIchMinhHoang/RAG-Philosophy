@@ -1,47 +1,53 @@
-# ══════════════════════════════════════════════════════════════
-# RAG-Philosophy — Optimized Dependencies
-# Chỉ giữ các thư viện trực tiếp sử dụng trong project.
-# Các transitive dependencies (sub-deps) sẽ được pip tự cài.
-# ══════════════════════════════════════════════════════════════
-
-# ── Core LangChain Framework ──────────────────────────────────
+#rag_core requirements:
+# === 1. LangChain Ecosystem ===
 langchain==0.3.25
 langchain-core==0.3.84
 langchain-community==0.3.24
+langchain-google-genai==2.1.5
+langchain-huggingface==0.2.0
+langchain-qdrant==0.2.0
 langchain-text-splitters==0.3.11
 
-# ── LangChain Integrations ────────────────────────────────────
-langchain-google-genai==2.1.5          # Gemini LLM (Generator + Evaluator)
-langchain-huggingface==0.2.0           # HuggingFaceEmbeddings (Harrier model)
-langchain-qdrant==0.2.0                # Qdrant VectorStore adapter
-langchain-cohere                       # Cohere Reranker integration
+# === 2. PDF Parsing & Document Processing ===
+PyMuPDF==1.25.5
+pymupdf4llm==0.0.24
 
-# ── Vector Database ───────────────────────────────────────────
-qdrant-client==1.14.2                  # Qdrant persistent client
+pillow==12.2.0
 
-# ── PDF Processing ────────────────────────────────────────────
-PyMuPDF==1.25.5                        # fitz — PDF parsing engine
-pymupdf4llm==0.0.24                    # Markdown extraction from PDF
+# === 3. Vector Database & Storage ===
+qdrant-client==1.14.2
 
-# ── NLP & Retrieval ───────────────────────────────────────────
-rank_bm25                              # BM25 retriever backend
-pyvi==0.1.1                            # Vietnamese tokenizer (BM25 preprocessing)
+# === 4. Evaluation ===
+ragas==0.1.19
+pandas==2.2.2
 
-# ── ML Runtime ────────────────────────────────────────────────
-torch==2.6.0+cu124                     # PyTorch (Harrier embedding model)
-transformers==4.57.6                   # HuggingFace Transformers
-sentence-transformers==4.1.0           # Sentence embedding framework
-tokenizers==0.22.2                     # Fast tokenizer backend
+# === 5. Machine Learning & Embedding (CPU/GPU) ===
+transformers==4.57.6
+tree-sitter==0.25.2
+tree-sitter-c==0.24.2
+tree-sitter-javascript==0.25.0
+tree-sitter-python==0.25.0
+tree-sitter-typescript==0.23.2
+typer==0.21.2
+typing-inspect==0.9.0
+typing-inspection==0.4.2
+typing_extensions==4.15.0
+tzdata==2026.2
+urllib3==2.6.3
+uuid_utils==0.14.1
+websockets==16.0
+xlsxwriter==3.2.9
+yarl==1.23.0
+zstandard==0.23.0
 
-# ── Data & Evaluation ────────────────────────────────────────
-pandas==3.0.2                          # DataFrame — evaluation report
-python-dotenv==1.1.0                   # .env file loader
-pillow==12.2.0                         # Image processing (OCR downscale)
-
-# ── Cohere SDK (transitive, pinned for stability) ─────────────
-cohere                                 # Required by langchain-cohere
-
-# ── Evaluation (Ragas & Metrics) ──────────────────────────────
-ragas==0.4.3                           # LLM-as-a-judge framework (native)
-datasets>=2.20.0                       # Required for ragas data format
-nest-asyncio==1.6.0                    # Prevents event loop crashes
+# backend requirements:
+argon2-cffi
+fastapi
+uvicorn
+sqlalchemy
+pydantic[email]
+email-validator
+passlib[bcrypt]
+python-jose[cryptography]
+python-multipart
+python-dotenv

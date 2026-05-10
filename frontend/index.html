@@ -3,7 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RAG Philosophy - Mesh Gradient Background</title>
+    <title>RAG Philosophy - Lumina</title>
+    <!-- KaTeX for LaTeX rendering -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+
+    <!-- Marked for Markdown rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
     <link rel="stylesheet" href="styles.css">
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
 </head>
@@ -33,7 +41,6 @@
         </div>
     </header>
 
-    <!-- Landing Scene -->
     <div id="scene-landing" class="scene">
         <div class="text-container">
             <div class="logo-text-wrapper">
@@ -48,7 +55,6 @@
         </div>
     </div>
     
-    <!-- Account Scene -->
     <div id="scene-account" class="scene" style="display: none;">
         <div class="form-container account-form-container">
             <h2 class="form-title">Account</h2>
@@ -111,28 +117,32 @@
         </div>
     </div>
 
-    <!-- Sign Up Scene -->
     <div id="scene-signup" class="scene" style="display: none;">
         <div class="form-container">
             <h2 class="form-title">Create Account</h2>
-            <div class="form-error" style="display: none; color: #ff4444; font-weight: bold; margin-bottom: 12px; padding: 8px; background: rgba(255,68,68,0.1); border-radius: 4px;"></div>
-            <form class="auth-form">
+            <form id="signup-form" class="auth-form">
+                <div class="form-error" style="display: none; color: #ff7a7a; font-weight: bold; margin-bottom: 12px; padding: 8px; background: rgba(255,68,68,0.1); border-radius: 4px;"></div>
                 <div class="form-group">
                     <label class="form-label"><span class="material-icons">account_circle</span> User name</label>
-                    <input type="text" class="form-input" placeholder="User name" required>
+                    <input type="text" id="signup-username" class="form-input" placeholder="User name" required>
+                    <div id="signup-username-error" class="field-error"></div>
                 </div>
                 <div class="form-group">
                     <label class="form-label"><span class="material-icons">alternate_email</span> Email</label>
-                    <input type="email" class="form-input" placeholder="Email" required>
+                    <input type="text" id="signup-email" class="form-input email-input" placeholder="Email" required>
+                    <div class="form-field-error" style="display: none; color: #ff7a7a; font-size: 12px; margin-top: 4px;"></div>
                 </div>
                 <div class="form-group">
                     <label class="form-label"><span class="material-icons">lock</span> Password</label>
-                    <input type="password" class="form-input" placeholder="Password" required>
+                    <input type="password" id="signup-password" class="form-input" placeholder="Password" required>
+                    <div id="signup-password-error" class="field-error"></div>
                 </div>
                 <div class="form-group">
                     <label class="form-label"><span class="material-icons">lock</span> Confirm Password</label>
-                    <input type="password" class="form-input" placeholder="Confirm Password" required>
+                    <input type="password" id="signup-confirm-password" class="form-input" placeholder="Confirm Password" required>
+                    <div id="signup-confirm-password-error" class="field-error"></div>
                 </div>
+                <div id="signup-general-error" class="general-error"></div>
                 <div class="form-buttons">
                     <button type="submit" class="auth-button">Confirm</button>
                     <button type="button" class="auth-button" data-back-to="landing">Back</button>
@@ -141,20 +151,22 @@
         </div>
     </div>
 
-    <!-- Sign In Scene -->
     <div id="scene-signin" class="scene" style="display: none;">
         <div class="form-container">
             <h2 class="form-title">Sign In</h2>
-            <div class="form-error" style="display: none; color: #ff4444; font-weight: bold; margin-bottom: 12px; padding: 8px; background: rgba(255,68,68,0.1); border-radius: 4px;"></div>
-            <form class="auth-form">
+            <form id="signin-form" class="auth-form">
+                <div class="form-error" style="display: none; color: #ff7a7a; font-weight: bold; margin-bottom: 12px; padding: 8px; background: rgba(255,68,68,0.1); border-radius: 4px;"></div>
                 <div class="form-group">
                     <label class="form-label"><span class="material-icons">alternate_email</span> Email</label>
-                    <input type="email" class="form-input" placeholder="Email" required>
+                    <input type="text" id="signin-email" class="form-input email-input" placeholder="Email" required>
+                    <div class="form-field-error" style="display: none; color: #ff7a7a; font-size: 12px; margin-top: 4px;"></div>
                 </div>
                 <div class="form-group">
                     <label class="form-label"><span class="material-icons">lock</span> Password</label>
-                    <input type="password" class="form-input" placeholder="Password" required>
+                    <input id="signin-password" type="password" class="form-input" placeholder="Password" required>
+                    <div id="signin-password-error" class="field-error"></div>
                 </div>
+                <div id="signin-general-error" class="general-error"></div>
                 <div class="form-buttons">
                     <button type="submit" class="auth-button">Sign In</button>
                     <button type="button" class="auth-button" data-back-to="landing">Back</button>
@@ -163,7 +175,6 @@
         </div>
     </div>
 
-    <!-- Dashboard Scene (shown after login) -->
     <div id="scene-dashboard" class="scene" style="display: none;">
         <div class="dashboard-container">
 
@@ -318,6 +329,161 @@
         </div>
     </div>
 
+    <!-- Chat Scene -->
+    <div id="scene-chat" class="scene" style="display: none;">
+        <div class="chat-shell">
+            <div class="chat-topbar">
+                <button class="auth-button chat-back-button" title="Back to dashboard">
+                    <span class="material-icons">arrow_back</span>
+                    Dashboard
+                </button>
+                <div class="chat-title-wrap">
+                    <span class="material-icons">auto_awesome</span>
+                    <span class="chat-title">Untitled notebook</span>
+                </div>
+                <div class="chat-top-actions">
+                    <button class="panel-icon-button" title="Share">
+                        <span class="material-icons">ios_share</span>
+                    </button>
+                    <button class="panel-icon-button" title="Notebook settings">
+                        <span class="material-icons">tune</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="chat-layout">
+                <section class="chat-panel panel-left" data-panel="sources">
+                    <div class="panel-header">
+                        <div class="panel-title">
+                            <span class="material-icons">inventory_2</span>
+                            Sources
+                        </div>
+                        <div class="panel-actions">
+                            <button class="panel-icon-button source-add-button" title="Add source">
+                                <span class="material-icons">add</span>
+                            </button>
+                            <button class="panel-icon-button panel-toggle" data-collapse="sources" title="Collapse">
+                                <span class="material-icons">chevron_left</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="panel-body">
+                        <div class="source-drop">
+                            <div class="source-drop-title">Drop files or add a source</div>
+                            <div class="source-drop-subtitle">Images, PDF, or text files are supported.</div>
+                            <div class="source-drop-actions">
+                                <button class="auth-button source-add-button">Add source</button>
+                                <button class="auth-button source-note-button">New note</button>
+                            </div>
+                            <input id="sourceFileInput" type="file" multiple accept="image/*,.pdf,.txt,.md,.docx" />
+                        </div>
+                        <div class="source-empty">No sources yet</div>
+                        <div class="source-list"></div>
+                    </div>
+                    <div class="panel-rail">
+                        <button class="panel-rail-button" data-expand="sources" title="Expand sources">
+                            <span class="material-icons">inventory_2</span>
+                            <span class="rail-label">Sources</span>
+                            <span class="material-icons">chevron_right</span>
+                        </button>
+                    </div>
+                </section>
+
+                <div class="chat-resizer" data-resize="left" role="separator" aria-label="Resize sources panel"></div>
+
+                <section class="chat-panel panel-center" data-panel="chat">
+                    <div class="panel-header">
+                        <div class="panel-title">
+                            <span class="material-icons">forum</span>
+                            Conversation
+                        </div>
+                        <div class="panel-actions">
+                            <button class="panel-icon-button" data-action="clear-chat" title="Clear chat">
+                                <span class="material-icons">delete_sweep</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="panel-body chat-body">
+                        <div class="chat-thread">
+                            <div class="ai-response">
+                                <div class="message-text">Hi, I can help you explore your sources. Add files on the left, then ask a question.</div>
+                                <div class="message-meta">Lumina</div>
+                            </div>
+                        </div>
+                        <form class="chat-input">
+                            <textarea id="chatPrompt" class="form-input" rows="2" placeholder="Ask anything about your sources..."></textarea>
+                            <button type="submit" class="auth-button send-button" title="Send">
+                                <span class="material-icons">north_east</span>
+                            </button>
+                        </form>
+                    </div>
+                </section>
+
+                <div class="chat-resizer" data-resize="right" role="separator" aria-label="Resize tools panel"></div>
+
+                <section class="chat-panel panel-right" data-panel="tools">
+                    <div class="panel-header">
+                        <div class="panel-title">
+                            <span class="material-icons">preview</span>
+                            Source Viewer
+                        </div>
+                        <div class="panel-actions">
+                            <button class="panel-icon-button panel-toggle" data-collapse="tools" title="Collapse">
+                                <span class="material-icons">chevron_right</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="panel-body">
+                        <div id="sourceViewer" class="source-viewer">
+                            <div class="viewer-empty">
+                                <span class="material-icons">find_in_page</span>
+                                <p>Click a source or citation to view the page</p>
+                            </div>
+                            <div class="viewer-content" style="display: none;">
+                                <div class="viewer-controls">
+                                    <div class="viewer-page-controls">
+                                        <button id="viewerPrevPage" class="viewer-btn" title="Previous Page">
+                                            <span class="material-icons">chevron_left</span>
+                                        </button>
+                                        <span id="viewerPageNum" class="viewer-pagenum">Page 1</span>
+                                        <button id="viewerNextPage" class="viewer-btn" title="Next Page">
+                                            <span class="material-icons">chevron_right</span>
+                                        </button>
+                                    </div>
+                                    <div class="viewer-zoom-controls">
+                                        <button id="viewerZoomOut" class="viewer-btn" title="Zoom Out">
+                                            <span class="material-icons">remove</span>
+                                        </button>
+                                        <span id="viewerZoomLevel" class="viewer-zoomnum">100%</span>
+                                        <button id="viewerZoomIn" class="viewer-btn" title="Zoom In">
+                                            <span class="material-icons">add</span>
+                                        </button>
+                                        <button id="viewerZoomReset" class="viewer-btn" title="Reset Zoom">
+                                            <span class="material-icons">restart_alt</span>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="viewer-header-info">
+                                    <span id="viewerFileName" class="viewer-filename">filename.pdf</span>
+                                </div>
+                                <div class="viewer-image-wrap">
+                                    <img id="viewerImage" src="" alt="Page Preview">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="panel-rail">
+                        <button class="panel-rail-button" data-expand="tools" title="Expand viewer">
+                            <span class="material-icons">preview</span>
+                            <span class="rail-label">Source Viewer</span>
+                            <span class="material-icons">chevron_left</span>
+                        </button>
+                    </div>
+                </section>
+            </div>
+        </div>
+    </div>
+
     <!-- Image / Color picker modal (handles upload or color selection) -->
     <div id="imageModal" class="image-modal" aria-hidden="true" style="display:none;">
         <div class="image-modal-backdrop"></div>
@@ -361,5 +527,6 @@
     <script src="api.js"></script>
     <script src="transitions.js"></script>
     <script src="script.js"></script>
+
 </body>
 </html>

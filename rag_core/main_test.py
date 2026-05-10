@@ -131,6 +131,11 @@ def build_pipeline(target_pdf: str | None = None):
     print("✅ Pipeline sẵn sàng!")
     print(f"{'='*60}")
     return rag_chain
+from common.logging_utils import configure_logging, get_logger
+from pipeline import build_pipeline, query
+
+configure_logging()
+logger = get_logger(__name__)
 
 
 def chat_loop(rag_chain):
@@ -138,8 +143,6 @@ def chat_loop(rag_chain):
     Vòng lặp chat tương tác — hỏi nhiều câu liên tiếp.
     Gõ 'exit', 'quit' hoặc 'q' để thoát.
     """
-    from step4_generator import ask
-
     print("\n" + "=" * 60)
     print("  RAG PHILOSOPHY — Trợ lý học tập UET")
     print("  Gõ câu hỏi để bắt đầu. Gõ 'q' để thoát.")
@@ -159,12 +162,10 @@ def chat_loop(rag_chain):
             break
 
         try:
-            result = ask(rag_chain, question)
+            result = query(rag_chain, question)
 
-            # In câu trả lời
             print(f"\n🤖 Trợ lý:\n{result['answer']}")
 
-            # In nguồn trích dẫn
             if result["sources"]:
                 print(f"\n📚 Nguồn tham khảo:")
                 seen = set()
@@ -232,8 +233,9 @@ def main():
     print("   (Lần đầu tải model có thể mất vài phút)\n")
 
     try:
-        rag_chain = build_pipeline(target_pdf=target_pdf)
+        artifacts, rag_chain = build_pipeline(target_pdf=target_pdf)
         if rag_chain:
+            print(f"Pipeline ready: {artifacts.parent_docs_count} parent docs, {artifacts.child_docs_count} child docs")
             chat_loop(rag_chain)
 
     except FileNotFoundError as e:

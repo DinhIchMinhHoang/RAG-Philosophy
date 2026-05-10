@@ -45,7 +45,7 @@ class Config:
     EMBEDDING_MODEL_NAME: str = "microsoft/harrier-oss-v1-270m"
 
     # ── LLM (Generator) ─────────────────────────────────────
-    LLM_MODEL: str = "gemini-3.1-flash"
+    LLM_MODEL: str = "gemini-3.1-flash-lite-preview"
 
     # ── Vector Database (Qdrant) ─────────────────────────────
     QDRANT_COLLECTION: str = "rag_philosophy"
@@ -111,7 +111,7 @@ class EvaluationConfig(Config):
     """Configuration for the RAGAS evaluation pipeline."""
 
     # ── Evaluation LLM (deterministic judging) ────────────────
-    EVAL_LLM_MODEL: str = "gemini-3.1-flash-lite-preview"
+    EVAL_LLM_MODEL: str = "gemini-2.5-flash-lite-preview"
 
     # ── Evaluation Embedding Model ────────────────────────────
     EVAL_EMBEDDING_MODEL: str = "microsoft/harrier-oss-v1-270m"

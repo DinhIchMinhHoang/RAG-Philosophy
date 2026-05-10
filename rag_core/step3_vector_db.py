@@ -15,6 +15,8 @@ Metadata BẢO TỒN:
   Mỗi Document có đầy đủ {'source': str, 'page': int, 'doc_id': str}.
 """
 
+from __future__ import annotations
+
 import logging
 from typing import List, Tuple
 
@@ -24,11 +26,14 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_qdrant import QdrantVectorStore
 from qdrant_client import QdrantClient
 from qdrant_client.http.models import Distance, VectorParams
+from langchain.retrievers import MultiVectorRetriever
 
+from common.logging_utils import configure_logging, get_logger
+from common.embeddings import build_embeddings as build_embeddings_from_common
 from config import Config
 
-# ── Logger ────────────────────────────────────────────────────────────────────
-logger = logging.getLogger(__name__)
+configure_logging()
+logger = get_logger(__name__)
 
 
 def _init_embeddings() -> HuggingFaceEmbeddings:
@@ -37,7 +42,7 @@ def _init_embeddings() -> HuggingFaceEmbeddings:
 
     Cấu hình:
       - model_name: Config.EMBEDDING_MODEL_NAME (microsoft/harrier-oss-v1-270m)
-      - device: cpu (chuyển sang 'cuda' nếu có GPU)
+      - device: Config.DEVICE (chuyển sang 'cuda' nếu có GPU)
       - trust_remote_code: True — bắt buộc cho Harrier custom architecture
       - normalize_embeddings: True — chuẩn hóa L2 cho Cosine Similarity chính xác
 
@@ -59,6 +64,7 @@ def _init_embeddings() -> HuggingFaceEmbeddings:
         },
     )
 
+    # embeddings = build_embeddings_from_common()
     logger.info(
         f"[Step 3] ✅ Embedding model '{Config.EMBEDDING_MODEL_NAME}' đã tải thành công"
     )

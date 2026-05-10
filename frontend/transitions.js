@@ -3,7 +3,8 @@ class TransitionManager {
     constructor() {
         this.currentScene = 'landing';
         this.isTransitioning = false;
-        this.transitionDuration = 500; // milliseconds
+        this.transitionToken = 0;
+        this.transitionDuration = 150; // milliseconds (50% faster)
         // Load persisted user or use empty defaults
         this.currentUser = JSON.parse(localStorage.getItem('currentUser')) || { username: '', email: '', displayName: '', bio: '' };
     }
@@ -13,36 +14,86 @@ class TransitionManager {
      * @param {string} targetScene - The scene to transition to
      */
     transitionTo(targetScene) {
-        if (this.isTransitioning || targetScene === this.currentScene) return;
-        // Prevent accessing account scene when not authenticated
+        console.log(`[DEBUG] transitionTo called with targetScene = '${targetScene}'`);
+        console.log(`[DEBUG] Current state: isTransitioning = ${this.isTransitioning}, currentScene = '${this.currentScene}'`);
+
+        // 1. Chặn click spam hoặc state đang lơ lửng
+        if (this.isTransitioning) {
+            console.error(`[DEBUG] ABORT: isTransitioning is TRUE! Transition is stuck.`);
+            return;
+        }
+        if (targetScene === this.currentScene) {
+            console.log(`[DEBUG] ABORT: targetScene is already currentScene`);
+            return;
+        }
+
+        // 2. Route guard
         if (targetScene === 'account' && !this.isAuthenticated()) {
-            // redirect to sign-in instead
             targetScene = 'signin';
         }
 
+        const transitionToken = ++this.transitionToken;
+        const isCurrentTransition = () => transitionToken === this.transitionToken;
+
         this.isTransitioning = true;
+        console.log(`[DEBUG] isTransitioning set to TRUE`);
+        
+        // 3. Force UI Layout tức thời (Fix lỗi vỡ layout pic 2)
+        // Thay vì đợi switchScene, ta ép body nhận diện layout của scene mới ngay lập tức.
+        if (targetScene === 'chat') {
+            document.body.classList.add('chat-active');
+        } else {
+            document.body.classList.remove('chat-active');
+            // Dọn dẹp focus để tránh ảo ma trigger event từ ô chatPrompt
+            if (document.activeElement && typeof document.activeElement.blur === 'function') {
+                document.activeElement.blur(); 
+            }
+        }
 
-        // Step 1: Fade out current scene (bottom to top)
+        // 4. Bắt đầu chuỗi animation
+        console.log(`[DEBUG] Starting fadeOutScene for '${this.currentScene}'...`);
         this.fadeOutScene(this.currentScene, () => {
-            // Step 2: Switch scenes in DOM (hide all scenes)
-            this.switchScene(targetScene);
+            if (!isCurrentTransition()) {
+                return;
+            }
+            console.log(`[DEBUG] fadeOutScene callback executed! Hiding all .scene elements.`);
+            // Ép ẩn SẠCH SẼ mọi scene thừa thãi
+            document.querySelectorAll('.scene').forEach(scene => {
+                scene.style.display = 'none';
+            });
 
-            // Step 3: Orchestrate navbar + scene fade-in so navbar appears first
+            // Pre-emptive state update: Cập nhật currentScene NGAY lúc DOM switch, 
+            // KHÔNG đợi đến khi animation finish
+            this.currentScene = targetScene;
+            console.log(`[DEBUG] this.currentScene updated to '${this.currentScene}'`);
+
             const finish = () => {
-                this.currentScene = targetScene;
+                if (!isCurrentTransition()) {
+                    return;
+                }
                 this.isTransitioning = false;
+                console.log(`[DEBUG] Transition FULLY FINISHED. isTransitioning = false`);
             };
 
-            if (targetScene === 'landing') {
-                // When going to landing, ensure navbar fades out first then show landing
+            // 5. Fade In logic
+            if (targetScene === 'landing' || targetScene === 'chat') {
+                console.log(`[DEBUG] Calling fadeNavbarOut...`);
                 this.fadeNavbarOut(() => {
+                    if (!isCurrentTransition()) {
+                        return;
+                    }
+                    console.log(`[DEBUG] fadeNavbarOut callback executed! Calling fadeInScene for '${targetScene}'...`);
                     this.fadeInScene(targetScene, finish);
-                });
+                }, isCurrentTransition);
             } else {
-                // For auth scenes: show navbar first, then scene children
+                console.log(`[DEBUG] Calling fadeNavbarIn...`);
                 this.fadeNavbarIn(() => {
+                    if (!isCurrentTransition()) {
+                        return;
+                    }
+                    console.log(`[DEBUG] fadeNavbarIn callback executed! Calling fadeInScene for '${targetScene}'...`);
                     this.fadeInScene(targetScene, finish);
-                });
+                }, isCurrentTransition);
             }
         });
     }
@@ -58,6 +109,19 @@ class TransitionManager {
             accountBtn.style.display = '';
         } else {
             accountBtn.style.display = 'none';
+        }
+    }
+
+    openNotebook(title) {
+        const safeTitle = (title || '').trim() || 'Untitled notebook';
+        const titleEl = document.querySelector('.chat-title');
+        if (titleEl) {
+            titleEl.textContent = safeTitle;
+        }
+        this.transitionTo('chat');
+        const prompt = document.getElementById('chatPrompt');
+        if (prompt) {
+            setTimeout(() => prompt.focus(), 420);
         }
     }
 
@@ -289,7 +353,7 @@ class TransitionManager {
     /**
      * Fade navbar in and call callback after animation completes
      */
-    fadeNavbarIn(callback) {
+    fadeNavbarIn(callback, isCurrentTransition = () => true) {
         const navbar = document.querySelector('.navbar');
         if (!navbar) {
             callback();
@@ -313,6 +377,7 @@ class TransitionManager {
         let safetyTimer;
         const onEnd = (e) => {
             if (e.propertyName !== 'opacity') return;
+            if (!isCurrentTransition()) return;
             if (safetyTimer) clearTimeout(safetyTimer);
             navbar.removeEventListener('transitionend', onEnd);
             navbar.classList.remove('pre-hidden');
@@ -324,6 +389,7 @@ class TransitionManager {
 
         // Safety fallback if transitionend doesn't fire
         safetyTimer = setTimeout(() => {
+            if (!isCurrentTransition()) return;
             navbar.classList.remove('pre-hidden');
             navbar.style.removeProperty('--anim-y');
             navbar.style.removeProperty('--anim-opacity');
@@ -334,7 +400,7 @@ class TransitionManager {
     /**
      * Fade navbar out and call callback after animation completes
      */
-    fadeNavbarOut(callback) {
+    fadeNavbarOut(callback, isCurrentTransition = () => true) {
         const navbar = document.querySelector('.navbar');
         if (!navbar) {
             callback();
@@ -348,6 +414,7 @@ class TransitionManager {
         let safetyTimer;
         const onEnd = (e) => {
             if (e.propertyName !== 'opacity') return;
+            if (!isCurrentTransition()) return;
             if (safetyTimer) clearTimeout(safetyTimer);
             navbar.removeEventListener('transitionend', onEnd);
             navbar.style.display = 'none';
@@ -359,6 +426,7 @@ class TransitionManager {
 
         // Safety fallback if transitionend doesn't fire
         safetyTimer = setTimeout(() => {
+            if (!isCurrentTransition()) return;
             navbar.style.display = 'none';
             navbar.style.removeProperty('--anim-y');
             navbar.style.removeProperty('--anim-opacity');
@@ -370,6 +438,68 @@ class TransitionManager {
      * Initialize transition manager with event listeners
      */
     initialize() {
+        // Email validation helper
+        const isValidEmail = (email) => {
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            return emailRegex.test(email);
+        };
+
+        const setupEmailValidation = (formSelector) => {
+            const form = document.querySelector(formSelector);
+            if (!form) return;
+            const emailInput = form.querySelector('.email-input');
+            const errorMsg = form.querySelector('.form-field-error');
+            if (!emailInput) return;
+
+            const validateEmail = () => {
+                const email = emailInput.value.trim();
+                if (!email) {
+                    emailInput.classList.remove('email-error');
+                    if (errorMsg) errorMsg.classList.remove('show');
+                    return true;
+                }
+                if (!isValidEmail(email)) {
+                    emailInput.classList.add('email-error');
+                    if (errorMsg) {
+                        errorMsg.textContent = 'Please enter a valid email address';
+                        errorMsg.classList.add('show');
+                    }
+                    return false;
+                }
+                emailInput.classList.remove('email-error');
+                if (errorMsg) errorMsg.classList.remove('show');
+                return true;
+            };
+
+            // Real-time validation on input
+            emailInput.addEventListener('input', validateEmail);
+            emailInput.addEventListener('blur', validateEmail);
+
+            // Validate on form submit
+            form.addEventListener('submit', (e) => {
+                if (!validateEmail()) {
+                    e.preventDefault();
+                }
+            });
+        };
+
+        // Setup email validation for sign-up and sign-in forms
+        setupEmailValidation('#scene-signup .auth-form');
+        setupEmailValidation('#scene-signin .auth-form');
+
+        // Also setup for account form email
+        const accountForm = document.querySelector('#scene-account .account-form');
+        if (accountForm) {
+            const accountEmail = accountForm.querySelector('#account-email');
+            if (accountEmail) {
+                accountEmail.classList.add('email-input');
+                const errorDiv = document.createElement('div');
+                errorDiv.className = 'form-field-error';
+                accountEmail.parentElement.appendChild(errorDiv);
+                setupEmailValidation('#scene-account .account-form');
+            }
+        }
+
         // Sign Up button
         const signUpBtn = document.querySelector('[data-scene="signup"]');
         if (signUpBtn) {
@@ -388,14 +518,47 @@ class TransitionManager {
             btn.addEventListener('click', () => this.transitionTo('landing'));
         });
 
-        // Sign-in form submit -> authenticate with backend and transition to dashboard
+        // Click outside form to close (sign-in scene)
+        const signInScene = document.getElementById('scene-signin');
+        if (signInScene) {
+            signInScene.addEventListener('click', (e) => {
+                // Only close if clicking directly on the scene background, not on the form
+                if (e.target === signInScene) {
+                    this.transitionTo('landing');
+                }
+            });
+        }
+
+        // Click outside form to close (sign-up scene)
+        const signUpScene = document.getElementById('scene-signup');
+        if (signUpScene) {
+            signUpScene.addEventListener('click', (e) => {
+                // Only close if clicking directly on the scene background, not on the form
+                if (e.target === signUpScene) {
+                    this.transitionTo('landing');
+                }
+            });
+        }
+
+        // Click outside form to close (account scene)
+        const accountScene = document.getElementById('scene-account');
+        if (accountScene) {
+            accountScene.addEventListener('click', (e) => {
+                // Only close if clicking directly on the scene background, not on the form
+                if (e.target === accountScene) {
+                    this.transitionTo('dashboard');
+                }
+            });
+        }
+
+        // Sign-in form submit -> set current user and transition to dashboard
         const signInForm = document.querySelector('#scene-signin .auth-form');
         if (signInForm) {
                 signInForm.addEventListener('submit', async (e) => {
                 e.preventDefault();
                 const signInScene = document.querySelector('#scene-signin');
                 const errorDiv = signInScene.querySelector('.form-error');
-                const emailInput = signInForm.querySelector('input[type="email"]');
+                const emailInput = signInForm.querySelector('.email-input');
                 const passwordInput = signInForm.querySelector('input[type="password"]');
                 const email = emailInput ? emailInput.value.trim() : '';
                 const password = passwordInput ? passwordInput.value : '';
@@ -409,6 +572,15 @@ class TransitionManager {
                 if (!email || !password) {
                     if (errorDiv) {
                         errorDiv.textContent = 'Please enter email and password';
+                        errorDiv.style.display = 'block';
+                    }
+                    return;
+                }
+
+                // Validate email format
+                if (!isValidEmail(email)) {
+                    if (errorDiv) {
+                        errorDiv.textContent = 'Please enter a valid email address';
                         errorDiv.style.display = 'block';
                     }
                     return;
@@ -455,8 +627,8 @@ class TransitionManager {
                 e.preventDefault();
                 const signUpScene = document.querySelector('#scene-signup');
                 const errorDiv = signUpScene.querySelector('.form-error');
-                const usernameInput = signUpForm.querySelector('input[placeholder="User name"]') || signUpForm.querySelector('input[type="text"]');
-                const emailInput = signUpForm.querySelector('input[type="email"]');
+                const usernameInput = signUpForm.querySelector('input[placeholder="User name"]') || signUpForm.querySelector('input:not(.email-input)[type="text"]');
+                const emailInput = signUpForm.querySelector('.email-input');
                 const passwordInputs = signUpForm.querySelectorAll('input[type="password"]');
                 const password = passwordInputs[0] ? passwordInputs[0].value : '';
                 const confirmPassword = passwordInputs[1] ? passwordInputs[1].value : '';
@@ -472,6 +644,14 @@ class TransitionManager {
                 // Validation
                 if (!username || !email || !password || !confirmPassword) {
                     const msg = 'Please fill in all fields';
+                    if (errorDiv) {
+                        errorDiv.textContent = msg;
+                        errorDiv.style.display = 'block';
+                    }
+                    return;
+                }
+                if (!isValidEmail(email)) {
+                    const msg = 'Please enter a valid email address';
                     if (errorDiv) {
                         errorDiv.textContent = msg;
                         errorDiv.style.display = 'block';
@@ -525,7 +705,7 @@ class TransitionManager {
                 }
             });
         }
-
+       
         // Dashboard UI interactions
         const dashboard = document.getElementById('scene-dashboard');
         if (dashboard) {
@@ -722,8 +902,7 @@ class TransitionManager {
             if (createBtn) {
                 createBtn.addEventListener('click', (e) => {
                     e.preventDefault();
-                    // placeholder action
-                    console.log('Create new notebook');
+                    this.openNotebook('Untitled notebook');
                 });
             }
 
@@ -800,8 +979,14 @@ class TransitionManager {
             document.body.appendChild(moreMenu);
 
             let currentMenuTarget = null;
+            let lastFakeMenuTarget = null; // holds temporary notebook element used by chat settings
 
             const hideMenu = () => {
+                // remove any temporary fake target created for chat settings
+                if (lastFakeMenuTarget && lastFakeMenuTarget.parentElement) {
+                    try { lastFakeMenuTarget.parentElement.removeChild(lastFakeMenuTarget); } catch (e) { }
+                    lastFakeMenuTarget = null;
+                }
                 currentMenuTarget = null;
                 moreMenu.classList.remove('visible');
                 moreMenu.style.display = 'none';
@@ -936,6 +1121,34 @@ class TransitionManager {
                         currentModalTarget.removeAttribute('data-cover');
                         currentModalTarget.removeAttribute('data-cover-mode');
                     }
+                    // If the modal was opened for the chat fake target, reflect the change in the chat header
+                    if (currentModalTarget === lastFakeMenuTarget) {
+                        const chatWrap = document.querySelector('#scene-chat .chat-title-wrap');
+                        if (chatWrap) {
+                            const appliedImage = (activeTab === 'upload') ? (imagePreview?.dataset?.image || '') : null;
+                            const appliedColor = (activeTab === 'color') ? (colorPreview?.dataset?.color || colorPicker?.value || '') : null;
+                            if (appliedImage) {
+                                chatWrap.style.backgroundImage = `url(${appliedImage})`;
+                                chatWrap.style.backgroundSize = (imageModeSelect ? imageModeSelect.value : 'cover');
+                                chatWrap.style.backgroundPosition = 'center';
+                                chatWrap.style.borderRadius = '8px';
+                                const icon = chatWrap.querySelector('.material-icons');
+                                if (icon) icon.style.display = 'none';
+                            } else if (appliedColor) {
+                                chatWrap.style.backgroundImage = '';
+                                chatWrap.style.backgroundColor = appliedColor;
+                                chatWrap.style.borderRadius = '8px';
+                                const icon = chatWrap.querySelector('.material-icons');
+                                if (icon) icon.style.display = '';
+                            } else {
+                                // cleared
+                                chatWrap.style.backgroundImage = '';
+                                chatWrap.style.backgroundColor = '';
+                                const icon = chatWrap.querySelector('.material-icons');
+                                if (icon) icon.style.display = '';
+                            }
+                        }
+                    }
                     hideImageModal();
                     hideMenu();
                 });
@@ -954,6 +1167,11 @@ class TransitionManager {
                         const titleEl = currentMenuTarget.querySelector('.item-title');
                         if (titleEl) titleEl.textContent = newTitle;
                         currentMenuTarget.setAttribute('data-title', newTitle);
+                        // If this menu was opened for the chat scene, update the chat header too
+                        if (currentMenuTarget === lastFakeMenuTarget) {
+                            const chatTitleEl = document.querySelector('#scene-chat .chat-title');
+                            if (chatTitleEl) chatTitleEl.textContent = newTitle;
+                        }
                     }
                 } else if (action === 'change-image') {
                     // open modal to allow upload or color pick
@@ -1009,6 +1227,18 @@ class TransitionManager {
             // MutationObserver to attach handlers for newly added items
             const gridObserver = new MutationObserver(() => attachMoreHandlers());
             document.querySelectorAll('.notebook-grid').forEach(g => gridObserver.observe(g, { childList: true, subtree: true }));
+
+            const openNotebookFromItem = (item) => {
+                const title = item.getAttribute('data-title') || item.querySelector('.item-title')?.textContent || 'Untitled notebook';
+                this.openNotebook(title);
+            };
+
+            document.addEventListener('click', (ev) => {
+                const item = ev.target.closest('.notebook-item');
+                if (!item) return;
+                if (ev.target.closest('.more-btn') || ev.target.closest('.more-menu') || ev.target.closest('#imageModal')) return;
+                openNotebookFromItem(item);
+            });
 
             // --- Show-All Scene Handling ---
             // Get all notebook items from dashboard sections (sample data)
@@ -1165,6 +1395,596 @@ class TransitionManager {
                 }
             }
 
+            // --- Chat Scene Handling ---
+            const chatScene = document.getElementById('scene-chat');
+            if (chatScene) {
+                const chatShell = chatScene.querySelector('.chat-shell');
+                const chatLayout = chatScene.querySelector('.chat-layout');
+                const leftPanel = chatScene.querySelector('.panel-left');
+                const rightPanel = chatScene.querySelector('.panel-right');
+                const backBtn = chatScene.querySelector('.chat-back-button');
+
+                if (chatShell && chatLayout) {
+                    let leftWidth = parseInt(getComputedStyle(chatShell).getPropertyValue('--left-user-width'), 10) || 320;
+                    let rightWidth = parseInt(getComputedStyle(chatShell).getPropertyValue('--right-user-width'), 10) || 280;
+                    const resizerWidth = parseInt(getComputedStyle(chatShell).getPropertyValue('--resizer-width'), 10) || 10;
+                    const minSide = 200;
+                    const minCenter = 320;
+
+                    const setLeftWidth = (width) => {
+                        leftWidth = width;
+                        chatShell.style.setProperty('--left-user-width', `${width}px`);
+                    };
+
+                    const setRightWidth = (width) => {
+                        rightWidth = width;
+                        chatShell.style.setProperty('--right-user-width', `${width}px`);
+                    };
+
+                    const setCollapsed = (side, collapsed) => {
+                        if (side === 'left') {
+                            if (collapsed) {
+                                leftWidth = leftPanel?.getBoundingClientRect().width || leftWidth;
+                                chatShell.setAttribute('data-left-collapsed', 'true');
+                                leftPanel?.classList.add('is-collapsed');
+                            } else {
+                                chatShell.removeAttribute('data-left-collapsed');
+                                leftPanel?.classList.remove('is-collapsed');
+                                setLeftWidth(leftWidth);
+                            }
+                        } else if (side === 'right') {
+                            if (collapsed) {
+                                rightWidth = rightPanel?.getBoundingClientRect().width || rightWidth;
+                                chatShell.setAttribute('data-right-collapsed', 'true');
+                                rightPanel?.classList.add('is-collapsed');
+                            } else {
+                                chatShell.removeAttribute('data-right-collapsed');
+                                rightPanel?.classList.remove('is-collapsed');
+                                setRightWidth(rightWidth);
+                            }
+                        }
+                    };
+
+                    const leftToggle = chatScene.querySelector('[data-collapse="sources"]');
+                    const rightToggle = chatScene.querySelector('[data-collapse="tools"]');
+                    const leftExpand = chatScene.querySelector('[data-expand="sources"]');
+                    const rightExpand = chatScene.querySelector('[data-expand="tools"]');
+
+                    if (leftToggle) leftToggle.addEventListener('click', () => setCollapsed('left', true));
+                    if (rightToggle) rightToggle.addEventListener('click', () => setCollapsed('right', true));
+                    if (leftExpand) leftExpand.addEventListener('click', () => setCollapsed('left', false));
+                    if (rightExpand) rightExpand.addEventListener('click', () => setCollapsed('right', false));
+
+                    const resizers = chatScene.querySelectorAll('.chat-resizer');
+                    resizers.forEach(resizer => {
+                        resizer.addEventListener('pointerdown', (ev) => {
+                            ev.preventDefault();
+                            const side = resizer.getAttribute('data-resize');
+                            if (!side) return;
+
+                            if (side === 'left' && chatShell.getAttribute('data-left-collapsed') === 'true') {
+                                setCollapsed('left', false);
+                            }
+                            if (side === 'right' && chatShell.getAttribute('data-right-collapsed') === 'true') {
+                                setCollapsed('right', false);
+                            }
+
+                            const layoutRect = chatLayout.getBoundingClientRect();
+                            const startX = ev.clientX;
+                            const startLeft = leftPanel?.getBoundingClientRect().width || leftWidth;
+                            const startRight = rightPanel?.getBoundingClientRect().width || rightWidth;
+                            const totalWidth = layoutRect.width;
+                            const resizerTotal = resizerWidth * 2;
+
+                            const onMove = (moveEv) => {
+                                const delta = moveEv.clientX - startX;
+                                if (side === 'left') {
+                                    const maxLeft = totalWidth - startRight - minCenter - resizerTotal;
+                                    const next = Math.min(Math.max(startLeft + delta, minSide), maxLeft);
+                                    setLeftWidth(next);
+                                } else {
+                                    const maxRight = totalWidth - startLeft - minCenter - resizerTotal;
+                                    const next = Math.min(Math.max(startRight - delta, minSide), maxRight);
+                                    setRightWidth(next);
+                                }
+                            };
+
+                            const onUp = () => {
+                                document.body.classList.remove('is-resizing');
+                                window.removeEventListener('pointermove', onMove);
+                                window.removeEventListener('pointerup', onUp);
+                            };
+
+                            document.body.classList.add('is-resizing');
+                            window.addEventListener('pointermove', onMove);
+                            window.addEventListener('pointerup', onUp, { once: true });
+                        });
+
+                        resizer.addEventListener('dblclick', () => {
+                            if (resizer.getAttribute('data-resize') === 'left') {
+                                setLeftWidth(320);
+                            } else {
+                                setRightWidth(280);
+                            }
+                        });
+                    });
+
+                    // Chat settings button: reuse moreMenu by creating a temporary notebook-item
+                    const settingsBtn = chatScene.querySelector('.panel-icon-button[title="Notebook settings"]');
+                    if (settingsBtn) {
+                        settingsBtn.addEventListener('click', (ev) => {
+                            ev.stopPropagation();
+                            // create a hidden notebook-item reflecting current chat title
+                            const chatTitle = chatScene.querySelector('.chat-title')?.textContent || 'Untitled notebook';
+                            const fake = document.createElement('div');
+                            fake.className = 'notebook-item';
+                            fake.style.position = 'absolute';
+                            fake.style.left = '-9999px';
+                            fake.style.top = '-9999px';
+                            fake.innerHTML = `
+                                <div class="cover" style="background: transparent;"></div>
+                                <div class="item-title">${chatTitle}</div>
+                            `;
+                            document.body.appendChild(fake);
+                            // set as current menu target and mark for cleanup
+                            currentMenuTarget = fake;
+                            lastFakeMenuTarget = fake;
+
+                            // position and show the shared moreMenu near the settings button
+                            moreMenu.style.display = 'block';
+                            moreMenu.classList.remove('visible');
+                            const rect = settingsBtn.getBoundingClientRect();
+                            const mw = moreMenu.offsetWidth || 160;
+                            let left = rect.right - mw;
+                            if (left < 8) left = rect.left;
+                            if (left + mw > window.innerWidth - 8) left = window.innerWidth - mw - 8;
+                            moreMenu.style.left = `${Math.max(8, left)}px`;
+                            moreMenu.style.top = `${Math.min(window.innerHeight - 8, rect.bottom + 8)}px`;
+                            moreMenu.classList.add('visible');
+                        });
+                    }
+
+                    const clampPanels = () => {
+                        const layoutRect = chatLayout.getBoundingClientRect();
+                        const totalWidth = layoutRect.width;
+                        const resizerTotal = resizerWidth * 2;
+                        const maxLeft = totalWidth - rightWidth - minCenter - resizerTotal;
+                        const maxRight = totalWidth - leftWidth - minCenter - resizerTotal;
+
+                        if (leftWidth > maxLeft) setLeftWidth(Math.max(minSide, maxLeft));
+                        if (rightWidth > maxRight) setRightWidth(Math.max(minSide, maxRight));
+                    };
+
+                    window.addEventListener('resize', clampPanels);
+                }
+
+                const sourceInput = chatScene.querySelector('#sourceFileInput');
+                const sourceDrop = chatScene.querySelector('.source-drop');
+                const sourceList = chatScene.querySelector('.source-list');
+                const sourceEmpty = chatScene.querySelector('.source-empty');
+                const sourceAddButtons = chatScene.querySelectorAll('.source-add-button');
+                const sourceNoteButton = chatScene.querySelector('.source-note-button');
+
+                const updateSourceEmpty = () => {
+                    if (!sourceEmpty || !sourceList) return;
+                    sourceEmpty.style.display = sourceList.children.length ? 'none' : 'block';
+                };
+
+                const addSourceItem = (name, meta, icon) => {
+                    if (!sourceList) return;
+                    const item = document.createElement('div');
+                    item.className = 'source-item';
+                    item.innerHTML = `
+                        <div class="source-icon"><span class="material-icons">${icon}</span></div>
+                        <div class="source-meta">
+                            <div class="source-name"></div>
+                            <div class="source-type"></div>
+                        </div>
+                    `;
+                    const nameEl = item.querySelector('.source-name');
+                    const metaEl = item.querySelector('.source-type');
+                    if (nameEl) nameEl.textContent = name;
+                    if (metaEl) metaEl.textContent = meta;
+                    sourceList.appendChild(item);
+                    updateSourceEmpty();
+                };
+
+                const viewerState = {
+                    filename: null,
+                    page: 1,
+                    zoom: 1.0,
+                    totalPages: 1
+                };
+
+                const updateViewerUI = () => {
+                    const viewer = chatScene.querySelector('#sourceViewer');
+                    const empty = viewer?.querySelector('.viewer-empty');
+                    const content = viewer?.querySelector('.viewer-content');
+                    const img = viewer?.querySelector('#viewerImage');
+                    const nameEl = viewer?.querySelector('#viewerFileName');
+                    const pageEl = viewer?.querySelector('#viewerPageNum');
+                    const zoomEl = viewer?.querySelector('#viewerZoomLevel');
+
+                    if (!viewer || !img || !viewerState.filename) return;
+
+                    if (empty) empty.style.display = 'none';
+                    if (content) content.style.display = 'flex';
+                    if (nameEl) nameEl.textContent = viewerState.filename;
+                    if (pageEl) pageEl.textContent = `Page ${viewerState.page}`;
+                    if (zoomEl) zoomEl.textContent = `${Math.round(viewerState.zoom * 100)}%`;
+
+                    const url = `${API.BASE_URL}/documents/page-image/${encodeURIComponent(viewerState.filename)}/${viewerState.page}`;
+                    if (img.src !== url) {
+                        img.src = url;
+                    }
+                    
+                    // If zoom is 1, fit to container. If > 1, allow overflow.
+                    if (viewerState.zoom === 1.0) {
+                        img.style.maxWidth = '100%';
+                        img.style.transform = 'scale(1)';
+                    } else {
+                        img.style.maxWidth = 'none';
+                        img.style.transform = `scale(${viewerState.zoom})`;
+                    }
+                };
+
+                const showPagePreview = (filename, pageNum) => {
+                    viewerState.filename = filename;
+                    viewerState.page = pageNum || 1;
+                    viewerState.zoom = 1.0;
+                    
+                    updateViewerUI();
+                    
+                    if (chatShell.getAttribute('data-right-collapsed') === 'true') {
+                        setCollapsed('right', false);
+                    }
+                };
+
+                // Viewer Control Listeners
+                const setupViewerControls = () => {
+                    const prevBtn = chatScene.querySelector('#viewerPrevPage');
+                    const nextBtn = chatScene.querySelector('#viewerNextPage');
+                    const zoomInBtn = chatScene.querySelector('#viewerZoomIn');
+                    const zoomOutBtn = chatScene.querySelector('#viewerZoomOut');
+                    const zoomResetBtn = chatScene.querySelector('#viewerZoomReset');
+
+                    if (prevBtn) {
+                        prevBtn.addEventListener('click', () => {
+                            if (viewerState.page > 1) {
+                                viewerState.page--;
+                                updateViewerUI();
+                            }
+                        });
+                    }
+                    if (nextBtn) {
+                        nextBtn.addEventListener('click', () => {
+                            viewerState.page++;
+                            updateViewerUI();
+                        });
+                    }
+                    if (zoomInBtn) {
+                        zoomInBtn.addEventListener('click', () => {
+                            viewerState.zoom = Math.min(viewerState.zoom + 0.2, 3.0);
+                            updateViewerUI();
+                        });
+                    }
+                    if (zoomOutBtn) {
+                        zoomOutBtn.addEventListener('click', () => {
+                            viewerState.zoom = Math.max(viewerState.zoom - 0.2, 0.4);
+                            updateViewerUI();
+                        });
+                    }
+                    if (zoomResetBtn) {
+                        zoomResetBtn.addEventListener('click', () => {
+                            viewerState.zoom = 1.0;
+                            updateViewerUI();
+                        });
+                    }
+                };
+
+                setupViewerControls();
+
+                const handleFiles = (files) => {
+                    const list = Array.from(files || []);
+                    list.forEach(async (file) => {
+                        const isPDF = file.name.toLowerCase().endsWith('.pdf');
+                        const icon = isPDF ? 'picture_as_pdf' : 'description';
+                        const meta = isPDF ? 'Uploading…' : (file.type || 'file');
+                        
+                        // Create item and add click listener for preview
+                        const item = document.createElement('div');
+                        item.className = 'source-item';
+                        item.style.cursor = 'pointer';
+                        item.innerHTML = `
+                            <div class="source-icon"><span class="material-icons">${icon}</span></div>
+                            <div class="source-meta">
+                                <div class="source-name">${file.name}</div>
+                                <div class="source-type uploading">${meta}</div>
+                            </div>
+                        `;
+                        
+                        item.addEventListener('click', () => {
+                            if (isPDF) showPagePreview(file.name, 1);
+                        });
+
+                        sourceList.appendChild(item);
+                        updateSourceEmpty();
+
+                        if (isPDF) {
+                            const metaEl = item.querySelector('.source-type');
+                            try {
+                                const result = await API.uploadDocument(file);
+                                if (metaEl) {
+                                    metaEl.classList.remove('uploading');
+                                    metaEl.textContent = `✅ ${result.pages} pages, ${result.chunks} chunks`;
+                                }
+                            } catch (err) {
+                                console.error('[Upload]', err);
+                                if (metaEl) {
+                                    metaEl.classList.remove('uploading');
+                                    metaEl.textContent = `❌ ${err.message}`;
+                                }
+                            }
+                        }
+                    });
+                };
+
+                sourceAddButtons.forEach(btn => {
+                    btn.addEventListener('click', () => sourceInput && sourceInput.click());
+                });
+
+                if (sourceInput) {
+                    sourceInput.addEventListener('change', (ev) => {
+                        handleFiles(ev.target.files);
+                        sourceInput.value = '';
+                    });
+                }
+
+                if (sourceNoteButton) {
+                    sourceNoteButton.addEventListener('click', () => {
+                        const note = prompt('New note');
+                        if (!note) return;
+                        addSourceItem(note, 'Note', 'edit_note');
+                    });
+                }
+
+                if (sourceDrop) {
+                    sourceDrop.addEventListener('dragover', (ev) => {
+                        ev.preventDefault();
+                        sourceDrop.classList.add('is-dragover');
+                    });
+                    sourceDrop.addEventListener('dragleave', () => sourceDrop.classList.remove('is-dragover'));
+                    sourceDrop.addEventListener('drop', (ev) => {
+                        ev.preventDefault();
+                        sourceDrop.classList.remove('is-dragover');
+                        if (ev.dataTransfer) handleFiles(ev.dataTransfer.files);
+                    });
+                }
+
+                updateSourceEmpty();
+
+                // Remove old Output/Tool logic entirely as requested
+
+                const chatForm = chatScene.querySelector('.chat-input');
+                const chatPrompt = chatScene.querySelector('#chatPrompt');
+                const chatThread = chatScene.querySelector('.chat-thread');
+                const clearChatBtn = chatScene.querySelector('[data-action="clear-chat"]');
+
+                // Track active SSE stream so we can abort if needed
+                let activeStreamController = null;
+
+                // Process markdown, citations, and latex
+                const processRichText = (container, text) => {
+                    // 1. Convert citations [Trang X] or Trang X to buttons
+                    // Regex for [Trang X]
+                    let html = text.replace(/\[Trang (\d+)\]/g, (match, p1) => {
+                        return `<button class="citation-btn" data-page="${p1}"><span class="material-icons">find_in_page</span>Trang ${p1}</button>`;
+                    });
+
+                    // 2. Handle the "Nguồn tham khảo" footer section
+                    // Looks for "- filename, Trang X"
+                    html = html.replace(/- ([^,\n]+),\s*Trang\s*(\d+)/g, (match, file, page) => {
+                        return `<button class="citation-btn" data-file="${file.trim()}" data-page="${page}"><span class="material-icons">description</span> ${file.trim()} (P. ${page})</button>`;
+                    });
+
+                    // 3. Handle sources footer title
+                    html = html.replace(/📚 \*\*Nguồn tham khảo:\*\*/g, '<div class="sources-footer-title"><span class="material-icons">auto_stories</span> Nguồn tham khảo</div>');
+
+                    // 4. Use marked for basic markdown (bold, etc.)
+                    if (window.marked) {
+                        // Configure marked to be safe and preserve our buttons
+                        container.innerHTML = marked.parse(html);
+                    } else {
+                        container.textContent = text;
+                    }
+
+                    // 5. Render LaTeX
+                    if (window.renderMathInElement) {
+                        renderMathInElement(container, {
+                            delimiters: [
+                                {left: '$$', right: '$$', display: true},
+                                {left: '$', right: '$', display: false},
+                                {left: '\\(', right: '\\)', display: false},
+                                {left: '\\[', right: '\\]', display: true}
+                            ],
+                            throwOnError : false
+                        });
+                    }
+
+                    // 6. Attach click listeners to all buttons in this message
+                    container.querySelectorAll('.citation-btn').forEach(btn => {
+                        btn.addEventListener('click', () => {
+                            const page = btn.getAttribute('data-page');
+                            const file = btn.getAttribute('data-file');
+                            
+                            // If file isn't in data-file, try to find the last uploaded file or inferred from context
+                            // For now, if file is not specified, use the first source available
+                            const targetFile = file || rag_service_filenames?.[0] || ""; 
+                            // Wait, rag_service_filenames isn't here. Let's get it from the source list.
+                            const firstSource = chatScene.querySelector('.source-name')?.textContent;
+                            
+                            showPagePreview(file || firstSource, parseInt(page));
+                        });
+                    });
+                };
+
+                const addMessage = (role, text) => {
+                    if (!chatThread) return null;
+                    const msg = document.createElement('div');
+                    msg.className = role === 'ai' ? 'ai-response' : `message ${role}`;
+                    msg.innerHTML = `
+                        <div class="message-text"></div>
+                        <div class="message-meta"></div>
+                    `;
+                    const textEl = msg.querySelector('.message-text');
+                    const metaEl = msg.querySelector('.message-meta');
+                    
+                    if (textEl) {
+                        if (role === 'ai') {
+                            processRichText(textEl, text);
+                        } else {
+                            textEl.textContent = text;
+                        }
+                    }
+                    
+                    if (metaEl) metaEl.textContent = role === 'user' ? 'You' : 'Lumina';
+                    chatThread.appendChild(msg);
+                    chatThread.scrollTop = chatThread.scrollHeight;
+                    return msg;
+                };
+
+                // Create a placeholder AI message for streaming tokens into
+                const addStreamingMessage = () => {
+                    if (!chatThread) return null;
+                    const msg = document.createElement('div');
+                    msg.className = 'ai-response streaming';
+                    msg.style.display = 'none'; // hidden until first token
+                    msg.innerHTML = `
+                        <div class="message-text"></div>
+                        <div class="message-meta">Lumina</div>
+                    `;
+                    chatThread.appendChild(msg);
+                    chatThread.scrollTop = chatThread.scrollHeight;
+                    return msg;
+                };
+
+                const showThinkingIndicator = (text = "Lumina is thinking") => {
+                    const indicator = document.createElement('div');
+                    indicator.className = 'thinking-indicator';
+                    indicator.id = 'thinkingIndicator';
+                    indicator.innerHTML = `
+                        <span>${text}</span>
+                        <div class="thinking-dots">
+                            <div class="thinking-dot"></div>
+                            <div class="thinking-dot"></div>
+                            <div class="thinking-dot"></div>
+                        </div>
+                    `;
+                    chatThread.appendChild(indicator);
+                    chatThread.scrollTop = chatThread.scrollHeight;
+                };
+
+                const hideThinkingIndicator = () => {
+                    const indicator = document.getElementById('thinkingIndicator');
+                    if (indicator) indicator.remove();
+                };
+
+                if (chatForm && chatPrompt) {
+                    chatForm.addEventListener('submit', (ev) => {
+                        ev.preventDefault();
+                        const text = chatPrompt.value.trim();
+                        if (!text) return;
+
+                        // Abort any previous stream
+                        if (activeStreamController) {
+                            activeStreamController.abort();
+                            activeStreamController = null;
+                        }
+
+                        // Add user message
+                        addMessage('user', text);
+                        chatPrompt.value = '';
+                        chatPrompt.style.height = '';
+
+                        // Create streaming AI message placeholder
+                        const aiMsg = addStreamingMessage();
+                        const textEl = aiMsg?.querySelector('.message-text');
+                        if (!textEl) return;
+
+                        // Disable send button while streaming
+                        const sendBtn = chatForm.querySelector('.send-button');
+                        if (sendBtn) sendBtn.disabled = true;
+
+                        // Show thinking indicator
+                        showThinkingIndicator("Lumina is thinking...");
+
+                        // Start SSE stream
+                        let fullText = '';
+                        let receivedFirstToken = false;
+                        
+                        activeStreamController = API.chatStream(text, {
+                            onToken(token) {
+                                if (!receivedFirstToken) {
+                                    receivedFirstToken = true;
+                                    hideThinkingIndicator();
+                                    aiMsg.style.display = 'flex';
+                                }
+                                
+                                fullText += token;
+                                textEl.innerHTML = '';
+                                processRichText(textEl, fullText + ' <span class="streaming-cursor"></span>');
+                                
+                                // Auto-scroll
+                                chatThread.scrollTop = chatThread.scrollHeight;
+                            },
+                            onDone() {
+                                hideThinkingIndicator();
+                                aiMsg.style.display = 'flex';
+                                // Final render without cursor
+                                textEl.innerHTML = '';
+                                processRichText(textEl, fullText);
+                                aiMsg.classList.remove('streaming');
+                                activeStreamController = null;
+                                if (sendBtn) sendBtn.disabled = false;
+                            },
+                            onError(err) {
+                                hideThinkingIndicator();
+                                aiMsg.style.display = 'flex';
+                                textEl.insertAdjacentText('beforeend',
+                                    `\n\n⚠️ Error: ${err.message}`);
+                                aiMsg.classList.remove('streaming');
+                                activeStreamController = null;
+                                if (sendBtn) sendBtn.disabled = false;
+                            },
+                        });
+                    });
+
+                    chatPrompt.addEventListener('keydown', (ev) => {
+                        if (ev.key === 'Enter' && !ev.shiftKey) {
+                            ev.preventDefault();
+                            if (chatForm.requestSubmit) {
+                                chatForm.requestSubmit();
+                            } else {
+                                chatForm.dispatchEvent(new Event('submit', { cancelable: true }));
+                            }
+                        }
+                    });
+
+                    chatPrompt.addEventListener('input', () => {
+                        chatPrompt.style.height = 'auto';
+                        chatPrompt.style.height = `${Math.min(chatPrompt.scrollHeight, 140)}px`;
+                    });
+                }
+
+                if (clearChatBtn) {
+                    clearChatBtn.addEventListener('click', () => {
+                        if (!chatThread) return;
+                        chatThread.innerHTML = '';
+                        addMessage('ai', 'Chat cleared. How can I help next?');
+                    });
+                }
+            }
+
             // Ensure auth UI (account button) reflects current state on init
             this.updateAuthUI();
         }
@@ -1177,4 +1997,17 @@ const transitionManager = new TransitionManager();
 // Initialize when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
     transitionManager.initialize();
+
+    // Gán 1 lần duy nhất lúc khởi tạo app
+    const chatBackBtn = document.querySelector('.chat-back-button');
+    if (chatBackBtn) {
+        // Dùng onclick để đè đứt mọi listener rác (nếu có)
+        chatBackBtn.onclick = (e) => {
+            e.preventDefault(); // Chặn default form submit nếu nút nằm trong form
+            console.log(`[DEBUG] --- BACK BUTTON CLICKED ---`);
+            transitionManager.transitionTo('dashboard');
+        };
+    } else {
+        console.error(`[DEBUG] ERROR: .chat-back-button NOT FOUND during DOMContentLoaded!`);
+    }
 });

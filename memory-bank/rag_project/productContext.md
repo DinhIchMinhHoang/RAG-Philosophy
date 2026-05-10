@@ -13,15 +13,32 @@ This is a Retrieval-Augmented Generation (RAG) system for the "Thực hành phá
 - Environment Management: `python-dotenv`
 
 ## Directory Structure
-../rag_core/
-├── .env                  # Chứa OPENAI_API_KEY / GEMINI_API_KEY
-├── requirements.txt      # Chứa các dependencies
-├── config.py             # File cấu hình trung tâm
-├── step1_parser.py       # Phân tích PDF lai 2 luồng (Fast Track / Heavy Track)
-├── step2_chunker.py      # Chia nhỏ văn bản (Parent-Child Text Splitter)
-├── step3_vector_db.py    # Nhúng (Embedding) và lưu vào Qdrant + InMemoryStore
-├── step4_generator.py    # Truy xuất (MultiVectorRetriever) và sinh câu trả lời (LLM Chain)
-└── main_test.py          # Kịch bản chạy thử toàn bộ pipeline
+./
+├── config.py                 # Stub config (main config is rag_core/config.py)
+├── requirements.txt
+├── rag_core/
+│   ├── config.py             # Central configuration
+│   ├── pipeline.py           # Pipeline orchestrator (ingest, build_pipeline, query)
+│   ├── common/               # Shared utilities
+│   │   ├── __init__.py
+│   │   ├── logging_utils.py  # configure_logging(), get_logger()
+│   │   ├── pdf_utils.py      # normalize_pdf_path(), collect_pdf_paths()
+│   │   └── embeddings.py     # build_embeddings()
+│   ├── step1_parser.py       # Hybrid Two-Pass Parser
+│   ├── step2_chunker.py      # Parent-Child Text Splitter
+│   ├── step3_vector_db.py     # Embedding + Qdrant storage
+│   ├── step4_generator.py    # Retrieval + LLM Chain
+│   ├── main_test.py          # Interactive pipeline test
+│   ├── ragas_eval.py         # RAGAS evaluation script
+│   └── tests/                # Unit tests
+│       ├── test_logging_utils.py
+│       ├── test_pdf_utils.py
+│       ├── test_embeddings.py
+│       └── test_pipeline.py
+├── backend/app/              # FastAPI backend
+├── frontend/                 # Vanilla JS frontend
+├── data/                     # PDFs and stores
+└── memory-bank/              # Project context
 
 ## Coding Guidelines
 - **Clean Code & Modular**: Each Python file from step1 to step4 has only ONE responsibility. Define only functions/classes, no global execution.
