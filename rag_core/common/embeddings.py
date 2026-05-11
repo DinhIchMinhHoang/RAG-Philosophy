@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from langchain_huggingface import HuggingFaceEmbeddings
 
-from config import Config
+try:
+    from ..config import Config
+except ImportError:  # pragma: no cover
+    from config import Config
 
 
 def build_embeddings() -> HuggingFaceEmbeddings:

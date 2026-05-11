@@ -1,12 +1,13 @@
 # === 1. LangChain Ecosystem ===
 langchain==0.3.25
-langchain-core==0.3.58
+langchain-core==0.3.75
 langchain-community==0.3.24
 langchain-google-genai==2.1.5
 langchain-huggingface==0.2.0
 langchain-qdrant==0.2.0
 langchain-text-splitters==0.3.11
 rank_bm25
+cohere>=5.0.0,<6
 
 # === 2. PDF Parsing & Document Processing ===
 PyMuPDF==1.25.5

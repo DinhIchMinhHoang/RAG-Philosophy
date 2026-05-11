@@ -11,6 +11,10 @@ except ImportError:  # pragma: no cover
         def __init__(self, corpus):
             self.corpus = corpus
 
+        def get_scores(self, query):
+            query_set = set(query)
+            return [sum(1 for token in doc if token in query_set) for doc in self.corpus]
+
         def get_top_n(self, query, documents, n=5):
             query_set = set(query)
             scored = []
@@ -55,7 +59,27 @@ class BM25ChildIndex:
         query_tokens = tokenize_text(query)
         if not query_tokens:
             return []
-        return list(self._bm25.get_top_n(query_tokens, self.child_docs, n=min(k, len(self.child_docs))))
+
+        scores = list(self._bm25.get_scores(query_tokens))
+        if scores and max(scores) > 0:
+            ranked_indices = [
+                idx
+                for idx, score in sorted(
+                    enumerate(scores),
+                    key=lambda item: (-item[1], item[0]),
+                )
+                if score > 0
+            ]
+            return [self.child_docs[idx] for idx in ranked_indices[:k]]
+
+        query_set = set(query_tokens)
+        scored: List[tuple[int, int]] = []
+        for idx, doc_tokens in enumerate(self.tokenized_docs):
+            overlap = sum(1 for t in doc_tokens if t in query_set)
+            if overlap > 0:
+                scored.append((overlap, idx))
+        scored.sort(key=lambda it: (-it[0], it[1]))
+        return [self.child_docs[idx] for _, idx in scored[:k]]
 
 
 class HybridParentRetriever(BaseRetriever):

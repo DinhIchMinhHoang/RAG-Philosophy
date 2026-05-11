@@ -65,7 +65,11 @@
 - Embed child chunks
 - Payload Qdrant phải có `parent_chunk_id` để fetch parent text từ Postgres
 - Schema DB ưu tiên 1 bảng `chunks` với `kind=parent|child` và `parent_chunk_id`
+
+
+
 ## Phân công theo 4 thành viên
+
 ## Thành viên A: Infra/DevOps (Compose + Nginx + Volumes + Env)
 ### Scope
 - Docker Compose hoàn chỉnh, Nginx reverse proxy, volumes persistent, healthchecks
@@ -85,6 +89,7 @@
 - `docker-compose up -d` xong mở được UI ở `http://localhost`
 - API qua `http://localhost/api/...` hoạt động
 - Restart compose không mất dữ liệu (volumes ok)
+
 ## Thành viên B: Backend (FastAPI API + Auth/Admin + Retrieval/LLM Abstraction)
 ### Scope
 - API contract, auth/role admin, document lifecycle, chat endpoint, retrieval layer abstraction, LLM abstraction, logging backend
@@ -105,6 +110,7 @@
 - Upload trả job ngay, không block
 - Admin endpoints hoạt động đúng role
 - Chat trả lời có citations rõ, lỗi trả về nhất quán
+
 ## Thành viên C: Worker (Celery ingest + Progress/Stage + Qdrant + Postgres + Versioning)
 ### Scope
 - Celery worker ingest nền, cập nhật progress/stage vào Postgres, upsert Qdrant, lưu chunks, pipeline_version xuyên suốt
@@ -126,6 +132,7 @@
 - Job fail có lỗi rõ, không treo trạng thái running
 - Reindex không nhân đôi dữ liệu vô kiểm soát
 - Backend retrieve được parent chunks + citations đúng page/source
+
 ## Thành viên D: Frontend (User Chat UI + Admin UI + Ingest Status UX)
 ### Scope
 - UI chat cho user, UI admin quản trị user/tài liệu/job, hiển thị progress ingest, hiển thị citations rõ ràng, error handling

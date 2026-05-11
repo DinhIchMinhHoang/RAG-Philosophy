@@ -28,7 +28,6 @@ rag_core/       # RAG pipeline
 backend/app/    # FastAPI backend
 frontend/       # Static frontend
 docs/           # Project documentation
-memory-bank/    # Context and decisions
 data/           # PDFs, stores, evaluation artifacts
 ```
 

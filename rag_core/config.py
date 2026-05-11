@@ -11,6 +11,7 @@ load_dotenv(dotenv_path=_ROOT_DIR / ".env")
 class Config:
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
+    COHERE_API_KEY: str = os.getenv("COHERE_API_KEY", "")
 
     PARENT_CHUNK_SIZE: int = 2000
     PARENT_CHUNK_OVERLAP: int = 200
@@ -28,11 +29,19 @@ class Config:
     HYBRID_ENABLED: bool = False
     HYBRID_FINAL_K: int = 3
     HYBRID_DENSE_K: int = 5
-    HYBRID_SPARSE_K: int = 20
+    HYBRID_SPARSE_K: int = 10
     HYBRID_RRF_K: int = 60
     HYBRID_DENSE_WEIGHT: float = 0.7
     HYBRID_SPARSE_WEIGHT: float = 0.3
     SPARSE_MIN_TOKEN_LEN: int = 2
+
+    # Cohere reranking (fail-open): rerank child chunks then map to parent docs.
+    # When enabled, retrieval always uses dense+BM25 candidate merge.
+    RERANK_ENABLED: bool = False
+    RERANK_MODEL: str = os.getenv("RERANK_MODEL", "rerank-v4.0-fast")
+    RERANK_CANDIDATE_K: int = int(os.getenv("RERANK_CANDIDATE_K", "8"))
+    RERANK_TIMEOUT_SECONDS: float = float(os.getenv("RERANK_TIMEOUT_SECONDS", "2.0"))
+    RERANK_MAX_TOKENS_PER_DOC: int = int(os.getenv("RERANK_MAX_TOKENS_PER_DOC", "1024"))
 
     OLLAMA_BASE_URL: str = "http://localhost:11434"
     OLLAMA_MODEL_NAME: str = "glm-ocr"

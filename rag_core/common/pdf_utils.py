@@ -3,7 +3,10 @@ from __future__ import annotations
 import os
 from typing import List, Optional
 
-from config import Config
+try:
+    from ..config import Config
+except ImportError:  # pragma: no cover
+    from config import Config
 
 
 def normalize_pdf_path(path: str) -> str:

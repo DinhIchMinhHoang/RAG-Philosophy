@@ -16,6 +16,7 @@ import logging
 import tempfile
 import shutil
 from typing import List, AsyncGenerator, Optional
+import asyncio
 
 from langchain_core.documents import Document
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -130,7 +131,9 @@ class RAGService:
             return
 
         # Retrieve context documents
-        docs = self._retriever.invoke(question)
+        # Retrieval may perform CPU work (BM25) and/or network I/O (Cohere rerank).
+        # Run in a worker thread to avoid blocking the event loop.
+        docs = await asyncio.to_thread(self._retriever.invoke, question)
         if not docs:
             yield "Không tìm thấy tài liệu phù hợp với câu hỏi của bạn."
             return

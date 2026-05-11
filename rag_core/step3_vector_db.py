@@ -12,10 +12,12 @@ try:
     from .common.embeddings import build_embeddings as build_embeddings_from_common
     from .config import Config
     from .hybrid_retriever import BM25ChildIndex, HybridParentRetriever
+    from .rerank_retriever import ChildRerankParentRetriever
 except ImportError:  # pragma: no cover
     from common.embeddings import build_embeddings as build_embeddings_from_common
     from config import Config
     from hybrid_retriever import BM25ChildIndex, HybridParentRetriever
+    from rerank_retriever import ChildRerankParentRetriever
 
 
 def _init_embeddings() -> HuggingFaceEmbeddings:
@@ -57,6 +59,19 @@ def build_vector_db(child_docs: List[Document], parent_docs: List[Document]):
     embeddings = _init_embeddings()
     vectorstore = _build_qdrant_store(child_docs, embeddings)
     doc_store = _build_doc_store(parent_docs)
+
+    # Rerank mode: always use dense+BM25 to get child candidates, rerank children,
+    # then map to parent docs (fail-open if Cohere not available).
+    if Config.RERANK_ENABLED:
+        bm25_index = BM25ChildIndex.from_documents(child_docs)
+        final_parent_k = Config.HYBRID_FINAL_K if Config.HYBRID_ENABLED else Config.TOP_K_RESULTS
+        return ChildRerankParentRetriever(
+            vectorstore=vectorstore,
+            docstore=doc_store,
+            bm25_index=bm25_index,
+            id_key="doc_id",
+            final_parent_k=final_parent_k,
+        )
 
     if Config.HYBRID_ENABLED:
         return HybridParentRetriever(
