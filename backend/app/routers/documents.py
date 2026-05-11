@@ -7,8 +7,11 @@ POST /documents/reset   — Clear all ingested sources and reset the pipeline.
 """
 
 from fastapi import APIRouter, UploadFile, File, HTTPException, status, Response
+from fastapi.responses import FileResponse
+from pathlib import Path
 from typing import List
 
+from rag_core.config import Config
 from ..services.rag_service import rag_service
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
@@ -24,6 +27,22 @@ async def get_page_image(filename: str, page_number: int):
             detail="Page or file not found",
         )
     return Response(content=img_bytes, media_type="image/png")
+
+
+@router.get("/file/{filename}")
+async def get_pdf_file(filename: str):
+    """Serve the raw PDF file for native viewer."""
+    file_path = Path(Config.RAW_DIR) / filename
+    if not file_path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="File not found",
+        )
+    return FileResponse(
+        path=file_path,
+        media_type="application/pdf",
+        filename=filename,
+    )
 
 
 @router.post("/upload", status_code=status.HTTP_201_CREATED)

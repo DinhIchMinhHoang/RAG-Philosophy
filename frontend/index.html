@@ -317,20 +317,9 @@
                             <div class="viewer-empty"><span class="material-icons">find_in_page</span><p>Click a source or citation to view the page</p></div>
                             <div class="viewer-content" style="display: none;">
                                 <div class="viewer-controls">
-                                    <div class="viewer-page-controls">
-                                        <button id="viewerPrevPage" class="viewer-btn" title="Previous Page"><span class="material-icons">chevron_left</span></button>
-                                        <span id="viewerPageNum" class="viewer-pagenum">Page 1</span>
-                                        <button id="viewerNextPage" class="viewer-btn" title="Next Page"><span class="material-icons">chevron_right</span></button>
-                                    </div>
-                                    <div class="viewer-zoom-controls">
-                                        <button id="viewerZoomOut" class="viewer-btn" title="Zoom Out"><span class="material-icons">remove</span></button>
-                                        <span id="viewerZoomLevel" class="viewer-zoomnum">100%</span>
-                                        <button id="viewerZoomIn" class="viewer-btn" title="Zoom In"><span class="material-icons">add</span></button>
-                                        <button id="viewerZoomReset" class="viewer-btn" title="Reset Zoom"><span class="material-icons">restart_alt</span></button>
-                                    </div>
+                                    <div class="viewer-info"><span id="viewerFileName" class="viewer-filename">filename.pdf</span></div>
                                 </div>
-                                <div class="viewer-header-info"><span id="viewerFileName" class="viewer-filename">filename.pdf</span></div>
-                                <div class="viewer-image-wrap"><img id="viewerImage" src="" alt="Page Preview"></div>
+                                <div class="viewer-pdf-wrap"><embed id="pdfViewer" type="application/pdf"></div>
                             </div>
                         </div>
                     </div>

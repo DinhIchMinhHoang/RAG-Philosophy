@@ -21,63 +21,35 @@ function processRichText(container, text) {
 
     container.querySelectorAll('.citation-btn').forEach(btn => {
         btn.addEventListener('click', () => {
-            const page = btn.getAttribute('data-page');
             const file = btn.getAttribute('data-file');
             const firstSource = document.querySelector('#scene-chat .source-name')?.textContent;
-            showPagePreview(file || firstSource, parseInt(page));
+            showPagePreview(file || firstSource);
         });
     });
 }
 
-const viewerState = { filename: null, page: 1, zoom: 1.0, totalPages: 1 };
+const viewerState = { filename: null };
 let activeStreamController = null;
 let setCollapsedFn = null;
 
-export function showPagePreview(filename, pageNum) {
+export function showPagePreview(filename) {
     if (!filename) return;
     viewerState.filename = filename;
-    viewerState.page = pageNum || 1;
-    viewerState.zoom = 1.0;
-    updateViewerUI();
-    if (document.querySelector('.chat-shell')?.getAttribute('data-right-collapsed') === 'true') {
-        if (setCollapsedFn) setCollapsedFn('right', false);
-    }
-}
 
-function updateViewerUI() {
     const viewer = document.querySelector('#sourceViewer');
     const empty = viewer?.querySelector('.viewer-empty');
     const content = viewer?.querySelector('.viewer-content');
-    const img = viewer?.querySelector('#viewerImage');
+    const embed = viewer?.querySelector('#pdfViewer');
     const nameEl = viewer?.querySelector('#viewerFileName');
-    const pageEl = viewer?.querySelector('#viewerPageNum');
-    const zoomEl = viewer?.querySelector('#viewerZoomLevel');
 
-    if (!viewer || !img || !viewerState.filename) return;
     if (empty) empty.style.display = 'none';
     if (content) content.style.display = 'flex';
-    if (nameEl) nameEl.textContent = viewerState.filename;
-    if (pageEl) pageEl.textContent = `Page ${viewerState.page}`;
-    if (zoomEl) zoomEl.textContent = `${Math.round(viewerState.zoom * 100)}%`;
+    if (nameEl) nameEl.textContent = filename;
+    if (embed) embed.src = `${BASE_URL}/documents/file/${encodeURIComponent(filename)}`;
 
-    const url = `${BASE_URL}/documents/page-image/${encodeURIComponent(viewerState.filename)}/${viewerState.page}`;
-    if (img.src !== url) img.src = url;
-
-    if (viewerState.zoom === 1.0) { img.style.maxWidth = '100%'; img.style.transform = 'scale(1)'; }
-    else { img.style.maxWidth = 'none'; img.style.transform = `scale(${viewerState.zoom})`; }
-}
-
-function setupViewerControls() {
-    ['#viewerPrevPage', '#viewerNextPage', '#viewerZoomIn', '#viewerZoomOut', '#viewerZoomReset'].forEach(sel => {
-        const btn = document.querySelector(sel);
-        if (!btn) return;
-        const id = sel.replace('#', '');
-        if (id === 'viewerPrevPage') btn.addEventListener('click', () => { if (viewerState.page > 1) { viewerState.page--; updateViewerUI(); } });
-        if (id === 'viewerNextPage') btn.addEventListener('click', () => { viewerState.page++; updateViewerUI(); });
-        if (id === 'viewerZoomIn') btn.addEventListener('click', () => { viewerState.zoom = Math.min(viewerState.zoom + 0.2, 3.0); updateViewerUI(); });
-        if (id === 'viewerZoomOut') btn.addEventListener('click', () => { viewerState.zoom = Math.max(viewerState.zoom - 0.2, 0.4); updateViewerUI(); });
-        if (id === 'viewerZoomReset') btn.addEventListener('click', () => { viewerState.zoom = 1.0; updateViewerUI(); });
-    });
+    if (document.querySelector('.chat-shell')?.getAttribute('data-right-collapsed') === 'true') {
+        if (setCollapsedFn) setCollapsedFn('right', false);
+    }
 }
 
 function addMessage(chatThread, role, text) {
@@ -188,8 +160,6 @@ export function initChatScene(transitionManager) {
         window.addEventListener('resize', clampPanels);
     }
 
-    setupViewerControls();
-
     const sourceInput = chatScene.querySelector('#sourceFileInput');
     const sourceDrop = chatScene.querySelector('.source-drop');
     const sourceList = chatScene.querySelector('.source-list');
@@ -208,7 +178,7 @@ export function initChatScene(transitionManager) {
             item.className = 'source-item';
             item.style.cursor = 'pointer';
             item.innerHTML = `<div class="source-icon"><span class="material-icons">${icon}</span></div><div class="source-meta"><div class="source-name">${file.name}</div><div class="source-type uploading">${meta}</div></div>`;
-            item.addEventListener('click', () => { if (isPDF) showPagePreview(file.name, 1); });
+            item.addEventListener('click', () => { if (isPDF) showPagePreview(file.name); });
             sourceList.appendChild(item);
             updateSourceEmpty(sourceEmpty, sourceList);
 
