@@ -1,10 +1,8 @@
-import sys, os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import os
 import tempfile
 import unittest
 
-from common.pdf_utils import collect_pdf_paths
+from rag_core.common.pdf_utils import collect_pdf_paths
 
 
 class TestPdfUtils(unittest.TestCase):

@@ -30,8 +30,12 @@ from langchain_community.chat_models import ChatOllama
 from langchain_core.documents import Document
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from common.logging_utils import configure_logging, get_logger
-from config import Config
+try:
+    from .common.logging_utils import configure_logging, get_logger
+    from .config import Config
+except ImportError:  # pragma: no cover
+    from common.logging_utils import configure_logging, get_logger
+    from config import Config
 
 configure_logging()
 logger = get_logger(__name__)

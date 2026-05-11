@@ -16,6 +16,11 @@ import sys
 import logging
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8")
+
 from common.logging_utils import configure_logging, get_logger
 from pipeline import build_pipeline, query
 

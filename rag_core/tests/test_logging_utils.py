@@ -1,9 +1,7 @@
-import sys, os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import logging
 import unittest
 
-from common.logging_utils import configure_logging, get_logger
+from rag_core.common.logging_utils import configure_logging, get_logger
 
 
 class TestLoggingUtils(unittest.TestCase):

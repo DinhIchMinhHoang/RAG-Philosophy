@@ -20,14 +20,14 @@ CHILD_CHUNK_OVERLAP: int = 100   # Overlap between child chunks
 
 ## Chunking Algorithm
 
-### Step 1: Page → Parent Chunks
+### Step 1: Page ? Parent Chunks
 
 ```
 Input: Document(page_content=page_text, metadata={source, page})
 
 RecursiveCharacterTextSplitter(chunk_size=2000, overlap=200)
-    │
-    ▼
+    �
+    ?
 For each raw_parent in splitted_documents:
     doc_id = UUID()
     parent = Document(
@@ -37,13 +37,13 @@ For each raw_parent in splitted_documents:
     all_parents.append(parent)
 ```
 
-### Step 2: Parent → Child Chunks
+### Step 2: Parent ? Child Chunks
 
 ```
 For each parent in all_parents:
     RecursiveCharacterTextSplitter(chunk_size=500, overlap=100)
-        │
-        ▼
+        �
+        ?
     For each raw_child in splitted_documents:
         child = Document(
             page_content = raw_child.page_content,
@@ -67,8 +67,16 @@ This ensures chunks respect paragraph boundaries first, then sentences, then wor
 The `doc_id` is a UUID generated for each parent chunk. All child chunks derived from that parent inherit the same `doc_id`. This enables the MultiVectorRetriever to map child matches back to parent context:
 
 ```
-Query → Qdrant (child) → doc_id → InMemoryStore (parent)
+Query ? Qdrant (child) ? doc_id ? InMemoryStore (parent)
 ```
+
+### Step 3 Validation
+
+`step3_vector_db.py` validates that every `child_docs` item has a `doc_id` before indexing and raises `KeyError` if any child is missing it. The same metadata key is required for parent docs as well.
+
+`BM25ChildIndex` also builds over the `child_docs` list, so hybrid retrieval depends on the same `doc_id` linkage.
+
+Tokenization uses `SPARSE_MIN_TOKEN_LEN` from `rag_core/config.py`; a regex word tokenizer is used as the fallback tokenizer path.
 
 ## Metadata Preservation
 
@@ -85,8 +93,8 @@ Expected output for a typical 10-page PDF:
 | Document Type | Approximate Count |
 |---------------|-------------------|
 | Pages (Step 1) | 10 |
-| Parent Chunks | ~50 (2000 chars/page → 10 chunks/page) |
-| Child Chunks | ~200 (500 chars/parent → 4 children/parent) |
+| Parent Chunks | ~50 (2000 chars/page ? 10 chunks/page) |
+| Child Chunks | ~200 (500 chars/parent ? 4 children/parent) |
 
 ## Trade-offs
 

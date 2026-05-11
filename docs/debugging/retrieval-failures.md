@@ -61,6 +61,30 @@ print(f"parent_docs: {artifacts.parent_docs_count}")
 
 **Fix**: Check logs for Qdrant errors
 
+### Hybrid: rank_bm25 Missing
+
+**Symptom**: Hybrid retrieval behaves like a simple token-overlap fallback
+
+**Cause**: `rank_bm25` is not installed
+
+**Fix**: Install `rank_bm25` and rerun the hybrid retriever tests
+
+### Hybrid: BM25 Returns No Tokens
+
+**Symptom**: Sparse side returns no candidates
+
+**Cause**: Query text is empty or all terms are filtered out by `SPARSE_MIN_TOKEN_LEN`
+
+**Fix**: Check the query text, tokenizer output, and the sparse token length config
+
+### Hybrid: Missing doc_id
+
+**Symptom**: `KeyError` during vector-store build
+
+**Cause**: One or more child docs do not carry `doc_id`
+
+**Fix**: Verify step2 chunking and step3 validation logs
+
 ## Logging
 
 Enable debug logging:
@@ -72,5 +96,11 @@ logging.basicConfig(level=logging.DEBUG)
 ```
 
 Check for messages like:
-- `[Step 3] ƒêang nh√∫ng X child docs v√†o Qdrant`
-- `[Step 3] ‚úÖ ƒê√£ index X child docs v√†o Qdrant`
+- `[Step 3] –ang nh˙ng X child docs v‡o Qdrant`
+- `[Step 3] ? –„ index X child docs v‡o Qdrant`
+
+## Recommended Checks
+
+- Run `python -m unittest rag_core.tests.test_hybrid_retriever -v`
+- Run `python rag_core/main_test.py`
+- Inspect ingest logs for BM25 tokenization and doc_id validation errors

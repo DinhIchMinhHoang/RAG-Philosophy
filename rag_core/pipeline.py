@@ -5,13 +5,22 @@ from typing import List, Optional
 
 from langchain_core.documents import Document
 
-from config import Config
-from common.logging_utils import configure_logging, get_logger
-from common import pdf_utils
-from step1_parser import HybridPDFParser
-from step2_chunker import chunk_documents
-from step3_vector_db import build_vector_db
-from step4_generator import setup_rag_chain, ask
+try:
+    from .config import Config
+    from .common.logging_utils import configure_logging, get_logger
+    from .common import pdf_utils
+    from .step1_parser import HybridPDFParser
+    from .step2_chunker import chunk_documents
+    from .step3_vector_db import build_vector_db
+    from .step4_generator import setup_rag_chain, ask
+except ImportError:  # pragma: no cover
+    from config import Config
+    from common.logging_utils import configure_logging, get_logger
+    from common import pdf_utils
+    from step1_parser import HybridPDFParser
+    from step2_chunker import chunk_documents
+    from step3_vector_db import build_vector_db
+    from step4_generator import setup_rag_chain, ask
 
 
 logger = get_logger(__name__)

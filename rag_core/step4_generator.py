@@ -13,8 +13,12 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain.chains.retrieval import create_retrieval_chain
 
-from common.logging_utils import configure_logging, get_logger
-from config import Config
+try:
+    from .common.logging_utils import configure_logging, get_logger
+    from .config import Config
+except ImportError:  # pragma: no cover
+    from common.logging_utils import configure_logging, get_logger
+    from config import Config
 
 configure_logging()
 logger = get_logger(__name__)

@@ -1,14 +1,12 @@
-import sys, os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import unittest
 from unittest.mock import patch
 
-from config import Config
-from common.embeddings import build_embeddings
+from rag_core.config import Config
+from rag_core.common.embeddings import build_embeddings
 
 
 class TestEmbeddings(unittest.TestCase):
-    @patch("common.embeddings.HuggingFaceEmbeddings")
+    @patch("rag_core.common.embeddings.HuggingFaceEmbeddings")
     def test_build_embeddings_calls_model(self, mock_cls) -> None:
         build_embeddings()
         mock_cls.assert_called_once()
