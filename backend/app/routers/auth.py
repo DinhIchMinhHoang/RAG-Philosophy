@@ -29,6 +29,16 @@ def get_current_user(authorization: str = Header(None), db: Session = Depends(da
     
     return db_user
 
+
+def require_admin(current_user: models.User = Depends(get_current_user)):
+    """Dependency to require admin privileges. Raises 403 if user is not admin."""
+    if not getattr(current_user, "is_admin", False):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin privileges required",
+        )
+    return current_user
+
 # Tạo một "nhóm" API chuyên xử lý vấn đề xác thực
 router = APIRouter(tags=["Authentication"])
 

@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from . import models
 from .database import engine
-from .routers import auth, documents, chat
+from .routers import auth, documents, chat, admin
 
 # Tự động tạo file database SQLite (nếu chưa có)
 models.Base.metadata.create_all(bind=engine)
@@ -19,9 +19,10 @@ app.add_middleware(
 )
 
 # Gắn các API từ file routers vào app chính
-app.include_router(auth.router)
-app.include_router(documents.router)
-app.include_router(chat.router)
+app.include_router(auth.router, prefix="/api")
+app.include_router(documents.router, prefix="/api")
+app.include_router(chat.router, prefix="/api")
+app.include_router(admin.router)
 
 @app.get("/")
 def root():

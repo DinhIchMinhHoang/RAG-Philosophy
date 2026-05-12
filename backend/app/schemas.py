@@ -35,6 +35,18 @@ class Token(BaseModel):
     access_token: str
     token_type: str
 
+
+# Response model for user info (admin-facing)
+class UserOut(BaseModel):
+    id: int
+    username: str
+    email: EmailStr
+    is_admin: bool
+
+    class Config:
+        # Pydantic v2 uses `from_attributes` to allow orm object -> model conversion
+        from_attributes = True
+
 # Khuôn mẫu để thay đổi mật khẩu
 class ChangePassword(BaseModel):
     current_password: str
