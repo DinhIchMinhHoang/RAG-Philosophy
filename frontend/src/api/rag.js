@@ -1,4 +1,4 @@
-import { BASE_URL, getToken } from './client.js';
+import { BASE_URL, getToken, request } from './client.js';
 
 export async function uploadDocument(file) {
     const formData = new FormData();
@@ -7,7 +7,7 @@ export async function uploadDocument(file) {
     const token = getToken();
     if (token) headers['Authorization'] = `Bearer ${token}`;
 
-    const response = await fetch(`${BASE_URL}/documents/upload`, {
+    const response = await fetch(`${BASE_URL}/documents`, {
         method: 'POST', headers, body: formData
     });
     if (!response.ok) {
@@ -19,9 +19,19 @@ export async function uploadDocument(file) {
 
 export function chatStream(message, { onToken, onDone, onError }) {
     const controller = new AbortController();
+    const token = getToken();
+    if (!token) {
+        const err = new Error('Please sign in first');
+        if (onError) onError(err);
+        return controller;
+    }
+
     fetch(`${BASE_URL}/chat/stream`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify({ message }),
         signal: controller.signal,
     })
@@ -60,5 +70,18 @@ export function chatStream(message, { onToken, onDone, onError }) {
 }
 
 export async function listSources() {
-    return await request('/documents/sources', { method: 'GET' });
+    const documents = await request('/documents', { method: 'GET' });
+    if (!Array.isArray(documents)) return documents;
+
+    const sources = documents.map((doc) => doc.filename).filter(Boolean);
+    return {
+        sources,
+        count: sources.length,
+        has_sources: sources.length > 0,
+        documents,
+    };
+}
+
+export async function getJob(jobId) {
+    return await request(`/jobs/${encodeURIComponent(jobId)}`, { method: 'GET' });
 }

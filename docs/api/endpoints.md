@@ -1,5 +1,7 @@
 # API Endpoints
 
+> Freeze note: canonical non-admin contract now lives in `docs/api/non-admin-contract-v1.md` with `/api/*` paths and legacy alias mapping.
+
 ## Base URL
 
 ```

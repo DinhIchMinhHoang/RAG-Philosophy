@@ -4,7 +4,7 @@
 
 ```javascript
 const API = {
-    BASE_URL: 'http://localhost:8000',
+    BASE_URL: '/api',
 
     // Authentication
     signup(username, email, password) -> Promise<Token>
@@ -18,6 +18,7 @@ const API = {
     // RAG Documents
     uploadDocument(file: File) -> Promise<UploadResult>
     listSources() -> Promise<SourcesResponse>
+    getJob(jobId: String) -> Promise<JobResponse>
 
     // RAG Chat
     chatStream(message: String, {
@@ -34,35 +35,39 @@ const API = {
 ## Method Details
 
 ### signup(username, email, password)
-- **Endpoint**: POST /signup
+- **Endpoint**: POST /api/signup
 - **Request**: `{username, email, password}`
 - **Response**: `{access_token, token_type}`
 - **Side Effect**: Stores token in localStorage
 
 ### login(email, password)
-- **Endpoint**: POST /login
+- **Endpoint**: POST /api/login
 - **Request**: `{email, password}`
 - **Response**: `{access_token, token_type}`
 - **Side Effect**: Stores token in localStorage
 
 ### changePassword(currentPassword, newPassword)
-- **Endpoint**: POST /change-password
+- **Endpoint**: POST /api/change-password
 - **Headers**: Authorization: Bearer token
 - **Request**: `{current_password, new_password}`
 - **Response**: `{message: "Password changed successfully!"}`
 
 ### uploadDocument(file)
-- **Endpoint**: POST /documents/upload
+- **Endpoint**: POST /api/documents
 - **Headers**: Authorization: Bearer token
 - **Body**: multipart/form-data with 'file' field
-- **Response**: `{filename, status, pages, chunks}`
+- **Response**: `{document_id, job_id, status, pipeline_version, object_key}`
 
 ### listSources()
-- **Endpoint**: GET /documents/sources
-- **Response**: `{sources: [], count: 0, has_sources: false}`
+- **Endpoint**: GET /api/documents
+- **Response**: compatibility wrapper `{sources, count, has_sources, documents}`
+
+### getJob(jobId)
+- **Endpoint**: GET /api/jobs/{jobId}
+- **Response**: `{job_id, status, stage, progress_pct, stage_detail, error_message, ...}`
 
 ### chatStream(message, callbacks)
-- **Endpoint**: POST /chat/stream
+- **Endpoint**: POST /api/chat/stream
 - **Request**: `{message: "question"}`
 - **Response**: SSE stream
 - **Callback**: `onToken` called for each chunk, `onDone` at end
@@ -87,6 +92,7 @@ async request(endpoint, options = {}) {
 // Login and upload
 await API.login(email, password);
 const result = await API.uploadDocument(pdfFile);
+const job = await API.getJob(result.job_id);
 
 // Chat with streaming
 API.chatStream("What is philosophy?", {

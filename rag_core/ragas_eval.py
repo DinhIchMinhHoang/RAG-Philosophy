@@ -8,14 +8,20 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 import os
 import re
 from typing import List, Dict, Any
 
+import fitz
 import pandas as pd
 from datasets import Dataset
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_openai import ChatOpenAI
+
+from ragas.llms import LangchainLLMWrapper
+
 
 from ragas.run_config import RunConfig
 
@@ -42,10 +48,30 @@ def _strip_citations(text: str) -> str:
     return _CITATION_PATTERN.sub(" ", text).strip()
 
 
-class SafeAsyncChatGoogleGenerativeAI(ChatGoogleGenerativeAI):
-    async def _agenerate(self, *args: Any, **kwargs: Any):
-        kwargs.pop("temperature", None)
-        return await super()._agenerate(*args, **kwargs)
+class _RateLimitedChatOpenAI(BaseChatModel):
+    """Caps concurrent async LLM calls to avoid 429 rate limits."""
+
+    def __init__(self, llm: ChatOpenAI, max_concurrency: int = 3):
+        super().__init__()
+        self._llm = llm
+        self._semaphore = asyncio.Semaphore(max_concurrency)
+
+    async def _agenerate(self, *args: Any, **kwargs: Any) -> Any:
+        async with self._semaphore:
+            return await self._llm._agenerate(*args, **kwargs)
+
+    def _generate(self, *args: Any, **kwargs: Any) -> Any:
+        return self._llm._generate(*args, **kwargs)
+
+    @property
+    def _llm_type(self) -> str:
+        return self._llm._llm_type
+
+    def bind_tools(self, *args: Any, **kwargs: Any) -> Any:
+        return self._llm.bind_tools(*args, **kwargs)
+
+    def with_structured_output(self, *args: Any, **kwargs: Any) -> Any:
+        return self._llm.with_structured_output(*args, **kwargs)
 
 
 def _load_dataset(path: str) -> List[Dict[str, Any]]:
@@ -62,13 +88,14 @@ def _build_retriever() -> Any:
     return artifacts.retriever
 
 
-def _build_llm() -> ChatGoogleGenerativeAI:
-    if not Config.GEMINI_API_KEY:
-        raise EnvironmentError("GEMINI_API_KEY is not set.")
-    return SafeAsyncChatGoogleGenerativeAI(
-        model=Config.LLM_MODEL,
+def _build_llm() -> ChatOpenAI:
+    if not Config.OPENCODE_API_KEY:
+        raise EnvironmentError("OPENCODE_API_KEY is not set.")
+    return ChatOpenAI(
+        model=Config.OPENCODE_MODEL,
+        openai_api_key=Config.OPENCODE_API_KEY,
+        openai_api_base=Config.OPENCODE_API_BASE,
         temperature=0.2,
-        google_api_key=Config.GEMINI_API_KEY,
     )
 
 
@@ -76,7 +103,7 @@ def _build_embeddings() -> Any:
     return build_embeddings()
 
 
-def _generate_answer(llm: ChatGoogleGenerativeAI, question: str, contexts: List[str]) -> str:
+def _generate_answer(llm: ChatOpenAI, question: str, contexts: List[str]) -> str:
     context_text = "\n\n---\n\n".join(contexts)
     messages = [
         ("system", SYSTEM_PROMPT.format(context=context_text)),
@@ -89,7 +116,7 @@ def _generate_answer(llm: ChatGoogleGenerativeAI, question: str, contexts: List[
 def _prepare_records(
     dataset: List[Dict[str, Any]],
     retriever: Any,
-    llm: ChatGoogleGenerativeAI,
+    llm: ChatOpenAI,
     limit: int | None = None,
 ) -> Dict[str, List[Any]]:
     records: Dict[str, List[Any]] = {
@@ -141,7 +168,9 @@ def main() -> None:
     args = parser.parse_args()
 
     records_path = os.path.join(Config.DATA_DIR, "ragas_records.json")
-    llm = _build_llm()
+    raw_llm = _build_llm()
+    limited_llm = _RateLimitedChatOpenAI(raw_llm, max_concurrency=Config.RAGAS_MAX_CONCURRENCY)
+    judge = LangchainLLMWrapper(limited_llm)
     embeddings = _build_embeddings()
 
     if args.records_in:
@@ -151,7 +180,7 @@ def main() -> None:
         dataset = _load_dataset(args.dataset)
         retriever = _build_retriever()
         logger.info("Preparing evaluation records...")
-        records = _prepare_records(dataset, retriever, llm, limit=args.limit)
+        records = _prepare_records(dataset, retriever, raw_llm, limit=args.limit)
         if records.get("question"):
             os.makedirs(os.path.dirname(records_path), exist_ok=True)
             with open(records_path, "w", encoding="utf-8") as f:
@@ -166,7 +195,7 @@ def main() -> None:
     result = evaluate(
         dataset_for_evaluation,
         metrics=[faithfulness, answer_relevancy, context_precision, context_recall],
-        llm=llm,
+        llm=judge,
         embeddings=embeddings,
         run_config=RunConfig(max_workers=1),
     )

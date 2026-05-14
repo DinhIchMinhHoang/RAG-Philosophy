@@ -1,63 +1,109 @@
-"""
-chat.py — Router for RAG chat with SSE streaming.
-
-POST /chat/stream — Accept a JSON body with { "message": "..." },
-                    return a text/event-stream response that streams
-                    answer tokens from the LLM.
-"""
+from __future__ import annotations
 
 import json
 import logging
-from fastapi import APIRouter, HTTPException, status
+
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
-from ..services.rag_service import rag_service
+from ..database import get_db
+from ..models import User
+from ..core.dependencies import get_current_user
+from ..core.settings import settings
+from ..services.chat_runtime import chat_runtime_service
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/chat", tags=["Chat"])
+router = APIRouter(tags=["Chat"])
 
 
 class ChatRequest(BaseModel):
     message: str
 
 
-@router.post("/stream")
-async def chat_stream(request: ChatRequest):
-    """
-    Stream a RAG-augmented answer using Server-Sent Events (SSE).
+class ChatResponse(BaseModel):
+    answer: str
+    citations: list[dict]
 
-    The client sends a JSON body: { "message": "user question here" }
-    The response is a text/event-stream where each event contains a
-    chunk of the answer text.
 
-    SSE format:
-      data: {"token": "chunk of text"}
-
-      data: {"token": "", "done": true}
-    """
-    if not request.message or not request.message.strip():
+def _validate_message(message: str) -> str:
+    if not message or not message.strip():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Message cannot be empty.",
+            detail="Message cannot be empty",
         )
+    return message.strip()
+
+
+async def _chat_non_stream_impl(db: Session, message: str) -> ChatResponse:
+    normalized = _validate_message(message)
+    contexts = chat_runtime_service.retrieve(db, normalized, pipeline_version=settings.pipeline_version)
+    citations = chat_runtime_service.citations_from_context(contexts)
+
+    try:
+        answer, _provider = await chat_runtime_service.answer(normalized, contexts)
+    except Exception as exc:
+        logger.error("chat_non_stream_failed: %s", str(exc), exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to generate answer")
+
+    return ChatResponse(answer=answer, citations=citations)
+
+
+@router.post("/api/chat", response_model=ChatResponse)
+async def chat_api(
+    request: ChatRequest,
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(get_current_user),
+):
+    return await _chat_non_stream_impl(db, request.message)
+
+
+@router.post("/chat", response_model=ChatResponse, include_in_schema=False)
+async def chat_legacy(
+    request: ChatRequest,
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(get_current_user),
+):
+    return await _chat_non_stream_impl(db, request.message)
+
+
+async def _chat_stream_impl(db: Session, message: str):
+    normalized = _validate_message(message)
+    contexts = chat_runtime_service.retrieve(db, normalized, pipeline_version=settings.pipeline_version)
+    citations = chat_runtime_service.citations_from_context(contexts)
+
+    answer_parts: list[str] = []
 
     async def event_generator():
         try:
-            async for chunk in rag_service.stream_answer(request.message.strip()):
-                # Send each token as an SSE data event
-                payload = json.dumps({"token": chunk}, ensure_ascii=False)
+            async for token in chat_runtime_service.stream_answer(normalized, contexts):
+                answer_parts.append(token)
+                payload = json.dumps({"type": "token", "token": token, "done": False}, ensure_ascii=False)
                 yield f"data: {payload}\n\n"
 
-            # Send done signal
-            done_payload = json.dumps({"token": "", "done": True})
-            yield f"data: {done_payload}\n\n"
-
-        except Exception as e:
-            logger.error(f"[Chat SSE] Error: {e}", exc_info=True)
+            final_payload = json.dumps(
+                {
+                    "type": "final",
+                    "token": "",
+                    "done": True,
+                    "answer": "".join(answer_parts),
+                    "citations": citations,
+                },
+                ensure_ascii=False,
+            )
+            yield f"data: {final_payload}\n\n"
+        except Exception as exc:
+            logger.error("chat_stream_failed: %s", str(exc), exc_info=True)
             error_payload = json.dumps(
-                {"token": f"\n\n⚠️ Lỗi: {str(e)}", "done": True},
+                {
+                    "type": "error",
+                    "token": "",
+                    "done": True,
+                    "error": "Failed to generate answer",
+                    "citations": [],
+                },
                 ensure_ascii=False,
             )
             yield f"data: {error_payload}\n\n"
@@ -68,6 +114,24 @@ async def chat_stream(request: ChatRequest):
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",  # Disable nginx buffering
+            "X-Accel-Buffering": "no",
         },
     )
+
+
+@router.post("/api/chat/stream")
+async def chat_stream_api(
+    request: ChatRequest,
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(get_current_user),
+):
+    return await _chat_stream_impl(db, request.message)
+
+
+@router.post("/chat/stream", include_in_schema=False)
+async def chat_stream_legacy(
+    request: ChatRequest,
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(get_current_user),
+):
+    return await _chat_stream_impl(db, request.message)

@@ -1,23 +1,23 @@
+from __future__ import annotations
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
-import os
 
-# Lấy đường dẫn tuyệt đối đến thư mục chứa file database.py (thư mục app)
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-# Lùi lại 1 cấp để ra thư mục backend và đặt file DB ở đó
-DB_PATH = os.path.join(BASE_DIR, "..", "rag_system.db")
+from .core.settings import settings
 
-SQLALCHEMY_DATABASE_URL = f"sqlite:///{DB_PATH}"
 
-# Dùng SQLite cho dễ ở giai đoạn phát triển
-SQLALCHEMY_DATABASE_URL = "sqlite:///./rag_system.db"
+def _build_engine():
+    connect_args = {}
+    if settings.database_url.startswith("sqlite"):
+        connect_args["check_same_thread"] = False
+    return create_engine(settings.database_url, connect_args=connect_args)
 
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
-)
+
+engine = _build_engine()
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()
+
 
 def get_db():
     db = SessionLocal()

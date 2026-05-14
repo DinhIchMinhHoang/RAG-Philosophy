@@ -7,11 +7,17 @@ from dotenv import load_dotenv
 _ROOT_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(dotenv_path=_ROOT_DIR / ".env")
 
+DEFAULT_LLM_MODEL = "deepseek-v4-flash"
+
 
 class Config:
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
     COHERE_API_KEY: str = os.getenv("COHERE_API_KEY", "")
+    OPENCODE_API_KEY: str = os.getenv("OPENCODE_API_KEY", "")
+    OPENCODE_API_BASE: str = os.getenv("OPENCODE_API_BASE", "https://opencode.ai/zen/go/v1")
+    OPENCODE_MODEL: str = os.getenv("OPENCODE_MODEL", "deepseek-v4-flash")
+    RAGAS_MAX_CONCURRENCY: int = int(os.getenv("RAGAS_MAX_CONCURRENCY", "5"))
 
     PARENT_CHUNK_SIZE: int = 2000
     PARENT_CHUNK_OVERLAP: int = 200
@@ -20,7 +26,8 @@ class Config:
 
     EMBEDDING_MODEL_NAME: str = "microsoft/harrier-oss-v1-270m"
     DEVICE: str = "cpu"
-    LLM_MODEL: str = "gemini-3.1-flash-lite-preview"
+    LLM_MODEL: str = (os.getenv("LLM_MODEL") or DEFAULT_LLM_MODEL).strip()
+    LLM_PROVIDER: str = (os.getenv("LLM_PROVIDER") or "auto").strip().lower()
 
     QDRANT_LOCATION: str = ":memory:"
     QDRANT_COLLECTION: str = "rag_philosophy"
@@ -43,7 +50,7 @@ class Config:
     RERANK_TIMEOUT_SECONDS: float = float(os.getenv("RERANK_TIMEOUT_SECONDS", "2.0"))
     RERANK_MAX_TOKENS_PER_DOC: int = int(os.getenv("RERANK_MAX_TOKENS_PER_DOC", "1024"))
 
-    OLLAMA_BASE_URL: str = "http://localhost:11434"
+    OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
     OLLAMA_MODEL_NAME: str = "glm-ocr"
     OLLAMA_MAX_WORKERS: int = 5
     DPI_FOR_OCR: int = 150
@@ -59,5 +66,11 @@ class Config:
 
     @classmethod
     def validate(cls) -> None:
-        if not cls.GEMINI_API_KEY:
+        model = (cls.LLM_MODEL or DEFAULT_LLM_MODEL).strip()
+        provider = (cls.LLM_PROVIDER or "auto").strip().lower()
+        if provider == "auto":
+            provider = "gemini" if model.lower().startswith("gemini") else "opencode"
+        if provider == "gemini" and not cls.GEMINI_API_KEY:
             raise EnvironmentError("GEMINI_API_KEY is not set.")
+        if provider == "opencode" and not cls.OPENCODE_API_KEY:
+            raise EnvironmentError("OPENCODE_API_KEY is not set.")
