@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import List
 
 from rag_core.config import Config
-from ..services.rag_service import rag_service
+# Import rag_service lazily inside endpoints to avoid heavy rag_core imports at module import time.
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
 
@@ -20,6 +20,7 @@ router = APIRouter(prefix="/documents", tags=["Documents"])
 @router.get("/page-image/{filename}/{page_number}")
 async def get_page_image(filename: str, page_number: int):
     """Serve a specific page of a PDF as an image."""
+    from ..services.rag_service import rag_service
     img_bytes = rag_service.get_page_image(filename, page_number)
     if not img_bytes:
         raise HTTPException(
@@ -66,6 +67,7 @@ async def upload_document(file: UploadFile = File(...)):
 
     try:
         file_bytes = await file.read()
+        from ..services.rag_service import rag_service
         result = rag_service.ingest_file(file.filename, file_bytes)
         return result
     except Exception as e:
@@ -78,6 +80,7 @@ async def upload_document(file: UploadFile = File(...)):
 @router.get("/sources")
 async def list_sources():
     """Return the list of currently ingested source filenames."""
+    from ..services.rag_service import rag_service
     return {
         "sources": rag_service.sources,
         "count": rag_service.source_count,
@@ -88,5 +91,6 @@ async def list_sources():
 @router.post("/reset")
 async def reset_sources():
     """Clear all ingested documents and reset the RAG pipeline."""
+    from ..services.rag_service import rag_service
     rag_service.reset()
     return {"message": "All sources cleared. Pipeline reset."}

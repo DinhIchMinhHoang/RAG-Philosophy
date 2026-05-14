@@ -12,7 +12,7 @@ from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from ..services.rag_service import rag_service
+# Import rag_service lazily inside the handler to avoid importing heavy deps at module import time.
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +45,7 @@ async def chat_stream(request: ChatRequest):
 
     async def event_generator():
         try:
+            from ..services.rag_service import rag_service
             async for chunk in rag_service.stream_answer(request.message.strip()):
                 # Send each token as an SSE data event
                 payload = json.dumps({"token": chunk}, ensure_ascii=False)
