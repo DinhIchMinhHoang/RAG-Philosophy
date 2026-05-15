@@ -43,7 +43,7 @@ print(f"parent_docs: {artifacts.parent_docs_count}")
 
 **Symptom**: `has_sources: False`
 
-**Fix**: Upload PDF via `/documents/upload` first
+**Fix**: Upload PDF via `/api/documents` first
 
 ### Empty Child Docs
 
@@ -96,8 +96,8 @@ logging.basicConfig(level=logging.DEBUG)
 ```
 
 Check for messages like:
-- `[Step 3] Ðang nhúng X child docs vào Qdrant`
-- `[Step 3] ? Ðã index X child docs vào Qdrant`
+- `[Step 3] ï¿½ang nhï¿½ng X child docs vï¿½o Qdrant`
+- `[Step 3] ? ï¿½ï¿½ index X child docs vï¿½o Qdrant`
 
 ## Recommended Checks
 

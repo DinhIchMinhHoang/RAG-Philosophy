@@ -60,13 +60,6 @@ async def chat_api(
     return await _chat_non_stream_impl(db, request.message)
 
 
-@router.post("/chat", response_model=ChatResponse, include_in_schema=False)
-async def chat_legacy(
-    request: ChatRequest,
-    db: Session = Depends(get_db),
-    _current_user: User = Depends(get_current_user),
-):
-    return await _chat_non_stream_impl(db, request.message)
 
 
 async def _chat_stream_impl(db: Session, message: str):
@@ -127,11 +120,3 @@ async def chat_stream_api(
 ):
     return await _chat_stream_impl(db, request.message)
 
-
-@router.post("/chat/stream", include_in_schema=False)
-async def chat_stream_legacy(
-    request: ChatRequest,
-    db: Session = Depends(get_db),
-    _current_user: User = Depends(get_current_user),
-):
-    return await _chat_stream_impl(db, request.message)

@@ -37,7 +37,6 @@ class NonAdminApiContractTests(unittest.TestCase):
         app.include_router(auth.router)
         app.include_router(chat.router)
         app.include_router(ingest.router)
-        app.include_router(ingest.legacy_router)
 
         def override_get_db():
             db = self.SessionLocal()
@@ -74,7 +73,7 @@ class NonAdminApiContractTests(unittest.TestCase):
         token = self._signup_and_get_token()
 
         login_response = self.client.post(
-            "/login",
+            "/api/login",
             json={"email": "tester@gmail.com", "password": "password123"},
         )
         self.assertEqual(login_response.status_code, 200)

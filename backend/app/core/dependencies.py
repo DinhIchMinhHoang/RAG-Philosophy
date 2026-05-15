@@ -6,6 +6,8 @@ from sqlalchemy.orm import Session
 from .. import database, models
 from .security import decode_access_token
 
+ADMIN_EMAIL_SUFFIX = "@lumina.com.vn"
+
 
 def get_current_user(
     authorization: str | None = Header(default=None),
@@ -32,3 +34,15 @@ def get_current_user(
             detail="User not found",
         )
     return db_user
+
+
+def require_admin_user(
+    current_user: models.User = Depends(get_current_user),
+) -> models.User:
+    email = (current_user.email or "").lower()
+    if not email.endswith(ADMIN_EMAIL_SUFFIX):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required",
+        )
+    return current_user

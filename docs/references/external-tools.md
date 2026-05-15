@@ -43,7 +43,7 @@ python-dotenv
 
 ```bash
 # Manual API testing with curl
-curl -X POST http://localhost:8000/chat/stream \
+curl -X POST http://localhost:8000/api/chat/stream \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{"message": "What is philosophy?"}'

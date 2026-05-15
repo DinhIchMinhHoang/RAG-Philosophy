@@ -68,32 +68,13 @@ def signup_api(user: schemas.UserCreate, db: Session = Depends(database.get_db))
     return _create_user(user, db)
 
 
-@router.post("/signup", status_code=status.HTTP_201_CREATED, response_model=schemas.Token, include_in_schema=False)
-def signup_legacy(user: schemas.UserCreate, db: Session = Depends(database.get_db)):
-    return _create_user(user, db)
-
-
 @router.post("/api/login", status_code=status.HTTP_200_OK, response_model=schemas.Token)
 def login_api(user: schemas.UserLogin, db: Session = Depends(database.get_db)):
     return _login_user(user, db)
 
 
-@router.post("/login", status_code=status.HTTP_200_OK, response_model=schemas.Token, include_in_schema=False)
-def login_legacy(user: schemas.UserLogin, db: Session = Depends(database.get_db)):
-    return _login_user(user, db)
-
-
 @router.post("/api/change-password", status_code=status.HTTP_200_OK)
 def change_password_api(
-    change_pwd: schemas.ChangePassword,
-    current_user: models.User = Depends(get_current_user),
-    db: Session = Depends(database.get_db),
-):
-    return _change_password(change_pwd, current_user, db)
-
-
-@router.post("/change-password", status_code=status.HTTP_200_OK, include_in_schema=False)
-def change_password_legacy(
     change_pwd: schemas.ChangePassword,
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(database.get_db),

@@ -8,11 +8,10 @@ class UserCreate(BaseModel):
 
     @field_validator('email')
     @classmethod
-    def email_must_be_gmail(cls, v: str) -> str:
-        # Kiểm tra xem chuỗi email có kết thúc bằng @gmail.com hay không
-        if not v.lower().endswith('@gmail.com'):
-            # Nếu không phải, trả về lỗi để FastAPI báo lại cho Frontend
-            raise ValueError('Hệ thống chỉ chấp nhận tài khoản @gmail.com')
+    def email_must_be_allowed(cls, v: str) -> str:
+        email = v.lower()
+        if not (email.endswith('@gmail.com') or email.endswith('@lumina.com.vn')):
+            raise ValueError('Hệ thống chỉ chấp nhận tài khoản @gmail.com hoặc @lumina.com.vn')
         return v
     
     @field_validator('password')

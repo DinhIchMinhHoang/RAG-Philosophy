@@ -101,5 +101,5 @@ Landing → Sign In → Dashboard → Chat
 ## Reset Actions
 
 - **Logout**: Clears `accessToken` and `currentUser` from localStorage
-- **Document Reset**: Clears backend RAGService state via `/documents/reset`
+- **Document Reset**: Removes document via `/api/documents/{document_id}`
 - **Page Refresh**: Restores from localStorage (auth), loses scene state

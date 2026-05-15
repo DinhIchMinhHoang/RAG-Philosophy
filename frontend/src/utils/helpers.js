@@ -16,3 +16,8 @@ export function formatFileSize(bytes) {
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
+
+export function isAdminEmail(email) {
+    if (!email) return false;
+    return email.trim().toLowerCase().endsWith('@lumina.com.vn');
+}

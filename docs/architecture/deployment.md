@@ -48,7 +48,7 @@ Notes:
    ```
 2. Confirm API through Nginx:
    ```bash
-   curl http://localhost/api/login -X POST -H "Content-Type: application/json" -d "{\"email\":\"x@gmail.com\",\"password\":\"x\"}"
+   curl http://localhost:8000/api/login -X POST -H "Content-Type: application/json" -d "{\"email\":\"x@gmail.com\",\"password\":\"x\"}"
    ```
 3. Confirm backend docs through proxy:
    ```bash
@@ -66,7 +66,7 @@ Nginx is configured for streaming-safe proxying on `/api/chat/stream`:
 Test endpoint:
 
 ```bash
-curl -N http://localhost/api/chat/stream \
+curl -N http://localhost:8000/api/chat/stream \
   -H "Content-Type: application/json" \
   -d "{\"message\":\"hello\"}"
 ```

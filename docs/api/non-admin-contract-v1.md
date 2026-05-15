@@ -1,7 +1,7 @@
 # Non-Admin API Contract (Freeze, Dual-Compat)
 
 Base path behind Nginx: `/api/*` (canonical).
-Legacy aliases remain active for transition compatibility.
+Legacy aliases have been removed.
 
 ## Canonical Endpoints
 
@@ -16,17 +16,9 @@ Legacy aliases remain active for transition compatibility.
 - `POST /api/chat`
 - `POST /api/chat/stream`
 
-## Legacy Aliases (temporary)
+## Legacy Aliases (removed)
 
-- `POST /signup` -> `/api/signup`
-- `POST /login` -> `/api/login`
-- `POST /change-password` -> `/api/change-password`
-- `POST /documents/upload` -> `/api/documents`
-- `GET /documents/sources` -> compatibility wrapper over `/api/documents`
-- `POST /documents/{document_id}/reindex` -> `/api/documents/{document_id}/reindex`
-- `GET /jobs/{job_id}` -> `/api/jobs/{job_id}`
-- `POST /chat` -> `/api/chat`
-- `POST /chat/stream` -> `/api/chat/stream`
+Legacy endpoints are no longer available.
 
 ## Auth
 

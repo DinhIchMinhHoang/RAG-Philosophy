@@ -17,7 +17,6 @@ from ..ingest.storage import storage_client
 from ..models import DocumentRecord, IngestJob, JobStage, JobStatus, User
 
 router = APIRouter(prefix="/api", tags=["Ingest"])
-legacy_router = APIRouter(tags=["Ingest Legacy"])
 
 
 class ReindexRequest(BaseModel):
@@ -363,57 +362,3 @@ def reindex_document(
 ):
     return _reindex_document_impl(document_id=document_id, request=request)
 
-
-@legacy_router.post("/documents/upload", status_code=status.HTTP_202_ACCEPTED, include_in_schema=False)
-async def upload_document_legacy(
-    file: UploadFile = File(...),
-    pipeline_version: str | None = None,
-    _current_user: User = Depends(get_current_user),
-):
-    return await _create_document_impl(file=file, pipeline_version=pipeline_version)
-
-
-@legacy_router.get("/documents/sources", include_in_schema=False)
-def list_sources_legacy(
-    db: Session = Depends(get_db),
-    _current_user: User = Depends(get_current_user),
-):
-    docs = _list_documents_impl(db)
-    sources = [doc.filename for doc in docs]
-    return {
-        "sources": sources,
-        "count": len(sources),
-        "has_sources": len(sources) > 0,
-        "documents": docs,
-    }
-
-
-@legacy_router.post("/documents/{document_id}/reindex", status_code=status.HTTP_202_ACCEPTED, include_in_schema=False)
-def reindex_document_legacy(
-    document_id: str,
-    request: ReindexRequest,
-    _current_user: User = Depends(get_current_user),
-):
-    return _reindex_document_impl(document_id=document_id, request=request)
-
-
-@legacy_router.get("/jobs/{job_id}", response_model=JobResponse, include_in_schema=False)
-def get_job_legacy(
-    job_id: str,
-    _current_user: User = Depends(get_current_user),
-):
-    return _get_job_impl(job_id)
-
-
-@legacy_router.post("/documents/reset", include_in_schema=False)
-def reset_documents_legacy(
-    db: Session = Depends(get_db),
-    _current_user: User = Depends(get_current_user),
-):
-    documents = db.query(DocumentRecord).all()
-    deleted_ids: list[str] = []
-    for doc in documents:
-        result = _delete_document_impl(db, doc.id)
-        if result.deleted:
-            deleted_ids.append(doc.id)
-    return {"message": "All sources cleared", "deleted_count": len(deleted_ids), "deleted_ids": deleted_ids}
