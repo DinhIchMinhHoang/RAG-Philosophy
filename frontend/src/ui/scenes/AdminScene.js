@@ -49,6 +49,38 @@ function filterJobs(jobs, query) {
     );
 }
 
+function renderSkeletonRows(list, type = 'users', count = 5) {
+    list.querySelectorAll('.list-item').forEach(el => el.remove());
+    list.querySelectorAll('.list-skeleton').forEach(el => el.remove());
+    for (let i = 0; i < count; i++) {
+        const row = document.createElement('div');
+        row.className = 'list-item list-skeleton';
+        if (type === 'users') {
+            row.innerHTML = `
+                <div class="skeleton-row">
+                    <div class="skeleton skeleton-avatar"></div>
+                    <div style="flex:1;display:flex;flex-direction:column;gap:6px;">
+                        <div class="skeleton skeleton-line short"></div>
+                        <div class="skeleton skeleton-line medium"></div>
+                    </div>
+                </div>`;
+        } else {
+            row.innerHTML = `
+                <div class="skeleton-row">
+                    <div style="flex:1;display:flex;flex-direction:column;gap:6px;">
+                        <div class="skeleton skeleton-line medium"></div>
+                        <div class="skeleton skeleton-line short"></div>
+                    </div>
+                </div>`;
+        }
+        list.appendChild(row);
+    }
+}
+
+function clearSkeletonRows(list) {
+    list.querySelectorAll('.list-skeleton').forEach(el => el.remove());
+}
+
 function setFeedback(target, message, type = 'info') {
     if (!target) return;
     target.textContent = message || '';
@@ -224,39 +256,42 @@ let currentJobQuery = '';
 
 async function refreshUsers(list, feedback, preserveQuery = true) {
     try {
-        setFeedback(feedback, 'Loading users...', 'loading');
+        renderSkeletonRows(list, 'users', 5);
         const users = await getAdminUsers();
+        clearSkeletonRows(list);
         cachedUsers = Array.isArray(users) ? users : [];
         const filtered = filterUsers(cachedUsers, preserveQuery ? currentUserQuery : '');
         renderUsers(list, filtered);
-        setFeedback(feedback, '', '');
     } catch (err) {
+        clearSkeletonRows(list);
         setFeedback(feedback, err.message || 'Failed to load users', 'error');
     }
 }
 
 async function refreshDocuments(list, feedback, preserveQuery = true) {
     try {
-        setFeedback(feedback, 'Loading documents...', 'loading');
+        renderSkeletonRows(list, 'documents', 5);
         const documents = await getAdminDocuments();
+        clearSkeletonRows(list);
         cachedDocuments = Array.isArray(documents) ? documents : (documents.documents || []);
         const filtered = filterDocuments(cachedDocuments, preserveQuery ? currentDocQuery : '');
         renderDocuments(list, filtered);
-        setFeedback(feedback, '', '');
     } catch (err) {
+        clearSkeletonRows(list);
         setFeedback(feedback, err.message || 'Failed to load documents', 'error');
     }
 }
 
 async function refreshJobs(list, feedback, preserveQuery = true) {
     try {
-        setFeedback(feedback, 'Loading jobs...', 'loading');
+        renderSkeletonRows(list, 'jobs', 5);
         const jobs = await getAdminJobs();
+        clearSkeletonRows(list);
         cachedJobs = Array.isArray(jobs) ? jobs : (jobs.jobs || []);
         const filtered = filterJobs(cachedJobs, preserveQuery ? currentJobQuery : '');
         renderJobs(list, filtered);
-        setFeedback(feedback, '', '');
     } catch (err) {
+        clearSkeletonRows(list);
         setFeedback(feedback, err.message || 'Failed to load jobs', 'error');
     }
 }
