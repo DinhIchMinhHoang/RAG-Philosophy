@@ -87,3 +87,16 @@ class DocumentChunk(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     document: Mapped[DocumentRecord] = relationship("DocumentRecord", back_populates="chunks")
+
+
+class Notebook(Base):
+    __tablename__ = "notebooks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    title: Mapped[str] = mapped_column(String(256), nullable=False)
+    owner_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    is_community: Mapped[bool] = mapped_column(Integer, nullable=False, default=False)
+    cover_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    cover_mode: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    cover_color: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

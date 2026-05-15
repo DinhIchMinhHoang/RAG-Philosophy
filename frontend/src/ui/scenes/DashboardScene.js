@@ -1,5 +1,55 @@
 import { hideImageModal, showImageModal } from '../components/Modal.js';
 import { isAuthenticated } from '../../api/client.js';
+import { getNotebooks, createNotebook, updateNotebook, deleteNotebook } from '../../api/notebooks.js';
+
+function renderSkeletonCards(grid, count = 6) {
+    grid.innerHTML = '';
+    for (let i = 0; i < count; i++) {
+        const card = document.createElement('div');
+        card.className = 'notebook-item skeleton-card';
+        card.innerHTML = `<div class="cover"></div><div class="item-title"><div class="skeleton skeleton-title" style="width:60%;height:14px;margin:0;"></div></div>`;
+        grid.appendChild(card);
+    }
+}
+
+function buildNotebookItem(nb) {
+    const item = document.createElement('div');
+    item.className = 'notebook-item';
+    item.dataset.notebookId = nb.id;
+    item.dataset.title = nb.title;
+    if (nb.cover_url) item.dataset.cover = nb.cover_url;
+    if (nb.cover_mode) item.dataset.coverMode = nb.cover_mode;
+    if (nb.cover_color) item.dataset.coverColor = nb.cover_color;
+
+    const cover = document.createElement('div');
+    cover.className = 'cover';
+    if (nb.cover_url) {
+        cover.style.backgroundImage = `url(${nb.cover_url})`;
+        cover.style.backgroundSize = nb.cover_mode || 'cover';
+        cover.style.backgroundPosition = 'center';
+    } else if (nb.cover_color) {
+        cover.style.backgroundColor = nb.cover_color;
+    }
+    item.appendChild(cover);
+
+    const title = document.createElement('div');
+    title.className = 'item-title';
+    title.textContent = nb.title;
+    item.appendChild(title);
+
+    const btn = document.createElement('button');
+    btn.className = 'more-btn';
+    btn.setAttribute('aria-label', 'More');
+    btn.innerHTML = '<span class="material-icons">more_vert</span>';
+    item.appendChild(btn);
+
+    return item;
+}
+
+function renderNotebooks(grid, notebooks) {
+    grid.innerHTML = '';
+    (notebooks || []).forEach(nb => grid.appendChild(buildNotebookItem(nb)));
+}
 
 function repositionThumb(thumb, opt, pad) {
     if (!thumb || !opt) return;
@@ -121,6 +171,15 @@ function setupMoreMenu(transitionManager) {
                 const titleEl = currentTarget.querySelector('.item-title');
                 if (titleEl) titleEl.textContent = newTitle;
                 currentTarget.setAttribute('data-title', newTitle);
+                const nbId = currentTarget.dataset.notebookId;
+                if (nbId) {
+                    updateNotebook(nbId, {
+                        title: newTitle,
+                        cover_url: currentTarget.dataset.cover || null,
+                        cover_mode: currentTarget.dataset.coverMode || null,
+                        cover_color: currentTarget.dataset.coverColor || null,
+                    }).catch(err => console.error('[Dashboard] Rename failed', err));
+                }
                 if (currentTarget === lastFakeTarget) {
                     const chatTitleEl = document.querySelector('#scene-chat .chat-title');
                     if (chatTitleEl) chatTitleEl.textContent = newTitle;
@@ -130,7 +189,12 @@ function setupMoreMenu(transitionManager) {
             showImageModal(currentTarget);
             return;
         } else if (action === 'delete') {
-            if (confirm('Delete this notebook?')) { const parent = currentTarget.parentElement; if (parent) parent.removeChild(currentTarget); }
+            if (confirm('Delete this notebook?')) {
+                const nbId = currentTarget.dataset.notebookId;
+                if (nbId) deleteNotebook(nbId).catch(err => console.error('[Dashboard] Delete failed', err));
+                const parent = currentTarget.parentElement;
+                if (parent) parent.removeChild(currentTarget);
+            }
         }
         hideMenu();
     });
@@ -156,7 +220,15 @@ export function initDashboardScene(transitionManager) {
         });
 
         const createBtn = dashboard.querySelector('.create-button');
-        if (createBtn) createBtn.addEventListener('click', (e) => { e.preventDefault(); transitionManager.openNotebook('Untitled notebook'); });
+        if (createBtn) createBtn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            try {
+                const nb = await createNotebook({ title: 'Untitled notebook', is_community: false });
+                transitionManager.openNotebook(nb.title);
+            } catch (err) {
+                console.error('[Dashboard] Failed to create notebook', err);
+            }
+        });
 
         const searchButton = dashboard.querySelector('.search-button');
         const searchInput = dashboard.querySelector('.search-input');
@@ -206,6 +278,28 @@ export function initDashboardScene(transitionManager) {
         const gridObserver = new MutationObserver(() => attachMoreHandlers());
         document.querySelectorAll('.notebook-grid').forEach(g => gridObserver.observe(g, { childList: true, subtree: true }));
 
+        async function loadNotebooks() {
+            const communityGrid = document.querySelector('.community-grid');
+            const myGrid = document.querySelector('.my-grid');
+            if (!communityGrid || !myGrid) return;
+
+            renderSkeletonCards(communityGrid, 4);
+            renderSkeletonCards(myGrid, 2);
+
+            try {
+                const notebooks = await getNotebooks();
+                const community = (notebooks || []).filter(n => n.is_community);
+                const mine = (notebooks || []).filter(n => !n.is_community);
+                renderNotebooks(communityGrid, community);
+                renderNotebooks(myGrid, mine);
+            } catch (err) {
+                console.error('[Dashboard] Failed to load notebooks', err);
+                communityGrid.innerHTML = '<div style="color:rgba(255,255,255,0.4);padding:12px;">Failed to load notebooks</div>';
+                myGrid.innerHTML = '';
+            }
+        }
+        loadNotebooks();
+
         document.addEventListener('click', (ev) => {
             const item = ev.target.closest('.notebook-item');
             if (!item) return;
@@ -219,7 +313,7 @@ export function initDashboardScene(transitionManager) {
         const closeShowallBtn = document.querySelector('.close-showall-btn');
         let currentShowAllTarget = null;
 
-        const getNotebooks = (target) => {
+        const getNotebookItems = (target) => {
             const grid = target === 'community' ? document.querySelector('.community-grid') : document.querySelector('.my-grid');
             return grid ? Array.from(grid.querySelectorAll('.notebook-item')) : [];
         };
@@ -227,7 +321,7 @@ export function initDashboardScene(transitionManager) {
         const populateShowAllGrid = (target) => {
             if (!showAllGrid) return;
             showAllGrid.innerHTML = '';
-            getNotebooks(target).forEach(item => {
+            getNotebookItems(target).forEach(item => {
                 const clone = item.cloneNode(true);
                 clone.querySelectorAll('.more-btn').forEach(btn => { btn._hasMenuHandler = false; });
                 showAllGrid.appendChild(clone);
