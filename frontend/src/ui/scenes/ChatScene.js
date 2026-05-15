@@ -11,10 +11,10 @@ function processRichText(container, text) {
     if (window.renderMathInElement) {
         renderMathInElement(container, {
             delimiters: [
-                {left: '$$', right: '$$', display: true},
-                {left: '$', right: '$', display: false},
-                {left: '\\(', right: '\\)', display: false},
-                {left: '\\[', right: '\\]', display: true}
+                { left: '$$', right: '$$', display: true },
+                { left: '$', right: '$', display: false },
+                { left: '\\(', right: '\\)', display: false },
+                { left: '\\[', right: '\\]', display: true }
             ], throwOnError: false
         });
     }
