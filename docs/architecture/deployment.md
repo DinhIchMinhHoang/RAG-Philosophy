@@ -48,7 +48,7 @@ Notes:
    ```
 2. Confirm API through Nginx:
    ```bash
-   curl http://localhost:8000/api/login -X POST -H "Content-Type: application/json" -d "{\"email\":\"x@gmail.com\",\"password\":\"x\"}"
+   curl http://localhost/api/login -X POST -H "Content-Type: application/json" -d "{\"email\":\"x@gmail.com\",\"password\":\"x\"}"
    ```
 3. Confirm backend docs through proxy:
    ```bash
@@ -66,9 +66,20 @@ Nginx is configured for streaming-safe proxying on `/api/chat/stream`:
 Test endpoint:
 
 ```bash
-curl -N http://localhost:8000/api/chat/stream \
+curl -N http://localhost/api/chat/stream \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <access_token>" \
   -d "{\"message\":\"hello\"}"
+```
+
+## Optional GPU Acceleration
+
+The default Compose stack starts Ollama without a required GPU reservation, so CPU-only hosts can boot the app normally.
+
+On hosts with an Nvidia runtime, enable GPU acceleration with the override file:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
 ```
 
 ## Restart / Persistence Test
