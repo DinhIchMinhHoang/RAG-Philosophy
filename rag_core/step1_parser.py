@@ -16,11 +16,14 @@ from __future__ import annotations
 
 import base64
 import io
+import json
 import os
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor, TimeoutError, as_completed
 from typing import List, Optional
+from urllib import error as urllib_error
+from urllib import request as urllib_request
 
 from PIL import Image
 
@@ -178,9 +181,55 @@ class OllamaOCREngine:
 
     def __init__(self) -> None:
         self._llm: Optional[ChatOllama] = None
+        self._ocr_disabled_reason: Optional[str] = None
+        self._ocr_disabled_logged: bool = False
+        self._model_checked: bool = False
+
+    def _normalize_ollama_model_names(self) -> set[str]:
+        model_name = (Config.OLLAMA_MODEL_NAME or "").strip()
+        if not model_name:
+            return set()
+        names = {model_name}
+        if ":" not in model_name:
+            names.add(f"{model_name}:latest")
+        return names
+
+    def _check_model_available(self) -> None:
+        if self._model_checked:
+            return
+        self._model_checked = True
+
+        expected_names = self._normalize_ollama_model_names()
+        if not expected_names:
+            self._ocr_disabled_reason = "OLLAMA_MODEL_NAME is empty"
+            return
+
+        tags_url = f"{Config.OLLAMA_BASE_URL.rstrip('/')}/api/tags"
+        try:
+            req = urllib_request.Request(tags_url, method="GET")
+            with urllib_request.urlopen(req, timeout=5) as resp:
+                payload = json.loads(resp.read().decode("utf-8"))
+            available = {
+                str(item.get("name", "")).strip()
+                for item in payload.get("models", [])
+                if isinstance(item, dict)
+            }
+            if not any(name in available for name in expected_names):
+                self._ocr_disabled_reason = (
+                    f"Ollama model '{Config.OLLAMA_MODEL_NAME}' not found at {Config.OLLAMA_BASE_URL}. "
+                    f"Pull model first: ollama pull {Config.OLLAMA_MODEL_NAME}"
+                )
+        except Exception as exc:
+            self._ocr_disabled_reason = (
+                f"Ollama /api/tags unavailable at {Config.OLLAMA_BASE_URL}: {exc}"
+            )
 
     def _get_llm(self) -> ChatOllama:
         """Lazy-init ChatOllama client."""
+        self._check_model_available()
+        if self._ocr_disabled_reason:
+            raise RuntimeError(self._ocr_disabled_reason)
+
         if self._llm is None:
             logger.info(
                 f"[OllamaOCR] Kết nối tới {Config.OLLAMA_BASE_URL} "
@@ -207,6 +256,12 @@ class OllamaOCREngine:
         Returns:
             Markdown text trích xuất được, hoặc chuỗi rỗng nếu lỗi.
         """
+        if self._ocr_disabled_reason:
+            if not self._ocr_disabled_logged:
+                logger.warning(f"[OllamaOCR] disabled: {self._ocr_disabled_reason}")
+                self._ocr_disabled_logged = True
+            return ""
+
         llm = self._get_llm()
         # LangChain-community ChatOllama multimodal payload:
         #   image_url.url = "data:<mime>;base64,<data>" — the internal
@@ -240,6 +295,23 @@ class OllamaOCREngine:
             response = llm.invoke(messages)
             return (response.content or "").strip()
         except Exception as exc:
+            exc_text = str(exc)
+            if (
+                isinstance(exc, urllib_error.HTTPError)
+                and exc.code == 404
+            ) or (
+                "status code 404" in exc_text
+                and "model" in exc_text.lower()
+            ):
+                self._ocr_disabled_reason = (
+                    f"Ollama model '{Config.OLLAMA_MODEL_NAME}' not found. "
+                    f"Pull model first: ollama pull {Config.OLLAMA_MODEL_NAME}"
+                )
+                if not self._ocr_disabled_logged:
+                    logger.warning(f"[OllamaOCR] disabled: {self._ocr_disabled_reason}")
+                    self._ocr_disabled_logged = True
+                return ""
+
             logger.error(f"[OllamaOCR] LLM call failed: {exc}")
             return ""
 

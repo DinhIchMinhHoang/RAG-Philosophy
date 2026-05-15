@@ -6,6 +6,7 @@ export const scenes = {
     ACCOUNT: 'account',
     SHOWALL: 'showall',
     CHAT: 'chat',
+    ADMIN: 'admin',
 };
 
 export function getCurrentScene() {

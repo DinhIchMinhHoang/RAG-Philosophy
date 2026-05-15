@@ -88,6 +88,9 @@
                     <button type="submit" class="auth-button">Save changes</button>
                     <button type="button" class="auth-button" data-back-to="dashboard">Cancel</button>
                 </div>
+                <div class="admin-entry" style="display:none; margin-top: 12px; text-align: right;">
+                    <button type="button" class="auth-button admin-console-button">Admin Console</button>
+                </div>
                 <div style="display:flex; gap:8px; margin-top:12px; justify-content:flex-end;">
                     <button type="button" class="auth-button logout-button">Log out</button>
                     <button type="button" class="auth-button delete-account-button" style="background: rgba(255,50,50,0.12); border-color: rgba(255,50,50,0.2);">Delete account</button>
@@ -331,6 +334,103 @@
         </div>
     </div>
 
+    <div id="scene-admin" class="scene" style="display: none;">
+        <div class="admin-shell">
+            <div class="admin-topbar">
+                <div class="admin-title-wrap">
+                    <span class="material-icons">admin_panel_settings</span>
+                    <div class="admin-title">Admin Console</div>
+                </div>
+                <div class="admin-actions">
+                    <button class="auth-button admin-back-button"><span class="material-icons">arrow_back</span> Dashboard</button>
+                </div>
+            </div>
+
+            <div class="admin-tabs" role="tablist" aria-label="Admin sections">
+                <button class="admin-tab active" data-tab="users">Users</button>
+                <button class="admin-tab" data-tab="documents">Documents</button>
+                <button class="admin-tab" data-tab="jobs">Jobs</button>
+            </div>
+
+            <div class="admin-content">
+                <section class="admin-panel active" data-panel="users">
+                    <header class="admin-panel-header">
+                        <div class="panel-title">User directory</div>
+                        <div class="panel-actions">
+                            <button class="auth-button admin-refresh" data-action="refresh-users"><span class="material-icons">refresh</span> Refresh</button>
+                        </div>
+                    </header>
+                    <div class="admin-search-bar">
+                        <span class="material-icons">search</span>
+                        <input type="text" class="admin-search-input" data-search="users" placeholder="Search users by name or email...">
+                    </div>
+                    <div class="admin-panel-body">
+                        <form class="admin-create-form" data-form="create-user">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label class="form-label">Name</label>
+                                    <input type="text" class="form-input" name="username" placeholder="Full name" required>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Email</label>
+                                    <input type="email" class="form-input" name="email" placeholder="name@lumina.com.vn" required>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Password</label>
+                                    <input type="password" class="form-input" name="password" placeholder="Set temporary password" required>
+                                </div>
+                            </div>
+                            <div class="form-actions">
+                                <div class="form-feedback" data-feedback="create-user"></div>
+                                <button type="submit" class="auth-button admin-create-user"><span class="material-icons">person_add</span> Create user</button>
+                            </div>
+                        </form>
+
+                        <div class="admin-list" data-list="users">
+                            <div class="list-empty" data-empty="users">No users found. Create the first user.</div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="admin-panel" data-panel="documents">
+                    <header class="admin-panel-header">
+                        <div class="panel-title">Documents</div>
+                        <div class="panel-actions">
+                            <button class="auth-button admin-refresh" data-action="refresh-documents"><span class="material-icons">refresh</span> Refresh</button>
+                        </div>
+                    </header>
+                    <div class="admin-search-bar">
+                        <span class="material-icons">search</span>
+                        <input type="text" class="admin-search-input" data-search="documents" placeholder="Search documents by name or ID...">
+                    </div>
+                    <div class="admin-panel-body">
+                        <div class="admin-list" data-list="documents">
+                            <div class="list-empty" data-empty="documents">No documents found. Upload a document to begin.</div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="admin-panel" data-panel="jobs">
+                    <header class="admin-panel-header">
+                        <div class="panel-title">Jobs</div>
+                        <div class="panel-actions">
+                            <button class="auth-button admin-refresh" data-action="refresh-jobs"><span class="material-icons">refresh</span> Refresh</button>
+                        </div>
+                    </header>
+                    <div class="admin-search-bar">
+                        <span class="material-icons">search</span>
+                        <input type="text" class="admin-search-input" data-search="jobs" placeholder="Search jobs by ID, document or status...">
+                    </div>
+                    <div class="admin-panel-body">
+                        <div class="admin-list" data-list="jobs">
+                            <div class="list-empty" data-empty="jobs">No jobs running yet. Ingest a document to see jobs.</div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </div>
+    </div>
+
     <div id="imageModal" class="image-modal" aria-hidden="true" style="display:none;">
         <div class="image-modal-backdrop"></div>
         <div class="image-modal-body" role="dialog" aria-modal="true" aria-label="Set cover image">
@@ -367,6 +467,6 @@
         </div>
     </div>
 
-    <script type="module" src="src/main.js"></script>
+    <script type="module" src="src/main.js?v=20260512-1"></script>
 </body>
 </html>

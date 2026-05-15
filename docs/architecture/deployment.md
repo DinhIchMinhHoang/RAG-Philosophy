@@ -1,77 +1,109 @@
 # Deployment
 
-## Current Environment
+## Docker Compose Stack
 
-### Development Setup
+Run full stack with a single command:
 
 ```bash
-# 1. Install dependencies
-python -m pip install -r requirements.txt
-
-# 2. Create .env file
-GEMINI_API_KEY=your_key_here
-SECRET_KEY=your_secret_key
-ACCESS_TOKEN_EXPIRE_MINUTES=60
-
-# 3. Start backend
-uvicorn backend.app.main:app --reload --port 8000
-
-# 4. Start frontend (static files)
-# Use VS Code Live Server or any static file server
-# Serve frontend/index.html
+docker compose up -d
 ```
 
-## Production Considerations
+`docker-compose up -d` is equivalent if your environment still uses the legacy CLI name.
 
-### Backend
+Services in the stack:
 
-1. **Change CORS**:
-   ```python
-   # backend/app/main.py
-   app.add_middleware(
-       CORSMiddleware,
-       allow_origins=["https://your-frontend.com"],  # Restrict
-       allow_credentials=True,
-       allow_methods=["*"],
-       allow_headers=["*"],
-   )
-   ```
+1. `nginx` (public entrypoint on `http://localhost`)
+2. `backend` (FastAPI via Uvicorn)
+3. `worker` (Celery ingest queue)
+4. `redis`
+5. `postgres`
+6. `minio`
+7. `qdrant`
+8. `ollama`
 
-2. **Set Secret Key**:
+Notes:
+
+- Browser/API access is Nginx-only (`http://localhost`).
+- Use `/api/*` from frontend/client calls.
+- Backend container is not published directly to host.
+
+## First Boot
+
+1. Copy environment template:
    ```bash
-   export SECRET_KEY=$(openssl rand -hex 32)
+   cp .env.example .env
    ```
-
-3. **Use Persistent Qdrant**:
-   ```python
-   # rag_core/config.py
-   QDRANT_LOCATION: str = "http://localhost:6333"  # Or file path
-   ```
-
-4. **Production Server**: Use gunicorn with workers
+2. Set required secrets/keys in `.env` (at minimum `SECRET_KEY`, `GEMINI_API_KEY`).
+3. Start stack:
    ```bash
-   gunicorn backend.app.main:app --workers 4 --bind 0.0.0.0:8000
+   docker compose up -d
+   ```
+4. Open app at `http://localhost`.
+
+## Cold Start Checks
+
+1. Check container health:
+   ```bash
+   docker compose ps
+   ```
+2. Confirm API through Nginx:
+   ```bash
+   curl http://localhost:8000/api/login -X POST -H "Content-Type: application/json" -d "{\"email\":\"x@gmail.com\",\"password\":\"x\"}"
+   ```
+3. Confirm backend docs through proxy:
+   ```bash
+   curl -I http://localhost/api/docs
    ```
 
-### Frontend
+## Streaming (SSE) Validation
 
-1. **Build**: No build step needed (static files)
-2. **Host**: Any static hosting (nginx, S3, Vercel)
-3. **Update BASE_URL**: Change API.BASE_URL to production backend URL
+Nginx is configured for streaming-safe proxying on `/api/chat/stream`:
 
-### Ollama (for OCR)
+- `proxy_http_version 1.1`
+- `proxy_buffering off`
+- extended `proxy_read_timeout` and `proxy_send_timeout`
 
-- Requires Ollama running: `ollama serve`
-- Model: glm-ocr
-- Port: 11434 (default)
+Test endpoint:
 
-## Docker (Future)
+```bash
+curl -N http://localhost:8000/api/chat/stream \
+  -H "Content-Type: application/json" \
+  -d "{\"message\":\"hello\"}"
+```
 
-No Docker configuration currently. Potential setup:
+## Restart / Persistence Test
 
-```dockerfile
-# Dockerfile
-FROM python:3.10
-# ... install deps, copy files
-CMD ["uvicorn", "backend.app.main:app", "--host", "0.0.0.0"]
+1. Upload at least one document and run ingest.
+2. Restart stack:
+   ```bash
+   docker compose down
+   docker compose up -d
+   ```
+3. Verify data still exists:
+   - Postgres data (`postgres_data` volume)
+   - MinIO objects (`minio_data` volume)
+   - Qdrant vectors (`qdrant_data` volume)
+   - Ollama models (`ollama_data` volume)
+
+## Logs and Health Debugging
+
+```bash
+docker compose logs -f nginx
+docker compose logs -f backend
+docker compose logs -f worker
+docker compose logs -f qdrant
+```
+
+If one service is unhealthy, inspect healthcheck status:
+
+```bash
+docker inspect --format='{{json .State.Health}}' rag_backend
+```
+
+## Lưu ý để OCR thực sự hoạt động (không chỉ fallback)
+
+- Pull model trong container ollama:
+
+```bash
+docker compose exec ollama ollama pull glm-ocr
 ```

@@ -46,11 +46,10 @@ Authorization: Bearer <JWT_TOKEN>
 
 ## Protected Endpoints
 
-All `/documents/*` and `/chat/*` endpoints require valid JWT:
-- `/documents/upload`
-- `/documents/sources`
-- `/documents/reset`
-- `/chat/stream`
+All `/api/documents/*` and `/api/chat/*` endpoints require valid JWT:
+- `/api/documents`
+- `/api/documents/{document_id}`
+- `/api/chat/stream`
 
 The `get_current_user` dependency validates the token and retrieves the user from the database.
 

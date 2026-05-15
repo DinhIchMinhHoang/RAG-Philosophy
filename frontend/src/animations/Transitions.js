@@ -13,6 +13,7 @@ export class TransitionManager {
     transitionTo(targetScene) {
         if (this.isTransitioning || targetScene === this.currentScene) return;
         if (targetScene === 'account' && !isAuthenticated()) targetScene = 'signin';
+        if (targetScene === 'admin' && (!isAuthenticated() || !store.getIsAdmin())) targetScene = 'dashboard';
 
         const transitionToken = ++this.transitionToken;
         const isCurrentTransition = () => transitionToken === this.transitionToken;
@@ -117,6 +118,12 @@ export class TransitionManager {
             if (em) em.value = u.email || '';
             if (dn) dn.value = u.displayName || '';
             if (bo) bo.value = u.bio || '';
+            const adminEntry = container.querySelector('.admin-entry');
+            if (adminEntry) adminEntry.style.display = store.getIsAdmin() ? 'block' : 'none';
+        }
+
+        if (scene === 'admin') {
+            document.dispatchEvent(new CustomEvent('admin:show'));
         }
 
         let completed = 0;

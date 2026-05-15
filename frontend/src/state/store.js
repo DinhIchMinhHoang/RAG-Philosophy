@@ -1,6 +1,6 @@
 const STORAGE_KEY = 'currentUser';
 
-const defaultUser = { username: '', email: '', displayName: '', bio: '' };
+const defaultUser = { username: '', email: '', displayName: '', bio: '', isAdmin: false };
 
 function loadUser() {
     return JSON.parse(localStorage.getItem(STORAGE_KEY)) || { ...defaultUser };
@@ -25,4 +25,5 @@ export const store = {
     getEmail: () => store._user.email,
     getDisplayName: () => store._user.displayName,
     getBio: () => store._user.bio,
+    getIsAdmin: () => Boolean(store._user.isAdmin),
 };

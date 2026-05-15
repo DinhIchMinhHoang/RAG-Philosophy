@@ -91,7 +91,7 @@ State is maintained in instance variables:
 
 ## Testing Boundary
 
-- Backend tested via manual API calls (`/documents/upload`, `/chat/stream`)
+- Backend tested via manual API calls (`/api/documents`, `/api/chat/stream`)
 - RAG core tested via `python rag_core/main_test.py` smoke tests
 - Unit tests in `rag_core/tests/` use package imports now and no longer modify `sys.path`
 - The runtime backend still keeps a small import guard so `rag_core` is importable when running under the backend process

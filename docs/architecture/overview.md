@@ -18,9 +18,9 @@ The UET RAG system is a full-stack document question-answering application consi
 │                    FastAPI Backend (Port 8000)                         │
 │   ├── main.py          - App entry, CORS, router registration          │
 │   ├── routers/                                                         │
-│   │   ├── auth.py      - /signup, /login, /change-password             │
-│   │   ├── chat.py      - /chat/stream (SSE)                            │
-│   │   └── documents.py - /documents/upload, /documents/sources        │
+│   │   ├── auth.py      - /api/signup, /api/login, /api/change-password │
+│   │   ├── chat.py      - /api/chat/stream (SSE)                        │
+│   │   └── documents.py - /documents/file, /documents/page-image        │
 │   ├── services/                                                         │
 │   │   └── rag_service.py - Singleton wrapping rag_core pipeline       │
 │   ├── core/                                                             │
@@ -82,7 +82,7 @@ All configuration is centralized in `rag_core/config.py`:
 
 ## Data Flow
 
-1. **PDF Upload**: User uploads PDF via `/documents/upload`
+1. **PDF Upload**: User uploads PDF via `/api/documents`
 2. **Ingestion Pipeline**: PDF → Pages → Chunks → Vectors → Retriever
 3. **Query Flow**: User question → Retriever (child→parent) → LLM → SSE Stream
 4. **Response**: Token-by-token streaming with source citations

@@ -1,5 +1,6 @@
 import { login, signup, changePassword, isAuthenticated, clearToken } from '../../api/index.js';
 import { store } from '../../state/store.js';
+import { isAdminEmail } from '../../utils/helpers.js';
 
 const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
@@ -85,7 +86,7 @@ export function initAuthScene(transitionManager) {
             try {
                 await login(email, password);
                 const usernameGuess = email.split('@')[0] || 'user';
-                store.setUser({ username: usernameGuess, email, displayName: usernameGuess, bio: '' });
+                store.setUser({ username: usernameGuess, email, displayName: usernameGuess, bio: '', isAdmin: isAdminEmail(email) });
                 transitionManager.updateAuthUI();
                 signInForm.reset();
                 transitionManager.transitionTo('dashboard');
@@ -115,7 +116,7 @@ export function initAuthScene(transitionManager) {
 
             try {
                 await signup(username, email, password);
-                store.setUser({ username, email, displayName: username, bio: '' });
+                store.setUser({ username, email, displayName: username, bio: '', isAdmin: isAdminEmail(email) });
                 transitionManager.updateAuthUI();
                 signUpForm.reset();
                 transitionManager.transitionTo('dashboard');
@@ -132,6 +133,8 @@ export function initAuthScene(transitionManager) {
         const deleteBtn = accountScene.querySelector('.delete-account-button');
         const cancelBtn = accountScene.querySelector('[data-back-to="dashboard"]');
         const changePwdBtn = accountScene.querySelector('.change-password-button');
+        const adminEntry = accountScene.querySelector('.admin-entry');
+        const adminBtn = accountScene.querySelector('.admin-console-button');
 
         const fieldMap = {
             '#account-username': 'username',
@@ -144,6 +147,16 @@ export function initAuthScene(transitionManager) {
             if (el) el.value = store.user[key] || '';
         });
 
+        if (adminEntry) {
+            adminEntry.style.display = store.getIsAdmin() ? 'block' : 'none';
+        }
+
+        if (adminBtn) {
+            adminBtn.addEventListener('click', () => {
+                transitionManager.transitionTo('admin');
+            });
+        }
+
         if (accountForm) {
             accountForm.addEventListener('submit', (e) => {
                 e.preventDefault();
@@ -152,6 +165,7 @@ export function initAuthScene(transitionManager) {
                     email: accountScene.querySelector('#account-email')?.value.trim() || '',
                     displayName: accountScene.querySelector('#account-displayname')?.value.trim() || '',
                     bio: accountScene.querySelector('#account-bio')?.value.trim() || '',
+                    isAdmin: store.user.isAdmin,
                 });
                 transitionManager.updateAuthUI();
                 transitionManager.transitionTo('dashboard');

@@ -1,4 +1,4 @@
-import { chatStream, uploadDocument, BASE_URL } from '../../api/index.js';
+import { chatStream, getJob, uploadDocument, BASE_URL } from '../../api/index.js';
 
 function processRichText(container, text) {
     let html = text.replace(/\[Trang (\d+)\]/g, (_, p1) => `<button class="citation-btn" data-page="${p1}"><span class="material-icons">find_in_page</span>Trang ${p1}</button>`);
@@ -82,6 +82,59 @@ function hideThinkingIndicator() {
 function updateSourceEmpty(sourceEmpty, sourceList) {
     if (!sourceEmpty || !sourceList) return;
     sourceEmpty.style.display = sourceList.children.length ? 'none' : 'block';
+}
+
+const ingestStageLabels = {
+    fetching_object: 'Fetching PDF',
+    parsing: 'Parsing PDF',
+    chunking: 'Chunking text',
+    embedding: 'Embedding chunks',
+    indexing_vector: 'Indexing vectors',
+    persisting_metadata: 'Saving metadata',
+};
+
+function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function setSourceMeta(metaEl, text, active = false) {
+    if (!metaEl) return;
+    metaEl.textContent = text;
+    metaEl.classList.toggle('uploading', active);
+}
+
+function formatJobProgress(job) {
+    if (job.status === 'queued') return 'Queued for indexing';
+
+    const label = ingestStageLabels[job.stage] || 'Indexing document';
+    const pct = Number(job.progress_pct);
+    if (Number.isFinite(pct)) return `${label} ${pct}%`;
+    return label;
+}
+
+async function pollUploadJob(jobId, metaEl) {
+    let delayMs = 1000;
+
+    for (let attempt = 0; attempt < 90; attempt += 1) {
+        const job = await getJob(jobId);
+
+        if (job.status === 'succeeded') {
+            setSourceMeta(metaEl, 'Ready', false);
+            return job;
+        }
+
+        if (job.status === 'failed') {
+            setSourceMeta(metaEl, `Error: ${job.error_message || 'Ingest failed'}`, false);
+            return job;
+        }
+
+        setSourceMeta(metaEl, formatJobProgress(job), true);
+        await sleep(delayMs);
+        delayMs = 2000;
+    }
+
+    setSourceMeta(metaEl, 'Still indexing', false);
+    return null;
 }
 
 export function initChatScene(transitionManager) {
@@ -186,10 +239,20 @@ export function initChatScene(transitionManager) {
                 const metaEl = item.querySelector('.source-type');
                 try {
                     const result = await uploadDocument(file);
-                    if (metaEl) { metaEl.classList.remove('uploading'); metaEl.textContent = `${result.pages} pages, ${result.chunks} chunks`; }
+                    if (result.pages !== undefined || result.chunks !== undefined) {
+                        setSourceMeta(metaEl, `${result.pages ?? 0} pages, ${result.chunks ?? 0} chunks`, false);
+                    } else if (result.job_id) {
+                        setSourceMeta(metaEl, 'Queued for indexing', true);
+                        pollUploadJob(result.job_id, metaEl).catch((err) => {
+                            console.error('[Upload job]', err);
+                            setSourceMeta(metaEl, `Error: ${err.message}`, false);
+                        });
+                    } else {
+                        setSourceMeta(metaEl, result.status || 'Upload accepted', false);
+                    }
                 } catch (err) {
                     console.error('[Upload]', err);
-                    if (metaEl) { metaEl.classList.remove('uploading'); metaEl.textContent = `Error: ${err.message}`; }
+                    setSourceMeta(metaEl, `Error: ${err.message}`, false);
                 }
             }
         }

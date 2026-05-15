@@ -4,6 +4,7 @@
   "description": "Lumina RAG Notebook Frontend",
   "type": "module",
   "scripts": {
+    "test": "node tests/api-rag.test.mjs",
     "dev": "npx serve .",
     "serve": "npx serve . -l 5500"
   }

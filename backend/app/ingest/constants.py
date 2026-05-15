@@ -1,0 +1,36 @@
+from __future__ import annotations
+
+from typing import Final
+
+from ..models import JobStage, JobStatus
+
+VALID_JOB_STATUSES: Final[set[str]] = {status.value for status in JobStatus}
+VALID_JOB_STAGES: Final[set[str]] = {stage.value for stage in JobStage}
+
+STAGE_PROGRESS_RANGES: Final[dict[str, tuple[int, int]]] = {
+    JobStage.FETCHING_OBJECT.value: (0, 10),
+    JobStage.PARSING.value: (10, 35),
+    JobStage.CHUNKING.value: (35, 55),
+    JobStage.EMBEDDING.value: (55, 80),
+    JobStage.INDEXING_VECTOR.value: (80, 95),
+    JobStage.PERSISTING_METADATA.value: (95, 100),
+}
+
+STAGE_ORDER: Final[list[str]] = [
+    JobStage.FETCHING_OBJECT.value,
+    JobStage.PARSING.value,
+    JobStage.CHUNKING.value,
+    JobStage.EMBEDDING.value,
+    JobStage.INDEXING_VECTOR.value,
+    JobStage.PERSISTING_METADATA.value,
+]
+
+
+def stage_progress(stage: str, ratio: float) -> int:
+    if stage not in STAGE_PROGRESS_RANGES:
+        raise ValueError(f"Unsupported stage: {stage}")
+
+    start, end = STAGE_PROGRESS_RANGES[stage]
+    clamped_ratio = max(0.0, min(1.0, ratio))
+    value = start + int((end - start) * clamped_ratio)
+    return min(max(value, start), end)
