@@ -194,7 +194,7 @@ The `rag_core/tests/` directory covers:
 - auth
 - chat
 - ingest
-- legacy document helpers
+- document asset helpers
 
 It also adds:
 
@@ -304,7 +304,7 @@ The backend is not fully production-ready yet. It is closer than the rest of the
 - minimal auth lifecycle
 - no admin API implementation despite root task planning
 - dense-only backend retrieval despite hybrid flags
-- multiple legacy/canonical route paths still active
+- legacy route aliases removed
 
 # 5. frontend/ Analysis
 
@@ -356,7 +356,7 @@ Functional:
 - authenticated API requests
 - upload + job polling
 - streaming chat
-- PDF source viewer for legacy document file endpoints
+- PDF source viewer for document file endpoints
 
 Demo or partially integrated:
 
@@ -474,7 +474,7 @@ The Compose stack is suitable for local development and a controlled demo. It is
 
 ## Working
 
-- Canonical non-admin API contract exists and is implemented with legacy aliases.
+- Canonical non-admin API contract exists and legacy aliases are removed.
 - Auth, signup, login, and password change are implemented.
 - Upload creates background ingest jobs instead of blocking the request.
 - Celery worker performs parsing, chunking, embedding, Qdrant indexing, and metadata persistence.
@@ -506,7 +506,7 @@ The Compose stack is suitable for local development and a controlled demo. It is
 - Observability beyond structured logs.
 - Clear admin/user authorization model.
 - Deterministic document/chunk identity across all ingestion modes.
-- Clear stale-doc cleanup policy for older docs and legacy endpoints.
+- Clear stale-doc cleanup policy for older docs.
 
 The realistic assessment is that the project is a strong local/demo RAG application with meaningful backend persistence work already done. It is not yet a clean production RAG platform. The highest-risk areas are configuration drift, retrieval-path divergence, and the gap between planned admin/hybrid features and implemented runtime behavior.
 

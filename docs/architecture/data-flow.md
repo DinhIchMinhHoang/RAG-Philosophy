@@ -7,7 +7,7 @@ User Upload (PDF)
        │
        ▼
 ┌──────────────────┐
-│ /documents/upload│ ◄─── FastAPI router (backend/app/routers/documents.py)
+│ /api/documents  │ ◄─── FastAPI router (backend/app/routers/ingest.py)
 └────────┬─────────┘
          │
          ▼
@@ -69,7 +69,7 @@ User Question (Chat Input)
         │
         ▼
 ┌───────────────────────┐
-│ /chat/stream (POST)  │ ◄─── {message: "..."}
+│ /api/chat/stream (POST)  │ ◄─── {message: "..."}
 └──────────┬────────────┘
            │
            ▼

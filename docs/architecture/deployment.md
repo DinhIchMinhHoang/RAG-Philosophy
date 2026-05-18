@@ -68,7 +68,18 @@ Test endpoint:
 ```bash
 curl -N http://localhost/api/chat/stream \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <access_token>" \
   -d "{\"message\":\"hello\"}"
+```
+
+## Optional GPU Acceleration
+
+The default Compose stack starts Ollama without a required GPU reservation, so CPU-only hosts can boot the app normally.
+
+On hosts with an Nvidia runtime, enable GPU acceleration with the override file:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
 ```
 
 ## Restart / Persistence Test

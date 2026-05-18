@@ -1,5 +1,20 @@
 import { chatStream, getJob, uploadDocument, BASE_URL } from '../../api/index.js';
 
+function renderMessageSkeleton(thread) {
+    thread.innerHTML = '';
+    for (let i = 0; i < 3; i++) {
+        const row = document.createElement('div');
+        row.className = 'message ai-response skeleton';
+        row.style.cssText = 'background:transparent;padding:0 16px 12px 16px;display:flex;flex-direction:column;gap:8px;';
+        row.innerHTML = `
+            <div class="skeleton skeleton-text" style="width:15%;height:10px;"></div>
+            <div class="skeleton skeleton-text" style="width:90%;height:12px;"></div>
+            <div class="skeleton skeleton-text" style="width:75%;height:12px;"></div>
+        `;
+        thread.appendChild(row);
+    }
+}
+
 function processRichText(container, text) {
     let html = text.replace(/\[Trang (\d+)\]/g, (_, p1) => `<button class="citation-btn" data-page="${p1}"><span class="material-icons">find_in_page</span>Trang ${p1}</button>`);
     html = html.replace(/- ([^,\n]+),\s*Trang\s*(\d+)/g, (_, file, page) => `<button class="citation-btn" data-file="${file.trim()}" data-page="${page}"><span class="material-icons">description</span> ${file.trim()} (P. ${page})</button>`);
@@ -141,6 +156,20 @@ export function initChatScene(transitionManager) {
     const chatScene = document.getElementById('scene-chat');
     if (!chatScene) return;
 
+    const chatThread = chatScene.querySelector('.chat-thread');
+    if (chatThread) {
+        renderMessageSkeleton(chatThread);
+        setTimeout(() => {
+            if (chatThread) {
+                chatThread.innerHTML = '';
+                const welcome = document.createElement('div');
+                welcome.className = 'ai-response';
+                welcome.innerHTML = `<div class="message-text">Hi, I can help you explore your sources. Add files on the left, then ask a question.</div><div class="message-meta">Lumina</div>`;
+                chatThread.appendChild(welcome);
+            }
+        }, 600);
+    }
+
     const chatShell = chatScene.querySelector('.chat-shell');
     const chatLayout = chatScene.querySelector('.chat-layout');
     const leftPanel = chatScene.querySelector('.panel-left');
@@ -279,7 +308,6 @@ export function initChatScene(transitionManager) {
 
     const chatForm = chatScene.querySelector('.chat-input');
     const chatPrompt = chatScene.querySelector('#chatPrompt');
-    const chatThread = chatScene.querySelector('.chat-thread');
     const clearChatBtn = chatScene.querySelector('[data-action="clear-chat"]');
 
     if (chatForm && chatPrompt) {

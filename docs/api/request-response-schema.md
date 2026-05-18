@@ -6,14 +6,14 @@
 ```python
 class UserCreate(BaseModel):
     username: str          # Required, unique
-    email: EmailStr       # Must end with @gmail.com
+    email: EmailStr       # Must end with @gmail.com or @lumina.com.vn
     password: str         # 6-128 characters
 ```
 
 ### UserLogin (login)
 ```python
 class UserLogin(BaseModel):
-    email: EmailStr       # Must end with @gmail.com
+    email: EmailStr       # Must end with @gmail.com or @lumina.com.vn
     password: str
 ```
 
@@ -33,7 +33,7 @@ class ChangePassword(BaseModel):
 
 ## Chat Schemas
 
-### ChatRequest (POST /chat/stream)
+### ChatRequest (POST /api/chat/stream)
 ```json
 {
     "message": "What is philosophy?"
@@ -42,13 +42,13 @@ class ChangePassword(BaseModel):
 
 ### SSE Response Format
 ```json
-{"token": "chunk_of_text"}
-{"token": "", "done": true}
+{"type": "token", "token": "chunk_of_text", "done": false}
+{"type": "final", "token": "", "done": true, "answer": "...", "citations": []}
 ```
 
 ### Error Response Format
 ```json
-{"token": "\n\n⚠️ Lỗi: error message", "done": true}
+{"type": "error", "token": "", "done": true, "error": "Failed to generate answer", "citations": []}
 ```
 
 ## Document Schemas
@@ -56,10 +56,11 @@ class ChangePassword(BaseModel):
 ### Upload Response
 ```json
 {
-    "filename": "philosophy.pdf",
-    "status": "ok",
-    "pages": 45,
-    "chunks": 180
+    "document_id": "doc-uuid",
+    "job_id": "job-uuid",
+    "status": "queued",
+    "pipeline_version": "v1",
+    "object_key": "doc-uuid/philosophy.pdf"
 }
 ```
 
@@ -93,7 +94,7 @@ class ChangePassword(BaseModel):
 
 | Field | Rule | Error Message |
 |-------|------|---------------|
-| `email` | Must end with @gmail.com | "Hệ thống chỉ chấp nhận tài khoản @gmail.com" |
+| `email` | Must end with @gmail.com or @lumina.com.vn | "Hệ thống chỉ chấp nhận tài khoản @gmail.com hoặc @lumina.com.vn" |
 | `password` | Minimum 6 characters | "Password must be at least 6 characters" |
 | `password` | Maximum 128 characters | "Password must be less than 128 characters" |
 | `username` | Must be unique | "User name đã tồn tại, vui lòng chọn tên khác!" |
