@@ -5,9 +5,11 @@ Quy trình:
   Bước 2.1 → Chia từng Page Document thành các Parent Documents (ngữ cảnh lớn).
   Bước 2.2 → Chia tiếp mỗi Parent thành các Child Documents (tối ưu vector search).
 
-Thiết kế khóa (doc_id):
-  - Mỗi Parent Document nhận một UUID duy nhất (doc_id).
+Thiết kế khóa (doc_id) — Idempotent UUIDv5:
+  - Mỗi Parent Document nhận một UUIDv5 cố định dựa trên (source, page, chunk_idx).
   - Mỗi Child Document thừa kế đúng doc_id từ Parent của nó.
+  - Mỗi Child Document còn có _child_point_id (UUIDv5 từ doc_id + child_idx)
+    dùng làm ID vật lý khi upsert vào Qdrant (đảm bảo idempotency).
   - MultiVectorRetriever dùng doc_id làm id_key để lookup Parent từ InMemoryStore.
 
 Đầu ra:
@@ -17,7 +19,7 @@ Thiết kế khóa (doc_id):
 
 Metadata được bảo toàn nghiêm ngặt:
   Parent: {'source': str, 'page': int, 'doc_id': str}
-  Child:  {'source': str, 'page': int, 'doc_id': str}
+  Child:  {'source': str, 'page': int, 'doc_id': str, '_child_point_id': str}
 """
 
 from __future__ import annotations
@@ -39,6 +41,9 @@ except ImportError:  # pragma: no cover
 configure_logging()
 logger = get_logger(__name__)
 
+# ── Namespace cố định cho toàn bộ hệ thống RAG ────────────────────────────────
+NAMESPACE_RAG = uuid.uuid5(uuid.NAMESPACE_DNS, "rag.uet.edu.vn")
+
 # ── Splitter instances (khởi tạo 1 lần, tái sử dụng) ─────────────────────────
 _PARENT_SPLITTER = RecursiveCharacterTextSplitter(
     chunk_size=Config.PARENT_CHUNK_SIZE,
@@ -55,9 +60,10 @@ _CHILD_SPLITTER = RecursiveCharacterTextSplitter(
 )
 
 
-def _make_doc_id() -> str:
-    """Sinh UUID v4 dạng chuỗi để dùng làm doc_id."""
-    return str(uuid.uuid4())
+def _generate_deterministic_doc_id(source: str, page_num: int, chunk_idx: int) -> str:
+    """Sinh UUIDv5 cố định từ (source, page_num, chunk_idx) dùng làm doc_id cho Parent."""
+    seed = f"{source}_{page_num}_{chunk_idx}"
+    return str(uuid.uuid5(NAMESPACE_RAG, seed))
 
 
 def _split_page_into_parents(page: Document) -> List[Document]:
@@ -65,7 +71,7 @@ def _split_page_into_parents(page: Document) -> List[Document]:
     Chia một Page Document thành danh sách Parent Documents.
 
     Mỗi Parent kế thừa metadata gốc {'source', 'page'} của page,
-    đồng thời được gán thêm một 'doc_id' UUID duy nhất.
+    đồng thời được gán thêm một 'doc_id' UUIDv5 cố định (deterministic).
 
     Args:
         page: Một Document đại diện cho một trang PDF (từ Step 1).
@@ -83,8 +89,8 @@ def _split_page_into_parents(page: Document) -> List[Document]:
     )
 
     parents: List[Document] = []
-    for raw in raw_parents:
-        doc_id = _make_doc_id()
+    for chunk_idx, raw in enumerate(raw_parents):
+        doc_id = _generate_deterministic_doc_id(source, page_num, chunk_idx)
         # Đảm bảo metadata sạch: chỉ giữ source, page và thêm doc_id
         parents.append(
             Document(
@@ -106,12 +112,14 @@ def _split_parent_into_children(parent: Document) -> List[Document]:
 
     Mỗi Child kế thừa đúng {'source', 'page', 'doc_id'} từ Parent của nó.
     doc_id là khóa liên kết để MultiVectorRetriever tra cứu Parent.
+    _child_point_id là ID vật lý UUIDv5 cố định để upsert idempotent vào Qdrant.
 
     Args:
         parent: Một Parent Document đã có doc_id trong metadata.
 
     Returns:
-        Danh sách Child Documents, mỗi cái chia sẻ cùng doc_id với Parent.
+        Danh sách Child Documents, mỗi cái chia sẻ cùng doc_id với Parent
+        và mang _child_point_id duy nhất trong metadata.
     """
     source: str = parent.metadata["source"]
     page_num: int = parent.metadata["page"]
@@ -123,7 +131,8 @@ def _split_parent_into_children(parent: Document) -> List[Document]:
     )
 
     children: List[Document] = []
-    for raw in raw_children:
+    for child_idx, raw in enumerate(raw_children):
+        child_point_id = str(uuid.uuid5(NAMESPACE_RAG, f"{doc_id}_{child_idx}"))
         children.append(
             Document(
                 page_content=raw.page_content,
@@ -131,6 +140,7 @@ def _split_parent_into_children(parent: Document) -> List[Document]:
                     "source": source,
                     "page": page_num,
                     "doc_id": doc_id,
+                    "_child_point_id": child_point_id,
                 },
             )
         )

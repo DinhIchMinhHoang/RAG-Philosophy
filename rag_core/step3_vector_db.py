@@ -24,12 +24,17 @@ def _init_embeddings() -> HuggingFaceEmbeddings:
     return build_embeddings_from_common()
 
 
-def _build_qdrant_store(child_docs: List[Document], embeddings: HuggingFaceEmbeddings) -> QdrantVectorStore:
+def _build_qdrant_store(
+    child_docs: List[Document],
+    embeddings: HuggingFaceEmbeddings,
+    ids: List[str],
+) -> QdrantVectorStore:
     return QdrantVectorStore.from_documents(
         documents=child_docs,
         embedding=embeddings,
         location=Config.QDRANT_LOCATION,
         collection_name=Config.QDRANT_COLLECTION,
+        ids=ids,
     )
 
 
@@ -56,8 +61,19 @@ def build_vector_db(child_docs: List[Document], parent_docs: List[Document]):
 
     _validate_child_docs(child_docs)
 
+    # Bóc tách ID vật lý (Lập trình phòng thủ — Fail-fast)
+    child_ids: List[str] = []
+    for idx, doc in enumerate(child_docs):
+        point_id = doc.metadata.pop("_child_point_id", None)
+        if point_id is None:
+            raise ValueError(
+                f"child_docs[{idx}] missing '_child_point_id' in metadata. "
+                "Ensure step 2 ran correctly."
+            )
+        child_ids.append(point_id)
+
     embeddings = _init_embeddings()
-    vectorstore = _build_qdrant_store(child_docs, embeddings)
+    vectorstore = _build_qdrant_store(child_docs, embeddings, ids=child_ids)
     doc_store = _build_doc_store(parent_docs)
 
     # Rerank mode: always use dense+BM25 to get child candidates, rerank children,

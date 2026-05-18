@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 _ROOT_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(dotenv_path=_ROOT_DIR / ".env")
 
-DEFAULT_LLM_MODEL = "deepseek-v4-flash"
+DEFAULT_LLM_MODEL = "gemini-2.5-flash"
 
 
 class Config:
