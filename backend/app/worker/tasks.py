@@ -109,6 +109,7 @@ def process_ingest_job(
     document_id: str,
     object_key: str,
     pipeline_version: str,
+    user_id: str = "system",
 ) -> dict[str, int]:
     for field_name, value in {
         "job_id": job_id,
@@ -136,6 +137,7 @@ def process_ingest_job(
             document_id=document_id,
             object_key=object_key,
             pipeline_version=pipeline_version,
+            user_id=user_id,
         )
         log_event(
             "info",

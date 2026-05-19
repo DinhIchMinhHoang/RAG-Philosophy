@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -17,6 +18,18 @@ from ..ingest.storage import storage_client
 from ..models import DocumentRecord, IngestJob, JobStage, JobStatus, User
 
 router = APIRouter(prefix="/api", tags=["Ingest"])
+
+ALLOWED_EXTENSIONS = {'.pdf', '.xlsx', '.xls', '.csv'}
+MAX_UPLOAD_SIZE_MB = int(os.getenv("MAX_UPLOAD_SIZE_MB", "20"))
+
+MIME_TYPES = {
+    '.pdf': 'application/pdf',
+    '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    '.xls': 'application/vnd.ms-excel',
+    '.csv': 'text/csv',
+}
+
+
 
 
 class ReindexRequest(BaseModel):
@@ -69,7 +82,7 @@ class DeleteDocumentResponse(BaseModel):
     cleanup_errors: list[str]
 
 
-def _enqueue_ingest(job_id: str, document_id: str, object_key: str, pipeline_version: str) -> None:
+def _enqueue_ingest(job_id: str, document_id: str, object_key: str, pipeline_version: str, user_id: str) -> None:
     try:
         from ..worker.celery_app import celery_app
     except ModuleNotFoundError as exc:
@@ -82,6 +95,7 @@ def _enqueue_ingest(job_id: str, document_id: str, object_key: str, pipeline_ver
             "document_id": document_id,
             "object_key": object_key,
             "pipeline_version": pipeline_version,
+            "user_id": user_id,
         },
         queue=settings.celery_ingest_queue,
     )
@@ -104,13 +118,26 @@ def _create_job(db: Session, document_id: str, pipeline_version: str) -> IngestJ
     return job
 
 
-async def _create_document_impl(file: UploadFile, pipeline_version: str | None = None) -> dict:
+async def _create_document_impl(file: UploadFile, pipeline_version: str | None = None, current_user: User | None = None) -> dict:
     if not file.filename:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No filename provided")
-    if not file.filename.lower().endswith(".pdf"):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only PDF files are supported")
+
+    ext = Path(file.filename).suffix.lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unsupported format: {ext}. Supported: {', '.join(ALLOWED_EXTENSIONS)}"
+        )
 
     payload = await file.read()
+
+    max_size = MAX_UPLOAD_SIZE_MB * 1024 * 1024
+    if len(payload) > max_size:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"File too large: {len(payload)/1024/1024:.1f}MB (max: {MAX_UPLOAD_SIZE_MB}MB)"
+        )
+
     if not payload:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Uploaded file is empty")
 
@@ -120,16 +147,17 @@ async def _create_document_impl(file: UploadFile, pipeline_version: str | None =
 
     document_id = str(uuid.uuid4())
     object_key = f"{document_id}/{Path(file.filename).name}"
+    user_id = current_user.username if current_user else "system"
 
     db = SessionLocal()
     try:
-        storage_client.put_bytes(object_key, payload, file.content_type or "application/pdf")
+        storage_client.put_bytes(object_key, payload, file.content_type or MIME_TYPES.get(ext, 'application/octet-stream'))
 
         document = DocumentRecord(
             id=document_id,
             filename=file.filename,
             object_key=object_key,
-            mime_type=file.content_type or "application/pdf",
+            mime_type=file.content_type or MIME_TYPES.get(ext, 'application/octet-stream'),
             size_bytes=len(payload),
         )
         db.add(document)
@@ -137,7 +165,7 @@ async def _create_document_impl(file: UploadFile, pipeline_version: str | None =
         db.refresh(document)
 
         job = _create_job(db, document_id=document.id, pipeline_version=version)
-        _enqueue_ingest(job.id, document.id, document.object_key, version)
+        _enqueue_ingest(job.id, document.id, document.object_key, version, user_id)
 
         return {
             "document_id": document.id,
@@ -233,6 +261,7 @@ def _delete_document_impl(db: Session, document_id: str) -> DeleteDocumentRespon
         "chunks_deleted": False,
         "vectors_deleted": False,
         "object_deleted": False,
+        "excel_tables_dropped": 0,
     }
     cleanup_errors: list[str] = []
 
@@ -263,6 +292,13 @@ def _delete_document_impl(db: Session, document_id: str) -> DeleteDocumentRespon
 
     chunk_count = len(document.chunks)
     cleanup["chunks_deleted"] = chunk_count > 0
+
+    try:
+        from ..ingest.excel_ingestor import drop_excel_tables
+        dropped = drop_excel_tables(db, document_id)
+        cleanup["excel_tables_dropped"] = dropped
+    except Exception as exc:
+        cleanup_errors.append(f"excel_cleanup: {exc}")
 
     try:
         db.delete(document)
@@ -324,9 +360,9 @@ def _reindex_document_impl(document_id: str, request: ReindexRequest) -> dict:
 async def create_document(
     file: UploadFile = File(...),
     pipeline_version: str | None = None,
-    _current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
-    return await _create_document_impl(file=file, pipeline_version=pipeline_version)
+    return await _create_document_impl(file=file, pipeline_version=pipeline_version, current_user=current_user)
 
 
 @router.get("/documents", response_model=list[DocumentListItem])

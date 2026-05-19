@@ -249,12 +249,26 @@ export function initChatScene(transitionManager) {
     const sourceAddButtons = chatScene.querySelectorAll('.source-add-button');
     const sourceNoteButton = chatScene.querySelector('.source-note-button');
 
+    const SUPPORTED_EXTENSIONS = ['.pdf', '.xlsx', '.xls', '.csv'];
+
+    function getFileIcon(filename) {
+        const ext = filename.toLowerCase().split('.').pop();
+        const icons = { pdf: 'picture_as_pdf', xlsx: 'table_chart', xls: 'table_chart', csv: 'grid_on' };
+        return icons[ext] || 'description';
+    }
+
+    function isSupported(filename) {
+        const ext = '.' + filename.toLowerCase().split('.').pop();
+        return SUPPORTED_EXTENSIONS.includes(ext);
+    }
+
     const handleFiles = async (files) => {
         const list = Array.from(files || []);
         for (const file of list) {
             const isPDF = file.name.toLowerCase().endsWith('.pdf');
-            const icon = isPDF ? 'picture_as_pdf' : 'description';
-            const meta = isPDF ? 'Uploading…' : (file.type || 'file');
+            const canUpload = isSupported(file.name);
+            const icon = getFileIcon(file.name);
+            const meta = canUpload ? 'Uploading…' : (file.type || 'file');
 
             const item = document.createElement('div');
             item.className = 'source-item';
@@ -264,7 +278,7 @@ export function initChatScene(transitionManager) {
             sourceList.appendChild(item);
             updateSourceEmpty(sourceEmpty, sourceList);
 
-            if (isPDF) {
+            if (canUpload) {
                 const metaEl = item.querySelector('.source-type');
                 try {
                     const result = await uploadDocument(file);
@@ -349,7 +363,8 @@ export function initChatScene(transitionManager) {
                     hideThinkingIndicator();
                     aiMsg.style.display = 'flex';
                     textEl.innerHTML = '';
-                    processRichText(textEl, fullText);
+                    const displayText = fullText.trim() || 'Sorry, I could not generate a response. Please check backend logs for errors.';
+                    processRichText(textEl, displayText);
                     aiMsg.classList.remove('streaming');
                     activeStreamController = null;
                     if (sendBtn) sendBtn.disabled = false;

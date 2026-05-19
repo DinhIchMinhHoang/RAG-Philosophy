@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import tempfile
 import time
 import uuid
@@ -22,7 +23,7 @@ from .qdrant_store import (
     delete_vectors_for_document_version,
     upsert_child_vectors,
 )
-from .storage import storage_client, validate_pdf_bytes
+from .storage import storage_client, validate_file_bytes
 
 
 @dataclass
@@ -122,6 +123,7 @@ def run_ingest_job(
     document_id: str,
     object_key: str,
     pipeline_version: str,
+    user_id: str = "system",
 ) -> dict[str, int]:
     updater = JobUpdater(db)
     stage_started = time.perf_counter()
@@ -141,9 +143,9 @@ def run_ingest_job(
     )
 
     _mark_stage("fetching_object", 0.1, "fetch_started")
-    pdf_bytes = storage_client.get_bytes(object_key)
-    validate_pdf_bytes(object_key, pdf_bytes)
-    _mark_stage("fetching_object", 1.0, f"fetched_bytes={len(pdf_bytes)}")
+    file_bytes = storage_client.get_bytes(object_key)
+    file_ext = validate_file_bytes(object_key, file_bytes)
+    _mark_stage("fetching_object", 1.0, f"fetched_bytes={len(file_bytes)}, format={file_ext}")
     fetch_duration_ms = int((time.perf_counter() - stage_started) * 1000)
     log_event(
         "info",
@@ -156,134 +158,179 @@ def run_ingest_job(
     )
 
     stage_started = time.perf_counter()
-    _mark_stage("parsing", 0.1, "parse_started")
-    parser = HybridPDFParser()
-    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
-        tmp.write(pdf_bytes)
-        tmp_path = tmp.name
 
-    try:
-        parsed_pages = parser.parse_pdf(tmp_path)
-    finally:
-        Path(tmp_path).unlink(missing_ok=True)
+    if file_ext == '.pdf':
+        _mark_stage("parsing", 0.1, "parse_started")
 
-    if not parsed_pages:
-        raise ValueError("No pages parsed from PDF")
+        with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp:
+            tmp.write(file_bytes)
+            tmp_path = tmp.name
 
-    _mark_stage("parsing", 1.0, f"parsed_pages={len(parsed_pages)}")
-    parse_duration_ms = int((time.perf_counter() - stage_started) * 1000)
-    log_event(
-        "info",
-        "stage_complete",
-        job_id=job_id,
-        document_id=document_id,
-        pipeline_version=pipeline_version,
-        stage="parsing",
-        duration_ms=parse_duration_ms,
-    )
+        try:
+            parser = HybridPDFParser()
+            parsed_pages = parser.parse_pdf(tmp_path)
+        finally:
+            if tmp_path:
+                Path(tmp_path).unlink(missing_ok=True)
 
-    stage_started = time.perf_counter()
-    _mark_stage("chunking", 0.1, "chunking_started")
-    child_docs, parent_docs = chunk_documents(parsed_pages)
-    if not child_docs or not parent_docs:
-        raise ValueError("Chunking produced empty parent/child docs")
+        if not parsed_pages:
+            raise ValueError("No pages parsed from PDF file")
 
-    parent_drafts, child_drafts = _build_chunk_drafts(
-        document_id=document_id,
-        job_id=job_id,
-        pipeline_version=pipeline_version,
-        parent_docs=parent_docs,
-        child_docs=child_docs,
-    )
+        _mark_stage("parsing", 1.0, f"parsed_pages={len(parsed_pages)}")
+        parse_duration_ms = int((time.perf_counter() - stage_started) * 1000)
+        log_event(
+            "info",
+            "stage_complete",
+            job_id=job_id,
+            document_id=document_id,
+            pipeline_version=pipeline_version,
+            stage="parsing",
+            duration_ms=parse_duration_ms,
+        )
 
-    _mark_stage(
-        "chunking",
-        1.0,
-        f"parents={len(parent_drafts)} children={len(child_drafts)}",
-    )
-    chunk_duration_ms = int((time.perf_counter() - stage_started) * 1000)
-    log_event(
-        "info",
-        "stage_complete",
-        job_id=job_id,
-        document_id=document_id,
-        pipeline_version=pipeline_version,
-        stage="chunking",
-        duration_ms=chunk_duration_ms,
-    )
+        stage_started = time.perf_counter()
+        _mark_stage("chunking", 0.1, "chunking_started")
+        child_docs, parent_docs = chunk_documents(parsed_pages)
+        if not child_docs or not parent_docs:
+            raise ValueError("Chunking produced empty parent/child docs")
 
-    stage_started = time.perf_counter()
-    _mark_stage("embedding", 0.05, "embedding_started")
-    embedder = build_embeddings()
-    child_texts = [draft.text for draft in child_drafts]
-    vectors = embedder.embed_documents(child_texts)
-    _mark_stage("embedding", 1.0, f"embedded_children={len(child_drafts)}")
-    embedding_duration_ms = int((time.perf_counter() - stage_started) * 1000)
-    log_event(
-        "info",
-        "stage_complete",
-        job_id=job_id,
-        document_id=document_id,
-        pipeline_version=pipeline_version,
-        stage="embedding",
-        duration_ms=embedding_duration_ms,
-    )
+        parent_drafts, child_drafts = _build_chunk_drafts(
+            document_id=document_id,
+            job_id=job_id,
+            pipeline_version=pipeline_version,
+            parent_docs=parent_docs,
+            child_docs=child_docs,
+        )
 
-    stage_started = time.perf_counter()
-    _mark_stage("indexing_vector", 0.05, "indexing_started")
-    qdrant_client = build_qdrant_client()
-    delete_vectors_for_document_version(qdrant_client, document_id, pipeline_version)
-    child_chunk_models = [_draft_to_model(draft) for draft in child_drafts]
-    upsert_child_vectors(qdrant_client, child_chunk_models, vectors)
-    _mark_stage("indexing_vector", 1.0, f"indexed_children={len(child_drafts)}")
-    indexing_duration_ms = int((time.perf_counter() - stage_started) * 1000)
-    log_event(
-        "info",
-        "stage_complete",
-        job_id=job_id,
-        document_id=document_id,
-        pipeline_version=pipeline_version,
-        stage="indexing_vector",
-        duration_ms=indexing_duration_ms,
-    )
+        _mark_stage(
+            "chunking",
+            1.0,
+            f"parents={len(parent_drafts)} children={len(child_drafts)}",
+        )
+        chunk_duration_ms = int((time.perf_counter() - stage_started) * 1000)
+        log_event(
+            "info",
+            "stage_complete",
+            job_id=job_id,
+            document_id=document_id,
+            pipeline_version=pipeline_version,
+            stage="chunking",
+            duration_ms=chunk_duration_ms,
+        )
 
-    stage_started = time.perf_counter()
-    _mark_stage("persisting_metadata", 0.05, "metadata_started")
-    deleted_chunks = delete_chunks_for_document_version(db, document_id, pipeline_version)
-    all_rows = [_draft_to_model(draft) for draft in parent_drafts + child_drafts]
-    db.add_all(all_rows)
-    db.commit()
-    _mark_stage(
-        "persisting_metadata",
-        1.0,
-        f"deleted_old_chunks={deleted_chunks} inserted={len(all_rows)}",
-    )
-    metadata_duration_ms = int((time.perf_counter() - stage_started) * 1000)
-    total_duration_ms = int((time.perf_counter() - total_started) * 1000)
-    log_event(
-        "info",
-        "job_succeeded",
-        job_id=job_id,
-        document_id=document_id,
-        pipeline_version=pipeline_version,
-        stage="persisting_metadata",
-        duration_ms=total_duration_ms,
-    )
+        stage_started = time.perf_counter()
+        _mark_stage("embedding", 0.05, "embedding_started")
+        embedder = build_embeddings()
+        child_texts = [draft.text for draft in child_drafts]
+        vectors = embedder.embed_documents(child_texts)
+        _mark_stage("embedding", 1.0, f"embedded_children={len(child_drafts)}")
+        embedding_duration_ms = int((time.perf_counter() - stage_started) * 1000)
+        log_event(
+            "info",
+            "stage_complete",
+            job_id=job_id,
+            document_id=document_id,
+            pipeline_version=pipeline_version,
+            stage="embedding",
+            duration_ms=embedding_duration_ms,
+        )
 
-    updater.set_state(
-        job_id,
-        status="succeeded",
-        progress_pct=100,
-        stage="persisting_metadata",
-        stage_detail="completed",
-    )
+        stage_started = time.perf_counter()
+        _mark_stage("indexing_vector", 0.05, "indexing_started")
+        qdrant_client = build_qdrant_client()
+        delete_vectors_for_document_version(qdrant_client, document_id, pipeline_version)
+        child_chunk_models = [_draft_to_model(draft) for draft in child_drafts]
+        upsert_child_vectors(qdrant_client, child_chunk_models, vectors)
+        _mark_stage("indexing_vector", 1.0, f"indexed_children={len(child_drafts)}")
+        indexing_duration_ms = int((time.perf_counter() - stage_started) * 1000)
+        log_event(
+            "info",
+            "stage_complete",
+            job_id=job_id,
+            document_id=document_id,
+            pipeline_version=pipeline_version,
+            stage="indexing_vector",
+            duration_ms=indexing_duration_ms,
+        )
 
-    return {
-        "pages": len(parsed_pages),
-        "parent_chunks": len(parent_drafts),
-        "child_chunks": len(child_drafts),
-        "deleted_chunks": deleted_chunks,
-        "embedding_duration_ms": embedding_duration_ms,
-        "indexing_duration_ms": indexing_duration_ms,
-        "metadata_duration_ms": metadata_duration_ms,
-    }
+        stage_started = time.perf_counter()
+        _mark_stage("persisting_metadata", 0.05, "metadata_started")
+        deleted_chunks = delete_chunks_for_document_version(db, document_id, pipeline_version)
+        all_rows = [_draft_to_model(draft) for draft in parent_drafts + child_drafts]
+        db.add_all(all_rows)
+        db.commit()
+        _mark_stage(
+            "persisting_metadata",
+            1.0,
+            f"deleted_old_chunks={deleted_chunks} inserted={len(all_rows)}",
+        )
+        metadata_duration_ms = int((time.perf_counter() - stage_started) * 1000)
+        total_duration_ms = int((time.perf_counter() - total_started) * 1000)
+        log_event(
+            "info",
+            "job_succeeded",
+            job_id=job_id,
+            document_id=document_id,
+            pipeline_version=pipeline_version,
+            stage="persisting_metadata",
+            duration_ms=total_duration_ms,
+        )
+
+        updater.set_state(
+            job_id,
+            status="succeeded",
+            progress_pct=100,
+            stage="persisting_metadata",
+            stage_detail="completed",
+        )
+
+        return {
+            "pages": len(parsed_pages),
+            "parent_chunks": len(parent_drafts),
+            "child_chunks": len(child_drafts),
+            "deleted_chunks": deleted_chunks,
+            "embedding_duration_ms": embedding_duration_ms,
+            "indexing_duration_ms": indexing_duration_ms,
+            "metadata_duration_ms": metadata_duration_ms,
+        }
+
+    elif file_ext in ['.xlsx', '.xls', '.csv']:
+        _mark_stage("loading_sql", 0.1, "excel_ingest_started")
+
+        from .excel_ingestor import ingest_excel_to_sql
+
+        table_records = ingest_excel_to_sql(
+            db=db,
+            file_bytes=file_bytes,
+            file_ext=file_ext,
+            document_id=document_id,
+            job_id=job_id,
+            user_id=user_id,
+        )
+
+        _mark_stage("loading_sql", 1.0, f"tables={len(table_records)}")
+        sql_duration_ms = int((time.perf_counter() - stage_started) * 1000)
+        total_duration_ms = int((time.perf_counter() - total_started) * 1000)
+        log_event(
+            "info",
+            "job_succeeded",
+            job_id=job_id,
+            document_id=document_id,
+            pipeline_version=pipeline_version,
+            stage="loading_sql",
+            duration_ms=total_duration_ms,
+        )
+
+        updater.set_state(
+            job_id,
+            status="succeeded",
+            progress_pct=100,
+            stage="loading_sql",
+            stage_detail="completed",
+        )
+
+        return {
+            "tables": len(table_records),
+            "rows": sum(t.row_count for t in table_records),
+            "sql_duration_ms": sql_duration_ms,
+        }

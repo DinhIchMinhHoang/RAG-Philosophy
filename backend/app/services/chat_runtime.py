@@ -22,6 +22,16 @@ except Exception as exc:  # pragma: no cover
 
 logger = logging.getLogger(__name__)
 
+_EXCEL_QUERY_SERVICE: "ExcelQueryService | None" = None
+
+
+def _get_excel_query_service():
+    global _EXCEL_QUERY_SERVICE
+    if _EXCEL_QUERY_SERVICE is None:
+        from .excel_query_service import excel_query_service as _svc
+        _EXCEL_QUERY_SERVICE = _svc
+    return _EXCEL_QUERY_SERVICE
+
 _SYSTEM_PROMPT = (
     "Bạn là trợ lý AI học tập thân thiện. BẠN PHẢI LUÔN TRẢ LỜI BẰNG TIẾNG VIỆT.\n\n"
     "Quy tắc trả lời:\n"
@@ -83,7 +93,21 @@ class ChatRuntimeService:
     def citations_from_context(self, contexts: list[RetrievedContext]) -> list[dict]:
         return self._citations_from_context(contexts)
 
-    def retrieve(self, db: Session, question: str, *, pipeline_version: str) -> list[RetrievedContext]:
+    def retrieve(self, db: Session, question: str, *, pipeline_version: str, user_id: str | None = None) -> list[RetrievedContext]:
+        if user_id:
+            excel_svc = _get_excel_query_service()
+            excel_result = excel_svc.query(db, user_id, question)
+            if excel_result is not None:
+                return [RetrievedContext(
+                    document_id="excel_sql",
+                    chunk_id="sql_result",
+                    source="excel_table",
+                    page=0,
+                    score=1.0,
+                    snippet=excel_result[:280],
+                    text=excel_result,
+                )]
+
         mode = settings.retrieval_mode
         if mode == "hybrid":
             return self._retrieve_hybrid(db, question, pipeline_version=pipeline_version)

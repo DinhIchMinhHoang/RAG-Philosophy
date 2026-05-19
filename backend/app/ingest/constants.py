@@ -13,7 +13,8 @@ STAGE_PROGRESS_RANGES: Final[dict[str, tuple[int, int]]] = {
     JobStage.CHUNKING.value: (35, 55),
     JobStage.EMBEDDING.value: (55, 80),
     JobStage.INDEXING_VECTOR.value: (80, 95),
-    JobStage.PERSISTING_METADATA.value: (95, 100),
+    JobStage.PERSISTING_METADATA.value: (95, 99),
+    JobStage.LOADING_SQL.value: (99, 100),
 }
 
 STAGE_ORDER: Final[list[str]] = [
@@ -23,7 +24,17 @@ STAGE_ORDER: Final[list[str]] = [
     JobStage.EMBEDDING.value,
     JobStage.INDEXING_VECTOR.value,
     JobStage.PERSISTING_METADATA.value,
+    JobStage.LOADING_SQL.value,
 ]
+
+MAX_FILE_SIZE_MB: Final[int] = 50
+BATCH_SIZE: Final[int] = 500
+HEADER_CHECK_ROWS: Final[int] = 10
+HEADER_MIN_NONEMPTY_RATIO: Final[float] = 0.5
+TABLE_PREFIX: Final[str] = "etbl"
+TABLE_NAME_MAX_LEN: Final[int] = 56
+SQL_MAX_ROWS: Final[int] = 200
+SQL_MAX_RETRIES: Final[int] = 3
 
 
 def stage_progress(stage: str, ratio: float) -> int:

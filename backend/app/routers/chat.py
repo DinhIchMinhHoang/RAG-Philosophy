@@ -37,9 +37,14 @@ def _validate_message(message: str) -> str:
     return message.strip()
 
 
-async def _chat_non_stream_impl(db: Session, message: str) -> ChatResponse:
+async def _chat_non_stream_impl(db: Session, message: str, current_user: User | None = None) -> ChatResponse:
     normalized = _validate_message(message)
-    contexts = chat_runtime_service.retrieve(db, normalized, pipeline_version=settings.pipeline_version)
+    contexts = chat_runtime_service.retrieve(
+        db,
+        normalized,
+        pipeline_version=settings.pipeline_version,
+        user_id=current_user.username if current_user else None,
+    )
     citations = chat_runtime_service.citations_from_context(contexts)
 
     try:
@@ -55,16 +60,21 @@ async def _chat_non_stream_impl(db: Session, message: str) -> ChatResponse:
 async def chat_api(
     request: ChatRequest,
     db: Session = Depends(get_db),
-    _current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
-    return await _chat_non_stream_impl(db, request.message)
+    return await _chat_non_stream_impl(db, request.message, current_user)
 
 
 
 
-async def _chat_stream_impl(db: Session, message: str):
+async def _chat_stream_impl(db: Session, message: str, current_user: User | None = None):
     normalized = _validate_message(message)
-    contexts = chat_runtime_service.retrieve(db, normalized, pipeline_version=settings.pipeline_version)
+    contexts = chat_runtime_service.retrieve(
+        db,
+        normalized,
+        pipeline_version=settings.pipeline_version,
+        user_id=current_user.username if current_user else None,
+    )
     citations = chat_runtime_service.citations_from_context(contexts)
 
     answer_parts: list[str] = []
@@ -116,7 +126,7 @@ async def _chat_stream_impl(db: Session, message: str):
 async def chat_stream_api(
     request: ChatRequest,
     db: Session = Depends(get_db),
-    _current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
-    return await _chat_stream_impl(db, request.message)
+    return await _chat_stream_impl(db, request.message, current_user)
 
