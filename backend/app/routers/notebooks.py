@@ -11,7 +11,7 @@ router = APIRouter(prefix="/api/notebooks", tags=["Notebooks"])
 
 
 class NotebookCreate(BaseModel):
-    title: str
+    name: str
     is_community: bool = False
 
 
@@ -24,7 +24,7 @@ class NotebookUpdate(BaseModel):
 
 class NotebookResponse(BaseModel):
     id: int
-    title: str
+    name: str
     owner_id: int
     is_community: bool
     cover_url: str | None
@@ -39,11 +39,11 @@ def list_notebooks(
     db: Session = Depends(database.get_db),
 ):
     nb = db.query(models.Notebook).filter(
-        (models.Notebook.owner_id == current_user.id) | models.Notebook.is_community
+        (models.Notebook.user_id == current_user.id) | models.Notebook.is_community
     ).order_by(models.Notebook.created_at.desc()).all()
     return [
         NotebookResponse(
-            id=n.id, title=n.title, owner_id=n.owner_id, is_community=bool(n.is_community),
+            id=n.id, name=n.name, owner_id=n.user_id, is_community=bool(n.is_community),
             cover_url=n.cover_url, cover_mode=n.cover_mode, cover_color=n.cover_color,
             created_at=n.created_at.isoformat(),
         )
@@ -57,12 +57,34 @@ def create_notebook(
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(database.get_db),
 ):
-    nb = models.Notebook(title=payload.title, owner_id=current_user.id, is_community=payload.is_community)
+    # Create notebook entry first to obtain an id, then create filesystem structure and update paths
+    nb = models.Notebook(name=payload.name, user_id=current_user.id, is_community=payload.is_community,
+                         notebook_dir="", vector_db_path="")
     db.add(nb)
     db.commit()
     db.refresh(nb)
+
+    # create directories
+    from ..core.fs_utils import ensure_notebook_dirs
+    from ..core.settings import settings
+
+    data_root = settings.object_storage_local_root
+    paths = ensure_notebook_dirs(data_root, current_user.id, nb.id)
+
+    nb.notebook_dir = paths["notebook_dir"]
+    nb.vector_db_path = paths["vector_db_path"]
+    db.add(nb)
+
+    # ensure user's root dir stored
+    if not current_user.user_root_dir:
+        current_user.user_root_dir = paths["user_root_dir"]
+        db.add(current_user)
+
+    db.commit()
+    db.refresh(nb)
+
     return NotebookResponse(
-        id=nb.id, title=nb.title, owner_id=nb.owner_id, is_community=bool(nb.is_community),
+        id=nb.id, name=nb.name, owner_id=nb.user_id, is_community=bool(nb.is_community),
         cover_url=nb.cover_url, cover_mode=nb.cover_mode, cover_color=nb.cover_color,
         created_at=nb.created_at.isoformat(),
     )
@@ -78,10 +100,10 @@ def update_notebook(
     nb = db.query(models.Notebook).filter(models.Notebook.id == notebook_id).first()
     if not nb:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Notebook not found")
-    if nb.owner_id != current_user.id:
+    if nb.user_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not owner")
     if payload.title is not None:
-        nb.title = payload.title
+        nb.name = payload.title
     if payload.cover_url is not None:
         nb.cover_url = payload.cover_url
     if payload.cover_mode is not None:
@@ -91,7 +113,7 @@ def update_notebook(
     db.commit()
     db.refresh(nb)
     return NotebookResponse(
-        id=nb.id, title=nb.title, owner_id=nb.owner_id, is_community=bool(nb.is_community),
+        id=nb.id, name=nb.name, owner_id=nb.user_id, is_community=bool(nb.is_community),
         cover_url=nb.cover_url, cover_mode=nb.cover_mode, cover_color=nb.cover_color,
         created_at=nb.created_at.isoformat(),
     )
@@ -106,7 +128,7 @@ def delete_notebook(
     nb = db.query(models.Notebook).filter(models.Notebook.id == notebook_id).first()
     if not nb:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Notebook not found")
-    if nb.owner_id != current_user.id:
+    if nb.user_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not owner")
     db.delete(nb)
     db.commit()

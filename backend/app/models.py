@@ -33,6 +33,12 @@ class User(Base):
     username: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=False)
     email: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=False)
     hashed_password: Mapped[str] = mapped_column(String, nullable=False)
+    # Optional pointer to a primary notebook for this user. Nullable to avoid creation-order issues.
+    notebook_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("notebooks.id", ondelete="SET NULL"), nullable=True, index=True)
+    # Physical user root directory (e.g. [Data_Root]/user_{id})
+    user_root_dir: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    # Relationship: one user can have many notebooks
+    notebooks: Mapped[list["Notebook"]] = relationship("Notebook", back_populates="owner", cascade="all, delete-orphan")
 
 
 class DocumentRecord(Base):
@@ -93,10 +99,42 @@ class Notebook(Base):
     __tablename__ = "notebooks"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    title: Mapped[str] = mapped_column(String(256), nullable=False)
-    owner_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    # name of the notebook (requested)
+    name: Mapped[str] = mapped_column(String(256), nullable=False)
+    # Root user who created this notebook
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    # Physical paths for notebook
+    notebook_dir: Mapped[str] = mapped_column(String(2048), nullable=False)
+    vector_db_path: Mapped[str] = mapped_column(String(2048), nullable=False)
     is_community: Mapped[bool] = mapped_column(Integer, nullable=False, default=False)
     cover_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     cover_mode: Mapped[str | None] = mapped_column(String(32), nullable=True)
     cover_color: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    # Relationship back to owner user. Use post_update to help resolve the circular FK
+    owner: Mapped[User] = relationship("User", back_populates="notebooks", post_update=True)
+    # Files in this notebook
+    files: Mapped[list["NotebookFile"]] = relationship("NotebookFile", back_populates="notebook", cascade="all, delete-orphan")
+
+
+class NotebookFile(Base):
+    __tablename__ = "notebook_files"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    file_name: Mapped[str] = mapped_column(String(512), nullable=False)
+    notebook_id: Mapped[int] = mapped_column(Integer, ForeignKey("notebooks.id", ondelete="CASCADE"), nullable=False, index=True)
+    file_path: Mapped[str] = mapped_column(String(2048), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    notebook: Mapped[Notebook] = relationship("Notebook", back_populates="files")
+
+
+class PasswordResetCode(Base):
+    __tablename__ = "password_reset_codes"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: str(uuid.uuid4()))
+    email: Mapped[str] = mapped_column(String(256), nullable=False, index=True)
+    # NOTE: storing plaintext verification_code per user request. In production prefer hashing.
+    verification_code: Mapped[str] = mapped_column(String(32), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

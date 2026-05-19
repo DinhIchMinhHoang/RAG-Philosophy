@@ -59,3 +59,28 @@ class ChangePassword(BaseModel):
         if len(v) > 128:
             raise ValueError('New password must be less than 128 characters')
         return v
+
+
+# Password reset schemas
+class PasswordForgotRequest(BaseModel):
+    email: EmailStr
+
+
+class PasswordVerifyRequest(BaseModel):
+    email: EmailStr
+    code: str
+
+
+class PasswordResetRequest(BaseModel):
+    email: EmailStr
+    code: str
+    new_password: str
+
+    @field_validator('new_password')
+    @classmethod
+    def new_password_must_be_valid(cls, v: str) -> str:
+        if len(v) < 6:
+            raise ValueError('New password must be at least 6 characters')
+        if len(v) > 128:
+            raise ValueError('New password must be less than 128 characters')
+        return v

@@ -13,6 +13,7 @@ from .core.logging_utils import log_api_event
 from .core.security import validate_secret_key
 from .database import engine
 from .routers import admin, auth, chat, documents, ingest, notebooks
+from .routers import password_reset
 
 models.Base.metadata.create_all(bind=engine)
 
@@ -129,6 +130,7 @@ app.include_router(ingest.router)
 app.include_router(documents.router)
 app.include_router(admin.router)
 app.include_router(notebooks.router)
+app.include_router(password_reset.router)
 
 
 @app.get("/")
