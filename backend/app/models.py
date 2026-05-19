@@ -33,12 +33,16 @@ class User(Base):
     username: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=False)
     email: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=False)
     hashed_password: Mapped[str] = mapped_column(String, nullable=False)
-    # Optional pointer to a primary notebook for this user. Nullable to avoid creation-order issues.
-    notebook_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("notebooks.id", ondelete="SET NULL"), nullable=True, index=True)
     # Physical user root directory (e.g. [Data_Root]/user_{id})
     user_root_dir: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     # Relationship: one user can have many notebooks
-    notebooks: Mapped[list["Notebook"]] = relationship("Notebook", back_populates="owner", cascade="all, delete-orphan")
+    # Specify foreign_keys to avoid AmbiguousForeignKeysError caused by circular FKs
+    notebooks: Mapped[list["Notebook"]] = relationship(
+        "Notebook",
+        foreign_keys="[Notebook.user_id]",
+        back_populates="owner",
+        cascade="all, delete-orphan",
+    )
 
 
 class DocumentRecord(Base):
@@ -112,7 +116,12 @@ class Notebook(Base):
     cover_color: Mapped[str | None] = mapped_column(String(32), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     # Relationship back to owner user. Use post_update to help resolve the circular FK
-    owner: Mapped[User] = relationship("User", back_populates="notebooks", post_update=True)
+    owner: Mapped[User] = relationship(
+        "User",
+        foreign_keys="[Notebook.user_id]",
+        back_populates="notebooks",
+        post_update=True,
+    )
     # Files in this notebook
     files: Mapped[list["NotebookFile"]] = relationship("NotebookFile", back_populates="notebook", cascade="all, delete-orphan")
 
