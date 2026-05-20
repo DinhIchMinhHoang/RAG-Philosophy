@@ -96,6 +96,10 @@ docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
    - Qdrant vectors (`qdrant_data` volume)
    - Ollama models (`ollama_data` volume)
 
+## Local SQLite Artifacts
+
+Docker deployments use Postgres through `DATABASE_URL`; local SQLite files such as `rag_system.db` are runtime artifacts and are ignored by Git. Do not commit generated `.db` files. If a developer runs without Postgres, SQLAlchemy can recreate a local SQLite database from the ORM models, but existing local SQLite data should be backed up before deleting the file.
+
 ## Logs and Health Debugging
 
 ```bash

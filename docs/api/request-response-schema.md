@@ -31,6 +31,27 @@ class ChangePassword(BaseModel):
     new_password: str      # 6-128 characters
 ```
 
+### PasswordForgotRequest
+```python
+class PasswordForgotRequest(BaseModel):
+    email: EmailStr
+```
+
+### PasswordVerifyRequest
+```python
+class PasswordVerifyRequest(BaseModel):
+    email: EmailStr
+    code: str
+```
+
+### PasswordResetRequest
+```python
+class PasswordResetRequest(BaseModel):
+    email: EmailStr
+    code: str
+    new_password: str      # 6-128 characters
+```
+
 ## Chat Schemas
 
 ### ChatRequest (POST /api/chat/stream)

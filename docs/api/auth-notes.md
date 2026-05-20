@@ -53,13 +53,20 @@ All `/api/documents/*` and `/api/chat/*` endpoints require valid JWT:
 
 The `get_current_user` dependency validates the token and retrieves the user from the database.
 
+Password reset endpoints are intentionally unauthenticated:
+- `/api/password/forgot`
+- `/api/password/verify`
+- `/api/password/reset`
+
+Reset codes expire after 15 minutes. The current development implementation stores the verification code in `password_reset_codes`, prints it through mock SMTP logging, and deletes codes for the email after a successful reset.
+
 ## Token Validation Flow
 
 1. Client sends `Authorization: Bearer <token>`
 2. `get_current_user` extracts token (strips "Bearer ")
 3. `decode_access_token` verifies JWT signature and expiration
 4. Extracts `sub` (username) from payload
-5. Queries SQLite `users` table for user
+5. Queries the configured SQL database `users` table for user
 6. Returns user object to endpoint
 
 ## Frontend Token Storage

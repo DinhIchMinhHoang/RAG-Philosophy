@@ -165,3 +165,14 @@ class ChatMessage(Base):
     )
 
     conversation: Mapped[Conversation] = relationship("Conversation", back_populates="messages")
+
+
+class PasswordResetCode(Base):
+    __tablename__ = "password_reset_codes"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: str(uuid.uuid4()))
+    email: Mapped[str] = mapped_column(String(256), nullable=False, index=True)
+    # NOTE: storing plaintext verification_code per user request. In production prefer hashing.
+    verification_code: Mapped[str] = mapped_column(String(32), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

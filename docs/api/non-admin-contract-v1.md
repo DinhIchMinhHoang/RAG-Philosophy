@@ -8,6 +8,9 @@ Legacy aliases have been removed.
 - `POST /api/signup`
 - `POST /api/login`
 - `POST /api/change-password`
+- `POST /api/password/forgot`
+- `POST /api/password/verify`
+- `POST /api/password/reset`
 - `POST /api/documents`
 - `GET /api/documents`
 - `DELETE /api/documents/{document_id}`
@@ -25,6 +28,8 @@ Legacy endpoints are no longer available.
 Protected endpoints require:
 
 `Authorization: Bearer <access_token>`
+
+Password reset endpoints are intentionally unauthenticated and use short-lived reset codes stored in `password_reset_codes`.
 
 ## Chat Contract
 

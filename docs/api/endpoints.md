@@ -95,6 +95,76 @@ Authorization: Bearer <JWT_TOKEN>
 
 ---
 
+### POST /api/password/forgot
+
+Request a password reset code. The response is intentionally generic and does not reveal whether the email exists.
+
+**Request Body:**
+```json
+{
+    "email": "johndoe@gmail.com"
+}
+```
+
+**Response (200):**
+```json
+{
+    "message": "If an account exists for this email, a verification code has been sent."
+}
+```
+
+---
+
+### POST /api/password/verify
+
+Verify a password reset code.
+
+**Request Body:**
+```json
+{
+    "email": "johndoe@gmail.com",
+    "code": "123456"
+}
+```
+
+**Response (200):**
+```json
+{
+    "verified": true
+}
+```
+
+**Errors:**
+- 400: Invalid or expired code
+
+---
+
+### POST /api/password/reset
+
+Reset a password using a valid reset code.
+
+**Request Body:**
+```json
+{
+    "email": "johndoe@gmail.com",
+    "code": "123456",
+    "new_password": "newpass456"
+}
+```
+
+**Response (200):**
+```json
+{
+    "message": "Password reset successful"
+}
+```
+
+**Errors:**
+- 400: Invalid or expired code
+- 400: User not found
+
+---
+
 ## Document Endpoints
 
 ### POST /api/documents
