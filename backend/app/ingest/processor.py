@@ -61,6 +61,11 @@ def _draft_to_model(draft: ChunkDraft) -> DocumentChunk:
     )
 
 
+def _normalize_parsed_page_sources(parsed_pages: list[Document], filename: str) -> None:
+    for page in parsed_pages:
+        page.metadata["source"] = filename
+
+
 
 def _build_chunk_drafts(
     document_id: str,
@@ -175,6 +180,7 @@ def run_ingest_job(
 
     if not parsed_pages:
         raise ValueError("No pages parsed from PDF")
+    _normalize_parsed_page_sources(parsed_pages, document.filename)
 
     _mark_stage("parsing", 1.0, f"parsed_pages={len(parsed_pages)}")
     parse_duration_ms = int((time.perf_counter() - stage_started) * 1000)

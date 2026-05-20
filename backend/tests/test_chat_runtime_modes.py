@@ -157,6 +157,73 @@ class ChatRuntimeModeTests(unittest.TestCase):
             db.close()
             engine.dispose()
 
+    def test_retrieve_uses_document_filename_for_citation_source(self) -> None:
+        engine = create_engine(
+            "sqlite://",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+        models.Base.metadata.create_all(engine)
+        db = SessionLocal()
+        try:
+            db.add(
+                models.DocumentRecord(
+                    id="doc-1",
+                    owner_id=1,
+                    notebook_id=7,
+                    filename="original-name.pdf",
+                    object_key="doc-1/original-name.pdf",
+                    mime_type="application/pdf",
+                    size_bytes=12,
+                )
+            )
+            db.add(
+                models.DocumentChunk(
+                    id="parent-1",
+                    document_id="doc-1",
+                    owner_id=1,
+                    notebook_id=7,
+                    kind="parent",
+                    parent_chunk_id=None,
+                    chunk_order=0,
+                    text="allowed context",
+                    source="tmpabc123.pdf",
+                    page=2,
+                    doc_id="doc-key",
+                    pipeline_version="1.0.0",
+                )
+            )
+            db.commit()
+
+            fake_hits = [
+                SimpleNamespace(
+                    score=0.9,
+                    payload={"parent_chunk_id": "parent-1", "document_id": "doc-1"},
+                )
+            ]
+
+            class FakeClient:
+                def search(self, **kwargs):
+                    return fake_hits
+
+            with patch.object(self.service, "_get_embeddings", return_value=SimpleNamespace(embed_query=lambda _q: [0.1])), patch.object(
+                chat_runtime, "build_qdrant_client", return_value=FakeClient()
+            ):
+                results = self.service.retrieve(
+                    db=db,
+                    question="q",
+                    pipeline_version="1.0.0",
+                    user_id=1,
+                    notebook_id=7,
+                )
+
+            self.assertEqual(results[0].source, "original-name.pdf")
+            self.assertEqual(results[0].page, 2)
+        finally:
+            db.close()
+            engine.dispose()
+
     def test_citations_from_context_assigns_stable_ids_and_dedupes(self) -> None:
         duplicate = RetrievedContext(
             document_id="doc-1",
@@ -204,6 +271,18 @@ class ChatRuntimeModeTests(unittest.TestCase):
         filtered = self.service.filter_citations_for_answer("Có ý A [C1]. Có ý C [C3].", citations)
 
         self.assertEqual([item["citation_id"] for item in filtered], ["C1", "C3"])
+
+    def test_filter_citations_for_answer_supports_grouped_markers(self) -> None:
+        citations = [
+            {"citation_id": "C1", "source": "one.pdf"},
+            {"citation_id": "C2", "source": "two.pdf"},
+            {"citation_id": "C3", "source": "three.pdf"},
+            {"citation_id": "C4", "source": "four.pdf"},
+        ]
+
+        filtered = self.service.filter_citations_for_answer("Điểm BLEU là 34.81 [C2, C4].", citations)
+
+        self.assertEqual([item["citation_id"] for item in filtered], ["C2", "C4"])
 
     def test_filter_citations_for_answer_does_not_guess_when_answer_has_no_markers(self) -> None:
         citations = [{"citation_id": "C1", "source": "one.pdf"}]

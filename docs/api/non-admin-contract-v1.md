@@ -18,6 +18,8 @@ Legacy aliases have been removed.
 - `GET /api/jobs/{job_id}`
 - `POST /api/chat`
 - `POST /api/chat/stream`
+- `GET /api/notebooks/{notebook_id}/conversations/latest`
+- `POST /api/notebooks/{notebook_id}/notes`
 
 ## Legacy Aliases (removed)
 
@@ -82,6 +84,72 @@ When evidence is insufficient:
 
 - `answer` is a safe fallback message
 - `citations` is `[]`
+
+### `GET /api/notebooks/{notebook_id}/conversations/latest`
+
+Loads the latest non-archived conversation for the authenticated user and notebook.
+
+Query:
+
+- `limit`: max messages to return, clamped to `1..100`, default `50`
+
+Response when history exists:
+
+```json
+{
+  "conversation": {
+    "id": "uuid",
+    "notebook_id": 1,
+    "owner_id": 1,
+    "created_at": "iso-datetime",
+    "updated_at": "iso-datetime"
+  },
+  "messages": [
+    {
+      "id": "uuid",
+      "role": "user",
+      "content": "...",
+      "sources_used": null,
+      "rewritten_query": "...",
+      "created_at": "iso-datetime"
+    }
+  ],
+  "has_conversation": true,
+  "limit": 50
+}
+```
+
+Response when no notebook history exists:
+
+```json
+{
+  "conversation": null,
+  "messages": [],
+  "has_conversation": false,
+  "limit": 50
+}
+```
+
+The query is scoped by authenticated `owner_id` and `notebook_id`; it must never return another user's or another notebook's messages.
+
+### `POST /api/notebooks/{notebook_id}/notes`
+
+Stores long-term user-selected content separately from normal chat cleanup.
+
+Request:
+
+```json
+{
+  "kind": "note|pin|conversation|summary",
+  "title": "optional title",
+  "content": "...",
+  "conversation_id": "optional conversation uuid",
+  "message_id": "optional message uuid",
+  "sources_used": []
+}
+```
+
+If `conversation_id` or `message_id` is supplied, it must belong to the authenticated user and the target notebook.
 
 ### `POST /api/chat/stream` (SSE)
 

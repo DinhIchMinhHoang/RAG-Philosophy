@@ -80,8 +80,9 @@ export function chatStream(message, { conversationId, notebookId, onToken, onDon
     return controller;
 }
 
-export async function listSources() {
-    const documents = await request('/documents', { method: 'GET' });
+export async function listSources({ notebookId } = {}) {
+    const query = notebookId ? `?notebook_id=${encodeURIComponent(notebookId)}` : '';
+    const documents = await request(`/documents${query}`, { method: 'GET' });
     if (!Array.isArray(documents)) return documents;
 
     const sources = documents.map((doc) => doc.filename).filter(Boolean);

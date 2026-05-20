@@ -33,6 +33,9 @@ def ensure_runtime_schema(engine: Engine) -> None:
             "owner_id": "INTEGER",
             "notebook_id": "INTEGER",
         },
+        "conversations": {
+            "archived_at": "TIMESTAMP",
+        },
     }
 
     with engine.begin() as connection:

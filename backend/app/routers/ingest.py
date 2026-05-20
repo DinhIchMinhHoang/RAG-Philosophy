@@ -211,13 +211,17 @@ def _get_job_impl(db: Session, job_id: str, current_user: User) -> JobResponse:
     return _serialize_job(job)
 
 
-def _list_documents_impl(db: Session, current_user: User) -> list[DocumentListItem]:
-    rows = (
-        db.query(DocumentRecord)
-        .filter(DocumentRecord.owner_id == current_user.id)
-        .order_by(DocumentRecord.created_at.desc())
-        .all()
-    )
+def _list_documents_impl(
+    db: Session,
+    current_user: User,
+    *,
+    notebook_id: int | None = None,
+) -> list[DocumentListItem]:
+    query = db.query(DocumentRecord).filter(DocumentRecord.owner_id == current_user.id)
+    if notebook_id is not None:
+        query = query.filter(DocumentRecord.notebook_id == notebook_id)
+
+    rows = query.order_by(DocumentRecord.created_at.desc()).all()
     output: list[DocumentListItem] = []
     for row in rows:
         latest_job = (
@@ -373,8 +377,9 @@ async def create_document(
 def list_documents(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    notebook_id: int | None = None,
 ):
-    return _list_documents_impl(db, current_user)
+    return _list_documents_impl(db, current_user, notebook_id=notebook_id)
 
 
 @router.delete("/documents/{document_id}", response_model=DeleteDocumentResponse)

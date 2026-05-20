@@ -4,6 +4,7 @@ import unittest
 import uuid
 from unittest.mock import patch
 
+from langchain_core.documents import Document
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -70,6 +71,16 @@ class IngestProcessorRetryTests(unittest.TestCase):
         self.assertEqual(job.stage_detail, "fetch_started")
         self.assertIsNone(job.error_message)
         self.assertEqual(job.pipeline_version, "1.0.1")
+
+    def test_parsed_page_sources_use_original_filename(self) -> None:
+        pages = [
+            Document(page_content="one", metadata={"source": "tmpabc.pdf", "page": 1}),
+            Document(page_content="two", metadata={"source": "tmpabc.pdf", "page": 2}),
+        ]
+
+        processor._normalize_parsed_page_sources(pages, "original.pdf")
+
+        self.assertEqual([page.metadata["source"] for page in pages], ["original.pdf", "original.pdf"])
 
 
 if __name__ == "__main__":

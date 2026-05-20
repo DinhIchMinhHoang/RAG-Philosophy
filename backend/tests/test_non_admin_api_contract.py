@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import unittest
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, patch
 
 from fastapi import FastAPI
@@ -127,6 +128,21 @@ class NonAdminApiContractTests(unittest.TestCase):
             self.assertEqual(docs[0]["notebook_id"], notebook_id)
             self.assertEqual(docs[0]["owner_id"], 1)
             self.assertIn("latest_job", docs[0])
+
+            notebook_list_response = self.client.get(f"/api/documents?notebook_id={notebook_id}", headers=headers)
+            self.assertEqual(notebook_list_response.status_code, 200)
+            self.assertEqual([item["document_id"] for item in notebook_list_response.json()], [document_id])
+
+            other_notebook_response = self.client.post(
+                "/api/notebooks",
+                headers=headers,
+                json={"title": "Other target", "is_community": False},
+            )
+            self.assertEqual(other_notebook_response.status_code, 201)
+            other_notebook_id = other_notebook_response.json()["id"]
+            empty_notebook_docs = self.client.get(f"/api/documents?notebook_id={other_notebook_id}", headers=headers)
+            self.assertEqual(empty_notebook_docs.status_code, 200)
+            self.assertEqual(empty_notebook_docs.json(), [])
 
             delete_response = self.client.delete(f"/api/documents/{document_id}", headers=headers)
             self.assertEqual(delete_response.status_code, 200)
@@ -308,6 +324,185 @@ class NonAdminApiContractTests(unittest.TestCase):
         self.assertTrue(final_payload["done"])
         self.assertEqual(final_payload["answer"], chat.EMPTY_NOTEBOOK_ANSWER)
         self.assertEqual(final_payload["citations"], [])
+
+    def test_latest_notebook_conversation_is_owner_and_notebook_scoped(self) -> None:
+        token_a = self._signup_and_get_token("alice", "alice-history@gmail.com")
+        token_b = self._signup_and_get_token("bob", "bob-history@gmail.com")
+        headers_a = {"Authorization": f"Bearer {token_a}"}
+        headers_b = {"Authorization": f"Bearer {token_b}"}
+
+        notebook_a = self.client.post(
+            "/api/notebooks",
+            headers=headers_a,
+            json={"title": "Notebook A", "is_community": False},
+        ).json()["id"]
+        notebook_b = self.client.post(
+            "/api/notebooks",
+            headers=headers_a,
+            json={"title": "Notebook B", "is_community": False},
+        ).json()["id"]
+        notebook_other_user = self.client.post(
+            "/api/notebooks",
+            headers=headers_b,
+            json={"title": "Bob notebook", "is_community": False},
+        ).json()["id"]
+
+        now = datetime.now(timezone.utc)
+        db = self.SessionLocal()
+        try:
+            old_a = models.Conversation(
+                id="conv-old-a",
+                owner_id=1,
+                notebook_id=notebook_a,
+                created_at=now - timedelta(days=2),
+                updated_at=now - timedelta(days=2),
+            )
+            latest_a = models.Conversation(
+                id="conv-latest-a",
+                owner_id=1,
+                notebook_id=notebook_a,
+                created_at=now - timedelta(hours=1),
+                updated_at=now - timedelta(hours=1),
+            )
+            conv_b = models.Conversation(
+                id="conv-b",
+                owner_id=1,
+                notebook_id=notebook_b,
+                created_at=now,
+                updated_at=now,
+            )
+            conv_other_user = models.Conversation(
+                id="conv-other-user",
+                owner_id=2,
+                notebook_id=notebook_other_user,
+                created_at=now,
+                updated_at=now,
+            )
+            archived_a = models.Conversation(
+                id="conv-archived-a",
+                owner_id=1,
+                notebook_id=notebook_a,
+                created_at=now + timedelta(hours=1),
+                updated_at=now + timedelta(hours=1),
+                archived_at=now + timedelta(hours=1),
+            )
+            db.add_all([old_a, latest_a, conv_b, conv_other_user, archived_a])
+            db.add_all(
+                [
+                    models.ChatMessage(id="msg-old-a", conversation_id="conv-old-a", role="user", content="old A"),
+                    models.ChatMessage(id="msg-a-1", conversation_id="conv-latest-a", role="user", content="A question"),
+                    models.ChatMessage(
+                        id="msg-a-2",
+                        conversation_id="conv-latest-a",
+                        role="assistant",
+                        content="A answer",
+                        sources_used=[{"citation_id": "C1", "source": "a.pdf", "page": 1}],
+                    ),
+                    models.ChatMessage(id="msg-b-1", conversation_id="conv-b", role="user", content="B question"),
+                    models.ChatMessage(id="msg-other-user", conversation_id="conv-other-user", role="user", content="Bob"),
+                    models.ChatMessage(id="msg-archived-a", conversation_id="conv-archived-a", role="user", content="archived"),
+                ]
+            )
+            db.commit()
+        finally:
+            db.close()
+
+        latest_response = self.client.get(
+            f"/api/notebooks/{notebook_a}/conversations/latest?limit=1",
+            headers=headers_a,
+        )
+        self.assertEqual(latest_response.status_code, 200)
+        latest_payload = latest_response.json()
+        self.assertTrue(latest_payload["has_conversation"])
+        self.assertEqual(latest_payload["conversation"]["id"], "conv-latest-a")
+        self.assertEqual([message["id"] for message in latest_payload["messages"]], ["msg-a-2"])
+        self.assertEqual(latest_payload["messages"][0]["sources_used"][0]["source"], "a.pdf")
+
+        notebook_b_response = self.client.get(
+            f"/api/notebooks/{notebook_b}/conversations/latest",
+            headers=headers_a,
+        )
+        self.assertEqual(notebook_b_response.status_code, 200)
+        self.assertEqual(notebook_b_response.json()["conversation"]["id"], "conv-b")
+
+        empty_notebook = self.client.post(
+            "/api/notebooks",
+            headers=headers_a,
+            json={"title": "Empty", "is_community": False},
+        ).json()["id"]
+        empty_response = self.client.get(f"/api/notebooks/{empty_notebook}/conversations/latest", headers=headers_a)
+        self.assertEqual(empty_response.status_code, 200)
+        self.assertFalse(empty_response.json()["has_conversation"])
+        self.assertEqual(empty_response.json()["messages"], [])
+
+        forbidden_response = self.client.get(
+            f"/api/notebooks/{notebook_other_user}/conversations/latest",
+            headers=headers_a,
+        )
+        self.assertEqual(forbidden_response.status_code, 404)
+
+    def test_saved_notebook_items_copy_content_without_cross_notebook_leakage(self) -> None:
+        token = self._signup_and_get_token()
+        headers = {"Authorization": f"Bearer {token}"}
+        notebook_a = self.client.post(
+            "/api/notebooks",
+            headers=headers,
+            json={"title": "Notebook A", "is_community": False},
+        ).json()["id"]
+        notebook_b = self.client.post(
+            "/api/notebooks",
+            headers=headers,
+            json={"title": "Notebook B", "is_community": False},
+        ).json()["id"]
+
+        db = self.SessionLocal()
+        try:
+            conv_a = models.Conversation(id="conv-save-a", owner_id=1, notebook_id=notebook_a)
+            conv_b = models.Conversation(id="conv-save-b", owner_id=1, notebook_id=notebook_b)
+            msg_a = models.ChatMessage(id="msg-save-a", conversation_id="conv-save-a", role="assistant", content="Keep this")
+            msg_b = models.ChatMessage(id="msg-save-b", conversation_id="conv-save-b", role="assistant", content="Other notebook")
+            db.add_all([conv_a, conv_b, msg_a, msg_b])
+            db.commit()
+        finally:
+            db.close()
+
+        save_response = self.client.post(
+            f"/api/notebooks/{notebook_a}/notes",
+            headers=headers,
+            json={
+                "kind": "pin",
+                "title": "Important answer",
+                "content": "Keep this",
+                "conversation_id": "conv-save-a",
+                "message_id": "msg-save-a",
+                "sources_used": [{"source": "a.pdf", "page": 2}],
+            },
+        )
+        self.assertEqual(save_response.status_code, 201)
+        payload = save_response.json()
+        self.assertEqual(payload["kind"], "pin")
+        self.assertEqual(payload["message_id"], "msg-save-a")
+        self.assertEqual(payload["sources_used"][0]["page"], 2)
+
+        cross_notebook_response = self.client.post(
+            f"/api/notebooks/{notebook_a}/notes",
+            headers=headers,
+            json={
+                "kind": "pin",
+                "content": "Wrong notebook",
+                "conversation_id": "conv-save-b",
+                "message_id": "msg-save-b",
+            },
+        )
+        self.assertEqual(cross_notebook_response.status_code, 404)
+
+        db = self.SessionLocal()
+        try:
+            saved = db.query(models.SavedNotebookItem).one()
+            self.assertEqual(saved.notebook_id, notebook_a)
+            self.assertEqual(saved.content, "Keep this")
+        finally:
+            db.close()
 
     def test_chat_stream_runtime_exception_returns_final_error_event(self) -> None:
         token = self._signup_and_get_token()

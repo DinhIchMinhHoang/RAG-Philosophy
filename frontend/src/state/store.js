@@ -3,7 +3,15 @@ const STORAGE_KEY = 'currentUser';
 const defaultUser = { username: '', email: '', displayName: '', bio: '', isAdmin: false };
 
 function loadUser() {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY)) || { ...defaultUser };
+    try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return { ...defaultUser };
+        const parsed = JSON.parse(raw);
+        return parsed && typeof parsed === 'object' ? { ...defaultUser, ...parsed } : { ...defaultUser };
+    } catch (err) {
+        localStorage.removeItem(STORAGE_KEY);
+        return { ...defaultUser };
+    }
 }
 
 export const store = {

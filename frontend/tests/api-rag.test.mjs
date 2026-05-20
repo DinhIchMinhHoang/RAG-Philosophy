@@ -58,6 +58,12 @@ globalThis.fetch = async (url, options = {}) => {
         ]);
     }
 
+    if (url === `${BASE_URL}/documents?notebook_id=42` && (!options.method || options.method === 'GET')) {
+        return jsonResponse([
+            { document_id: 'doc-1', notebook_id: 42, filename: 'sample.pdf' },
+        ]);
+    }
+
     if (url === `${BASE_URL}/jobs/job-1` && (!options.method || options.method === 'GET')) {
         return jsonResponse({
             job_id: 'job-1',
@@ -107,9 +113,15 @@ assert.equal(sourcesResult.count, 2);
 assert.equal(sourcesResult.has_sources, true);
 assert.equal(sourcesResult.documents.length, 2);
 
-const jobResult = await getJob('job-1');
-assert.equal(calls[2].url, `${BASE_URL}/jobs/job-1`);
+const notebookSourcesResult = await listSources({ notebookId: 42 });
+assert.equal(calls[2].url, `${BASE_URL}/documents?notebook_id=42`);
 assert.equal(calls[2].method, 'GET');
+assert.deepEqual(notebookSourcesResult.sources, ['sample.pdf']);
+assert.equal(notebookSourcesResult.documents[0].notebook_id, 42);
+
+const jobResult = await getJob('job-1');
+assert.equal(calls[3].url, `${BASE_URL}/jobs/job-1`);
+assert.equal(calls[3].method, 'GET');
 assert.equal(jobResult.status, 'succeeded');
 
 const streamFinal = await new Promise((resolve, reject) => {

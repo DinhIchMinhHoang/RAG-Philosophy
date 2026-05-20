@@ -132,6 +132,7 @@ class Conversation(Base):
         nullable=False,
     )
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
 
     owner: Mapped[User] = relationship("User", back_populates="conversations")
     notebook: Mapped[Notebook | None] = relationship("Notebook", back_populates="conversations")
@@ -165,6 +166,26 @@ class ChatMessage(Base):
     )
 
     conversation: Mapped[Conversation] = relationship("Conversation", back_populates="messages")
+
+
+class SavedNotebookItem(Base):
+    __tablename__ = "saved_notebook_items"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: str(uuid.uuid4()))
+    owner_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    notebook_id: Mapped[int] = mapped_column(Integer, ForeignKey("notebooks.id", ondelete="CASCADE"), nullable=False, index=True)
+    conversation_id: Mapped[str | None] = mapped_column(String(64), ForeignKey("conversations.id", ondelete="SET NULL"), nullable=True, index=True)
+    message_id: Mapped[str | None] = mapped_column(String(64), ForeignKey("chat_messages.id", ondelete="SET NULL"), nullable=True, index=True)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    title: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    sources_used: Mapped[list[dict] | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        server_default=func.now(),
+        nullable=False,
+    )
 
 
 class PasswordResetCode(Base):

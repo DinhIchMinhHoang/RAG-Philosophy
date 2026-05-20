@@ -396,6 +396,7 @@ export function initDashboardScene(transitionManager) {
                     const fake = document.createElement('div');
                     fake.className = 'notebook-item';
                     fake.style.position = 'absolute'; fake.style.left = '-9999px'; fake.style.top = '-9999px';
+                    if (chatScene.dataset.notebookId) fake.dataset.notebookId = chatScene.dataset.notebookId;
                     fake.innerHTML = `<div class="cover" style="background: transparent;"></div><div class="item-title">${chatTitle}</div>`;
                     document.body.appendChild(fake);
                     setLastFake(fake);
