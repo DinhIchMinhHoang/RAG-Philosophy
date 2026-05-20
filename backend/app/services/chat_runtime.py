@@ -22,14 +22,15 @@ except Exception as exc:  # pragma: no cover
 
 logger = logging.getLogger(__name__)
 
-SAFE_NO_EVIDENCE_ANSWER = (
-    "I do not have enough evidence in the indexed documents to answer this confidently. "
-    "Please upload relevant sources or ask a narrower question."
-)
-
 _SYSTEM_PROMPT = (
-    "You are a citation-grounded assistant. Answer only from the provided context. "
-    "If the context is insufficient, say so explicitly and do not fabricate facts.\n\n"
+    "Bạn là trợ lý AI học tập thân thiện. BẠN PHẢI LUÔN TRẢ LỜI BẰNG TIẾNG VIỆT.\n\n"
+    "Quy tắc trả lời:\n"
+    "1. Nếu phần 'Context' bên dưới bị TRỐNG:\n"
+    "   - Nếu người dùng chào hỏi, hãy chào lại tự nhiên và mời họ tải tài liệu lên.\n"
+    "   - Nếu hỏi kiến thức, hãy từ chối lịch sự vì chưa có tài liệu để tra cứu.\n"
+    "2. Nếu phần 'Context' CÓ dữ liệu:\n"
+    "   - Chỉ trả lời dựa DUY NHẤT vào Context. Không bịa đặt thông tin.\n"
+    "   - Nếu Context không có đáp án, hãy nói rõ là tài liệu không đề cập.\n\n"
     "Context:\n{context}"
 )
 
@@ -104,13 +105,17 @@ class ChatRuntimeService:
             ]
         )
 
-        hits = client.search(
-            collection_name=settings.qdrant_collection,
-            query_vector=vector,
-            query_filter=query_filter,
-            limit=settings.retrieval_top_k,
-            with_payload=True,
-        )
+        try:
+            hits = client.search(
+                collection_name=settings.qdrant_collection,
+                query_vector=vector,
+                query_filter=query_filter,
+                limit=settings.retrieval_top_k,
+                with_payload=True,
+            )
+        except Exception as exc:
+            logger.warning(f"Qdrant search failed (likely empty/missing collection): {exc}")
+            return []
 
         ranked_parents: dict[str, dict] = {}
         for hit in hits:
@@ -196,8 +201,6 @@ class ChatRuntimeService:
         return await chain.ainvoke({"context": context_text, "question": question})
 
     async def answer(self, question: str, contexts: list[RetrievedContext]) -> tuple[str, str]:
-        if not contexts:
-            return SAFE_NO_EVIDENCE_ANSWER, "none"
 
         mode = settings.llm_mode
         context_text = self._build_context(contexts)
@@ -217,9 +220,6 @@ class ChatRuntimeService:
             return await self._invoke_provider("local", question, context_text), "local"
 
     async def stream_answer(self, question: str, contexts: list[RetrievedContext]):
-        if not contexts:
-            yield SAFE_NO_EVIDENCE_ANSWER
-            return
 
         mode = settings.llm_mode
         context_text = self._build_context(contexts)

@@ -11,8 +11,13 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256M
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/ || exit 1"]
+      test: [ "CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/ || exit 1" ]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -26,17 +31,23 @@ services:
       dockerfile: docker/backend.Dockerfile
     container_name: rag_backend
     restart: unless-stopped
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2
     working_dir: /app/backend
     env_file:
       - .env
     environment:
       PYTHONPATH: /app
       OLLAMA_BASE_URL: http://ollama:11434
+      WEB_CONCURRENCY: "2"
     volumes:
       - ./data:/app/data
       - ./backend:/app/backend
       - ./rag_core:/app/rag_core
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 1G
     depends_on:
       redis:
         condition: service_healthy
@@ -47,11 +58,7 @@ services:
       qdrant:
         condition: service_healthy
     healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "python -c \"import urllib.request,sys; urllib.request.urlopen('http://localhost:8000/docs'); sys.exit(0)\"",
-        ]
+      test: [ "CMD-SHELL", "python -c \"import urllib.request,sys; urllib.request.urlopen('http://localhost:8000/docs'); sys.exit(0)\"" ]
       interval: 15s
       timeout: 10s
       retries: 8
@@ -65,17 +72,23 @@ services:
       dockerfile: docker/backend.Dockerfile
     container_name: rag_worker
     restart: unless-stopped
-    command: celery -A app.worker.celery_app.celery_app worker -Q ingest -l info
+    command: celery -A app.worker.celery_app.celery_app worker -Q ingest -l info --concurrency 1
     working_dir: /app/backend
     env_file:
       - .env
     environment:
       PYTHONPATH: /app
       OLLAMA_BASE_URL: http://ollama:11434
+      CELERYD_CONCURRENCY: "1"
     volumes:
       - ./data:/app/data
       - ./backend:/app/backend
       - ./rag_core:/app/rag_core
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 3G
     depends_on:
       redis:
         condition: service_healthy
@@ -86,11 +99,7 @@ services:
       qdrant:
         condition: service_healthy
     healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "python -c \"import pathlib,sys; data=pathlib.Path('/proc/1/cmdline').read_bytes(); sys.exit(0 if b'celery' in data else 1)\"",
-        ]
+      test: [ "CMD-SHELL", "python -c \"import pathlib,sys; data=pathlib.Path('/proc/1/cmdline').read_bytes(); sys.exit(0 if b'celery' in data else 1)\"" ]
       interval: 20s
       timeout: 10s
       retries: 6
@@ -102,8 +111,15 @@ services:
     image: redis:7-alpine
     container_name: rag_redis
     restart: unless-stopped
+    ports:
+      - "6379:6379"
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 512M
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: [ "CMD", "redis-cli", "ping" ]
       interval: 10s
       timeout: 3s
       retries: 5
@@ -115,14 +131,21 @@ services:
     image: postgres:16-alpine
     container_name: rag_postgres
     restart: unless-stopped
+    ports:
+      - "5432:5432"
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       POSTGRES_DB: ${POSTGRES_DB:-rag_db}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 1G
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-rag_db}"]
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-rag_db}" ]
       interval: 10s
       timeout: 5s
       retries: 6
@@ -134,14 +157,22 @@ services:
     image: minio/minio:RELEASE.2023-10-24T04-42-36Z
     container_name: rag_minio
     restart: unless-stopped
+    ports:
+      - "9000:9000"
+      - "9001:9001"
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
     volumes:
       - minio_data:/data
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 512M
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:9000/minio/health/live || exit 1"]
+      test: [ "CMD-SHELL", "curl -f http://localhost:9000/minio/health/live || exit 1" ]
       interval: 15s
       timeout: 5s
       retries: 6
@@ -153,10 +184,17 @@ services:
     image: qdrant/qdrant:v1.13.4
     container_name: rag_qdrant
     restart: unless-stopped
+    ports:
+      - "6333:6333"
     volumes:
       - qdrant_data:/qdrant/storage
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 2G
     healthcheck:
-      test: ["CMD-SHELL", "/qdrant/qdrant --help > /dev/null 2>&1 || exit 1"]
+      test: [ "CMD-SHELL", "/qdrant/qdrant --help > /dev/null 2>&1 || exit 1" ]
       interval: 10s
       timeout: 5s
       retries: 8
@@ -168,10 +206,17 @@ services:
     image: ollama/ollama:latest
     container_name: rag_ollama
     restart: unless-stopped
+    entrypoint: [ "/bin/sh", "/entrypoint.sh" ]
     volumes:
       - ollama_data:/root/.ollama
+      - ./docker/ollama-entrypoint.sh:/entrypoint.sh:ro
+    deploy:
+      resources:
+        limits:
+          cpus: '1.5'
+          memory: 6G
     healthcheck:
-      test: ["CMD-SHELL", "ollama list > /dev/null 2>&1 || exit 1"]
+      test: [ "CMD-SHELL", "ollama list > /dev/null 2>&1 || exit 1" ]
       interval: 20s
       timeout: 10s
       retries: 8

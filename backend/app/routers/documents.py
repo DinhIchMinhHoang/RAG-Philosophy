@@ -13,7 +13,7 @@ from fastapi import APIRouter, HTTPException, Response, status
 from fastapi.responses import FileResponse
 
 from rag_core.config import Config
-from ..services.rag_service import rag_service
+# Import rag_service lazily inside endpoints to avoid heavy rag_core imports at module import time.
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
 
