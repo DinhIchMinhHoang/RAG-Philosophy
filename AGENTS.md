@@ -221,6 +221,22 @@ cd rag_core/tests && python -m unittest test_logging_utils test_pdf_utils test_e
 
 ---
 
+## Agent skills
+
+### Issue tracker
+
+Issues and PRDs are tracked in GitHub Issues for `DinhIchMinhHoang/RAG-Philosophy`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Use the default five-label triage vocabulary. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+This repo uses a single-context domain-doc layout. See `docs/agents/domain.md`.
+
+---
+
 # References
 
 * Project documentation: `docs/`
