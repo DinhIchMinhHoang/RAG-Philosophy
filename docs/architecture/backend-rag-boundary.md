@@ -24,7 +24,11 @@ The backend (`backend/app/`) wraps the RAG core (`rag_core/`) as a service layer
 
 ## Interface Contract
 
+<<<<<<< HEAD
 ### Backend → RAG Core
+=======
+### Backend ? RAG Core
+>>>>>>> 9b192d1d56a53f6a50359f035495dbb7c35b64ca
 
 ```python
 # backend/app/services/rag_service.py
@@ -91,6 +95,13 @@ State is maintained in instance variables:
 
 ## Testing Boundary
 
+<<<<<<< HEAD
 - Backend tested via manual API calls (`/documents/upload`, `/chat/stream`)
 - RAG core tested via `python rag_core/main_test.py` smoke tests
 - Unit tests in `rag_core/tests/` (9 tests, all passing)
+=======
+- Backend tested via manual API calls (`/api/documents`, `/api/chat/stream`)
+- RAG core tested via `python rag_core/main_test.py` smoke tests
+- Unit tests in `rag_core/tests/` use package imports now and no longer modify `sys.path`
+- The runtime backend still keeps a small import guard so `rag_core` is importable when running under the backend process
+>>>>>>> 9b192d1d56a53f6a50359f035495dbb7c35b64ca

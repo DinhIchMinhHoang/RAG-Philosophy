@@ -37,3 +37,8 @@ test_step1_step2.py
 
 # ===== Worktrees =====
 .worktrees/
+
+.opencode/
+.context/
+todo_backlog.md
+TODO.md

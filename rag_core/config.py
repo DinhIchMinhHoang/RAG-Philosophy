@@ -1,86 +1,76 @@
-"""
-config.py - File cấu hình trung tâm cho RAG Core.
-
-Load biến môi trường từ file .env và khai báo các hằng số
-dùng chung cho toàn bộ pipeline.
-"""
+from __future__ import annotations
 
 import os
 from pathlib import Path
 from dotenv import load_dotenv
 
-# Load biến môi trường từ file .env (tìm ở project root)
 _ROOT_DIR = Path(__file__).resolve().parent.parent
-_ENV_PATH = _ROOT_DIR / ".env"
-load_dotenv(dotenv_path=_ENV_PATH)
+load_dotenv(dotenv_path=_ROOT_DIR / ".env")
+
+DEFAULT_LLM_MODEL = "gemini-2.5-flash"
 
 
 class Config:
-    """Cấu hình trung tâm cho hệ thống RAG."""
-
-    # ── API Keys ──────────────────────────────────────────────
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
+    COHERE_API_KEY: str = os.getenv("COHERE_API_KEY", "")
+    OPENCODE_API_KEY: str = os.getenv("OPENCODE_API_KEY", "")
+    OPENCODE_API_BASE: str = os.getenv("OPENCODE_API_BASE", "https://opencode.ai/zen/go/v1")
+    OPENCODE_MODEL: str = os.getenv("OPENCODE_MODEL", "deepseek-v4-flash")
+    RAGAS_MAX_CONCURRENCY: int = int(os.getenv("RAGAS_MAX_CONCURRENCY", "5"))
 
-    # ── Chunking — Parent Chunks (bảo toàn ngữ cảnh cho LLM) ──
-    PARENT_CHUNK_SIZE: int = 2000    # Kích thước tối đa mỗi Parent Chunk
-    PARENT_CHUNK_OVERLAP: int = 200  # Chồng lấp giữa các Parent Chunk
+    PARENT_CHUNK_SIZE: int = 2000
+    PARENT_CHUNK_OVERLAP: int = 200
+    CHILD_CHUNK_SIZE: int = 500
+    CHILD_CHUNK_OVERLAP: int = 100
 
-    # ── Chunking — Child Chunks (tối ưu tìm kiếm vector) ────
-    CHILD_CHUNK_SIZE: int = 500      # Kích thước tối đa mỗi Child Chunk
-    CHILD_CHUNK_OVERLAP: int = 100   # Chồng lấp giữa các Child Chunk
-
-    # ── Embedding Model ──────────────────────────────────────
     EMBEDDING_MODEL_NAME: str = "microsoft/harrier-oss-v1-270m"
-    DEVICE: str = "cpu"  # Thay bằng 'cuda' nếu có GPU
+    DEVICE: str = "cpu"
+    LLM_MODEL: str = (os.getenv("LLM_MODEL") or DEFAULT_LLM_MODEL).strip()
+    LLM_PROVIDER: str = (os.getenv("LLM_PROVIDER") or "auto").strip().lower()
 
-    # ── LLM (Generator) ─────────────────────────────────────
-    LLM_MODEL: str = "gemini-3.1-flash-lite-preview"
-
-    # ── Vector Database (Qdrant) ─────────────────────────────
-    QDRANT_LOCATION: str = ":memory:"   # ":memory:" cho local test, URL cho production
+    QDRANT_LOCATION: str = ":memory:"
     QDRANT_COLLECTION: str = "rag_philosophy"
-    TOP_K_RESULTS: int = 3          # Số kết quả trả về khi truy xuất
+    TOP_K_RESULTS: int = 3
 
+    HYBRID_ENABLED: bool = False
+    HYBRID_FINAL_K: int = 3
+    HYBRID_DENSE_K: int = 5
+    HYBRID_SPARSE_K: int = 10
+    HYBRID_RRF_K: int = 60
+    HYBRID_DENSE_WEIGHT: float = 0.7
+    HYBRID_SPARSE_WEIGHT: float = 0.3
+    SPARSE_MIN_TOKEN_LEN: int = 2
 
-    # ── Ollama OCR Engine (Heavy Track) ────────────────────────
-    OLLAMA_BASE_URL: str = "http://localhost:11434"
+    # Cohere reranking (fail-open): rerank child chunks then map to parent docs.
+    # When enabled, retrieval always uses dense+BM25 candidate merge.
+    RERANK_ENABLED: bool = False
+    RERANK_MODEL: str = os.getenv("RERANK_MODEL", "rerank-v4.0-fast")
+    RERANK_CANDIDATE_K: int = int(os.getenv("RERANK_CANDIDATE_K", "8"))
+    RERANK_TIMEOUT_SECONDS: float = float(os.getenv("RERANK_TIMEOUT_SECONDS", "2.0"))
+    RERANK_MAX_TOKENS_PER_DOC: int = int(os.getenv("RERANK_MAX_TOKENS_PER_DOC", "1024"))
+
+    OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
     OLLAMA_MODEL_NAME: str = "glm-ocr"
-    OLLAMA_MAX_WORKERS: int = 5          # ThreadPoolExecutor concurrency
-    DPI_FOR_OCR: int = 150               # Resolution khi render trang → ảnh
-    VLM_TIMEOUT_SECONDS: int = 60        # Hard timeout per page for VLM call
-    MAX_IMAGE_LONG_EDGE: int = 1500      # Max px on longest edge before b64 encode
+    OLLAMA_MAX_WORKERS: int = 5
+    DPI_FOR_OCR: int = 150
+    VLM_TIMEOUT_SECONDS: int = 60
+    MAX_IMAGE_LONG_EDGE: int = 1500
 
-    # ── Đường dẫn dữ liệu ───────────────────────────────────
     _DATA_ROOT: Path = Path(__file__).resolve().parent.parent / "data"
-
-    DATA_DIR: str       = str(_DATA_ROOT)
-    RAW_DIR: str        = str(_DATA_ROOT / "raw")            # PDF, Slide gốc
-    PROCESSED_DIR: str  = str(_DATA_ROOT / "processed")      # Markdown sau parse
-    QDRANT_PATH: str    = str(_DATA_ROOT / "stores" / "qdrant")      # Vector DB
-    DOC_STORE_DIR: str  = str(_DATA_ROOT / "stores" / "doc_store")   # Parent Chunks (JSON)
+    DATA_DIR: str = str(_DATA_ROOT)
+    RAW_DIR: str = str(_DATA_ROOT / "raw")
+    PROCESSED_DIR: str = str(_DATA_ROOT / "processed")
+    QDRANT_PATH: str = str(_DATA_ROOT / "stores" / "qdrant")
+    DOC_STORE_DIR: str = str(_DATA_ROOT / "stores" / "doc_store")
 
     @classmethod
     def validate(cls) -> None:
-        """Kiểm tra các biến môi trường bắt buộc đã được thiết lập chưa."""
-        if not cls.GEMINI_API_KEY:
-            raise EnvironmentError(
-                "GEMINI_API_KEY chưa được thiết lập. "
-                "Hãy thêm vào file .env hoặc đặt biến môi trường."
-            )
-
-    def __repr__(self) -> str:
-        return (
-            f"Config(\n"
-            f"  PARENT_CHUNK_SIZE={self.PARENT_CHUNK_SIZE},\n"
-            f"  PARENT_CHUNK_OVERLAP={self.PARENT_CHUNK_OVERLAP},\n"
-            f"  CHILD_CHUNK_SIZE={self.CHILD_CHUNK_SIZE},\n"
-            f"  CHILD_CHUNK_OVERLAP={self.CHILD_CHUNK_OVERLAP},\n"
-            f"  EMBEDDING_MODEL_NAME='{self.EMBEDDING_MODEL_NAME}',\n"
-            f"  LLM_MODEL='{self.LLM_MODEL}',\n"
-            f"  QDRANT_LOCATION='{self.QDRANT_LOCATION}',\n"
-            f"  QDRANT_COLLECTION='{self.QDRANT_COLLECTION}',\n"
-            f"  DATA_DIR='{self.DATA_DIR}'\n"
-            f")"
-        )
-
+        model = (cls.LLM_MODEL or DEFAULT_LLM_MODEL).strip()
+        provider = (cls.LLM_PROVIDER or "auto").strip().lower()
+        if provider == "auto":
+            provider = "gemini" if model.lower().startswith("gemini") else "opencode"
+        if provider == "gemini" and not cls.GEMINI_API_KEY:
+            raise EnvironmentError("GEMINI_API_KEY is not set.")
+        if provider == "opencode" and not cls.OPENCODE_API_KEY:
+            raise EnvironmentError("OPENCODE_API_KEY is not set.")

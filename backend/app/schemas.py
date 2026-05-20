@@ -8,11 +8,10 @@ class UserCreate(BaseModel):
 
     @field_validator('email')
     @classmethod
-    def email_must_be_gmail(cls, v: str) -> str:
-        # Kiểm tra xem chuỗi email có kết thúc bằng @gmail.com hay không
-        if not v.lower().endswith('@gmail.com'):
-            # Nếu không phải, trả về lỗi để FastAPI báo lại cho Frontend
-            raise ValueError('Hệ thống chỉ chấp nhận tài khoản @gmail.com')
+    def email_must_be_allowed(cls, v: str) -> str:
+        email = v.lower()
+        if not (email.endswith('@gmail.com') or email.endswith('@lumina.com.vn')):
+            raise ValueError('Hệ thống chỉ chấp nhận tài khoản @gmail.com hoặc @lumina.com.vn')
         return v
     
     @field_validator('password')
@@ -34,6 +33,18 @@ class UserLogin(BaseModel):
 class Token(BaseModel):
     access_token: str
     token_type: str
+
+
+# Response model for user info (admin-facing)
+class UserOut(BaseModel):
+    id: int
+    username: str
+    email: EmailStr
+    is_admin: bool
+
+    class Config:
+        # Pydantic v2 uses `from_attributes` to allow orm object -> model conversion
+        from_attributes = True
 
 # Khuôn mẫu để thay đổi mật khẩu
 class ChangePassword(BaseModel):

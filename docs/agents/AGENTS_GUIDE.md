@@ -62,7 +62,7 @@ python rag_core/main_test.py
 
 # Backend (manual)
 uvicorn backend.app.main:app --reload
-# Then test /documents/upload and /chat/stream
+# Then test /api/documents and /api/chat/stream
 ```
 
 ## Important Conventions

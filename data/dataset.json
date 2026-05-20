@@ -4,6 +4,33 @@
         "ground_truth": "Mô hình Transformer được giới thiệu trong bài báo 'Attention Is All You Need'[cite: 4]. Điểm đặc biệt của nó là loại bỏ hoàn toàn các lớp mạng nơ-ron hồi quy (RNN) và tích chập (CNN), thay vào đó dựa hoàn toàn vào cơ chế chú ý (attention mechanisms), cụ thể là multi-headed self-attention[cite: 4]. Điều này giúp mô hình dễ dàng tính toán song song hơn và giảm đáng kể thời gian huấn luyện[cite: 4]."
     },
     {
+<<<<<<< HEAD
+=======
+        "question": "Trong mô hình Transformer, phương trình tính toán cho Scaled Dot-Product Attention là gì?",
+        "ground_truth": "Phương trình tính toán Scaled Dot-Product Attention trong mô hình Transformer là: Attention(Q, K, V) = softmax(QK^T / sqrt(d_k))V[cite: 4]."
+    },
+    {
+        "question": "Lớp encoder trong mô hình Transformer bao gồm bao nhiêu lớp giống nhau và mỗi lớp có cấu trúc phụ như thế nào?",
+        "ground_truth": "Lớp encoder trong mô hình Transformer bao gồm một chồng (stack) gồm N=6 lớp giống hệt nhau[cite: 4]. Mỗi lớp này có hai lớp con (sub-layers): lớp thứ nhất là cơ chế multi-head self-attention, và lớp thứ hai là một mạng feed-forward kết nối đầy đủ (fully connected) theo vị trí (position-wise) đơn giản[cite: 4]."
+    },
+    {
+        "question": "Tại sao nhóm tác giả của Transformer lại chọn sử dụng dot-product attention được scale (tỷ lệ) bằng 1/sqrt(d_k)?",
+        "ground_truth": "Nhóm tác giả chọn tỷ lệ dot-product attention với 1/sqrt(d_k) vì họ nghi ngờ rằng đối với các giá trị lớn của d_k (chiều của khóa), các tích vô hướng (dot products) tăng lớn về độ lớn[cite: 4]. Điều này đẩy hàm softmax vào các vùng có gradient cực kỳ nhỏ, do đó việc chia tỷ lệ giúp chống lại hiệu ứng này[cite: 4]."
+    },
+    {
+        "question": "Mục đích của việc sử dụng Positional Encoding trong mô hình Transformer là gì?",
+        "ground_truth": "Vì mô hình Transformer không chứa RNN hay CNN, Positional Encoding được sử dụng để tiêm (inject) thông tin về vị trí tương đối hoặc tuyệt đối của các token trong chuỗi, giúp mô hình có thể tận dụng thứ tự của chuỗi đầu vào[cite: 4]."
+    },
+    {
+        "question": "Trong bài báo 'Sequence to Sequence Learning with Neural Networks', tác giả sử dụng mô hình gì để giải quyết vấn đề sequence to sequence?",
+"ground_truth": "Trong bài báo 'Sequence to Sequence Learning with Neural Networks', các tác giả sử dụng kiến trúc Long Short-Term Memory (LSTM) nhiều lớp[cite: 3]. Cụ thể, một LSTM được dùng để đọc chuỗi đầu vào từng bước thời gian để tạo ra một vector có số chiều cố định, và một LSTM sâu khác được dùng để giải mã chuỗi mục tiêu từ vector đó[cite: 3]."
+    },
+    {
+        "question": "Kỹ thuật quan trọng nào đã giúp mô hình trong bài 'Sequence to Sequence...' cải thiện hiệu năng rõ rệt, đặc biệt với các câu dài?",
+        "ground_truth": "Một kỹ thuật quan trọng giúp cải thiện rõ rệt hiệu năng của mô hình LSTM là đảo ngược (reversing) thứ tự các từ trong các câu nguồn (nhưng không đảo ngược câu mục tiêu) trong tập huấn luyện và kiểm tra[cite: 3]. Việc này đưa vào nhiều sự phụ thuộc ngắn hạn (short term dependencies) giúp vấn đề tối ưu hóa dễ dàng hơn[cite: 3]."
+    },
+    {
+>>>>>>> 9b192d1d56a53f6a50359f035495dbb7c35b64ca
         "question": "Điểm BLEU mà mô hình LSTM đạt được trên tác vụ dịch thuật từ tiếng Anh sang tiếng Pháp (tập dữ liệu WMT' 14) là bao nhiêu khi dịch trực tiếp?",
         "ground_truth": "Khi dịch trực tiếp từ tiếng Anh sang tiếng Pháp trên tập dữ liệu WMT' 14, bản dịch do mô hình LSTM tạo ra đạt được điểm BLEU là 34.81 (sử dụng một tập hợp (ensemble) gồm 5 LSTMs sâu)[cite: 3]."
     },
@@ -21,7 +48,11 @@
     },
     {
         "question": "Kích thước từ vựng (vocabulary size) cho ngôn ngữ nguồn và ngôn ngữ đích trong thử nghiệm WMT'14 của mô hình Sequence to Sequence là bao nhiêu?",
+<<<<<<< HEAD
         "ground_truth": "Mô hình sử dụng 160.000 từ phổ biến nhất cho ngôn ngữ nguồn (đầu vào) và 80.000 từ phổ biến nhất cho ngôn ngữ đích (đầu ra)[cite: 3]."
+=======
+"ground_truth": "Mô hình sử dụng 160.000 từ phổ biến nhất cho ngôn ngữ nguồn (đầu vào) và 80.000 từ phổ biến nhất cho ngôn ngữ đích (đầu ra)[cite: 3]."
+>>>>>>> 9b192d1d56a53f6a50359f035495dbb7c35b64ca
     },
     {
         "question": "Mô hình LSTM sâu (deep LSTM) của nhóm tác giả Sutskever có tổng cộng bao nhiêu tham số?",
@@ -36,6 +67,41 @@
         "ground_truth": "Hệ thống tìm kiếm bản dịch có khả năng nhất bằng cách sử dụng một bộ giải mã tìm kiếm chùm (beam search decoder) đơn giản từ trái sang phải[cite: 3]."
     },
     {
+<<<<<<< HEAD
+=======
+        "question": "Kích thước của beam (beam size) ảnh hưởng như thế nào đến hiệu suất của bộ giải mã trong mô hình Sequence to Sequence?",
+        "ground_truth": "Hệ thống hoạt động tốt ngay cả với kích thước chùm (beam size) bằng 1, và một chùm có kích thước bằng 2 đã cung cấp hầu hết các lợi ích của quá trình tìm kiếm chùm (beam search)[cite: 3]."
+    },
+    {
+        "question": "Quá trình huấn luyện LSTM sâu được thực hiện song song (parallelization) trên phần cứng như thế nào để tăng tốc độ?",
+        "ground_truth": "Mô hình được song song hóa trên một máy tính có 8 GPU: mỗi lớp trong số 4 lớp của LSTM được thực thi trên một GPU riêng biệt, và 4 GPU còn lại được sử dụng để song song hóa phép toán softmax[cite: 3]."
+    },
+    {
+        "question": "Chiến lược thiết lập learning rate trong quá trình huấn luyện mạng RNN Sequence to Sequence diễn ra như thế nào?",
+        "ground_truth": "Mô hình sử dụng thuật toán hạ gradient ngẫu nhiên (stochastic gradient descent) không có động lượng (momentum), với tốc độ học (learning rate) cố định là 0.7[cite: 3]. Sau 5 epoch, tốc độ học bắt đầu giảm đi một nửa sau mỗi nửa epoch[cite: 3]."
+    },
+    {
+"question": "Trong kiến trúc Transformer, chiều dữ liệu đầu ra của các lớp nhúng (embedding layers) và các lớp con (sub-layers) là bao nhiêu?",
+        "ground_truth": "Tất cả các lớp con (sub-layers) trong mô hình Transformer, cũng như các lớp nhúng (embedding layers), đều tạo ra đầu ra có số chiều là $d_{model} = 512$[cite: 4]."
+    },
+    {
+        "question": "Mạng truyền thẳng (Feed-Forward Network) bên trong mỗi lớp của mô hình Transformer có cấu trúc số chiều như thế nào?",
+        "ground_truth": "Số chiều của đầu vào và đầu ra là $d_{model} = 512$, trong khi lớp bên trong (inner-layer) có số chiều lớn hơn là $d_{ff} = 2048$[cite: 4]."
+    },
+    {
+        "question": "Base model của Transformer sử dụng bao nhiêu attention heads hoạt động song song?",
+        "ground_truth": "Base model sử dụng $h = 8$ lớp chú ý song song (parallel attention layers), hay còn gọi là heads[cite: 4]."
+    },
+    {
+        "question": "Làm thế nào lớp Decoder của Transformer đảm bảo rằng việc dự đoán một từ không dựa vào các từ xuất hiện sau nó trong chuỗi?",
+        "ground_truth": "Decoder sử dụng cơ chế che khuất (masking) bên trong scaled dot-product attention bằng cách đặt giá trị của các kết nối không hợp lệ thành $-\\infty$ (trước khi đưa vào hàm softmax), ngăn chặn luồng thông tin đi sang trái nhằm bảo tồn tính chất tự hồi quy (auto-regressive property)[cite: 4]."
+    },
+    {
+        "question": "Hàm kích hoạt (activation function) nào được sử dụng bên trong các mạng Feed-Forward của Transformer?",
+        "ground_truth": "Mạng Feed-Forward (FFN) sử dụng hàm kích hoạt ReLU được đặt ở giữa hai phép biến đổi tuyến tính (linear transformations)[cite: 4]."
+    },
+    {
+>>>>>>> 9b192d1d56a53f6a50359f035495dbb7c35b64ca
         "question": "Tại sao độ phức tạp tính toán mỗi layer của Self-Attention lại nhanh hơn Recurrent layer trong đa số các tác vụ dịch máy hiện đại?",
         "ground_truth": "Các lớp Self-attention có độ phức tạp là $O(n^2 \\cdot d)$ và nhanh hơn các lớp hồi quy có độ phức tạp $O(n \\cdot d^2)$ khi độ dài chuỗi $n$ nhỏ hơn số chiều biểu diễn $d$[cite: 4]. Điều này thường xảy ra với các biểu diễn câu được sử dụng bởi các mô hình tiên tiến trong dịch máy, chẳng hạn như word-piece hay byte-pair[cite: 4]."
     },
@@ -44,7 +110,11 @@
         "ground_truth": "Mô hình sử dụng thuật toán tối ưu hóa Adam với các siêu tham số $\\beta_1 = 0.9$, $\\beta_2 = 0.98$, và $\\epsilon = 10^{-9}$[cite: 4]."
     },
     {
+<<<<<<< HEAD
         "question": "Chiến lược điều chỉnh tốc độ học (learning rate schedule) trong quá trình huấn luyện Transformer hoạt động theo nguyên tắc nào?",
+=======
+"question": "Chiến lược điều chỉnh tốc độ học (learning rate schedule) trong quá trình huấn luyện Transformer hoạt động theo nguyên tắc nào?",
+>>>>>>> 9b192d1d56a53f6a50359f035495dbb7c35b64ca
         "ground_truth": "Tốc độ học (learning rate) tăng tuyến tính trong 4000 bước huấn luyện đầu tiên (warmup_steps), và sau đó giảm dần tỷ lệ thuận với nghịch đảo căn bậc hai của số bước (inverse square root of the step number)[cite: 4]."
     },
     {
@@ -58,5 +128,14 @@
     {
         "question": "Tập dữ liệu chuẩn nào đã được sử dụng để đào tạo tác vụ dịch tiếng Anh sang tiếng Đức trong bài báo giới thiệu Transformer?",
         "ground_truth": "Mô hình được huấn luyện trên tập dữ liệu tiêu chuẩn WMT 2014 English-German bao gồm khoảng 4.5 triệu cặp câu[cite: 4]."
+<<<<<<< HEAD
     }
 ]
+=======
+    },
+    {
+        "question": "Bên cạnh tác vụ dịch máy, nhóm tác giả của Transformer đã đánh giá khả năng tổng quát hóa của mô hình trên tác vụ NLP nào khác?",
+        "ground_truth": "Họ đã áp dụng thành công mô hình Transformer cho tác vụ phân tích cú pháp thành phần tiếng Anh (English constituency parsing)[cite: 4]."
+    }
+]
+>>>>>>> 9b192d1d56a53f6a50359f035495dbb7c35b64ca

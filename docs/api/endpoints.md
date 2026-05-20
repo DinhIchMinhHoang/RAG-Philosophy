@@ -1,5 +1,7 @@
 # API Endpoints
 
+> Freeze note: canonical non-admin contract now lives in `docs/api/non-admin-contract-v1.md` with `/api/*` paths.
+
 ## Base URL
 
 ```
@@ -8,7 +10,7 @@ http://localhost:8000
 
 ## Authentication Endpoints
 
-### POST /signup
+### POST /api/signup
 
 Create a new user account.
 
@@ -36,7 +38,7 @@ Create a new user account.
 
 ---
 
-### POST /login
+### POST /api/login
 
 Authenticate and receive JWT token.
 
@@ -61,7 +63,7 @@ Authenticate and receive JWT token.
 
 ---
 
-### POST /change-password
+### POST /api/change-password
 
 Change user's password (requires authentication).
 
@@ -93,7 +95,7 @@ Authorization: Bearer <JWT_TOKEN>
 
 ## Document Endpoints
 
-### POST /documents/upload
+### POST /api/documents
 
 Upload a PDF for RAG ingestion.
 
@@ -108,13 +110,14 @@ Content-Type: multipart/form-data
 file: <PDF file>
 ```
 
-**Response (201):**
+**Response (202):**
 ```json
 {
-    "filename": "philosophy101.pdf",
-    "status": "ok",
-    "pages": 45,
-    "chunks": 180
+    "document_id": "doc-uuid",
+    "job_id": "job-uuid",
+    "status": "queued",
+    "pipeline_version": "v1",
+    "object_key": "doc-uuid/philosophy101.pdf"
 }
 ```
 
@@ -125,29 +128,49 @@ file: <PDF file>
 
 ---
 
-### GET /documents/sources
+### GET /api/documents
 
 List currently ingested source files.
 
 **Response (200):**
 ```json
-{
-    "sources": ["philosophy101.pdf", "ethics.pdf"],
-    "count": 2,
-    "has_sources": true
-}
+[
+    {
+        "document_id": "doc-uuid",
+        "filename": "philosophy101.pdf",
+        "object_key": "doc-uuid/philosophy101.pdf",
+        "mime_type": "application/pdf",
+        "size_bytes": 123456,
+        "created_at": "2026-05-15T10:00:00Z",
+        "updated_at": "2026-05-15T10:00:00Z",
+        "latest_job": {
+            "job_id": "job-uuid",
+            "status": "queued",
+            "stage": "fetching_object",
+            "progress_pct": 0,
+            "stage_detail": "queued",
+            "error_message": null,
+            "pipeline_version": "v1",
+            "queued_at": "2026-05-15T10:00:00Z",
+            "started_at": null,
+            "finished_at": null
+        }
+    }
+]
 ```
 
 ---
 
-### POST /documents/reset
+### DELETE /api/documents/{document_id}
 
-Clear all ingested documents.
+Delete a document and associated vectors.
 
 **Response (200):**
 ```json
 {
-    "message": "All sources cleared. Pipeline reset."
+    "document_id": "doc-uuid",
+    "deleted": true,
+    "status": "deleted"
 }
 ```
 
@@ -168,7 +191,7 @@ Get a rendered page from a PDF as PNG.
 
 ## Chat Endpoints
 
-### POST /chat/stream
+### POST /api/chat/stream
 
 Send a question and receive streamed answer via SSE.
 
@@ -200,6 +223,61 @@ data: {"token": "", "done": true}
 **Errors:**
 - 400: Empty message
 - 500: Processing error
+
+---
+
+### POST /api/chat
+
+Send a question and receive a non-streamed answer.
+
+**Headers:**
+```
+Authorization: Bearer <JWT_TOKEN>
+Content-Type: application/json
+```
+
+**Request Body:**
+```json
+{
+    "message": "What is the main argument of the text?"
+}
+```
+
+**Response (200):**
+```json
+{
+    "answer": "...",
+    "citations": []
+}
+```
+
+**Errors:**
+- 400: Empty message
+- 500: Processing error
+
+---
+
+## Admin Endpoints
+
+### GET /api/admin/users
+
+List all users.
+
+### POST /api/admin/users
+
+Create a user.
+
+### DELETE /api/admin/users/{user_id}
+
+Delete a user by ID.
+
+### GET /api/admin/documents
+
+List all documents.
+
+### GET /api/admin/jobs
+
+List all jobs.
 
 ---
 

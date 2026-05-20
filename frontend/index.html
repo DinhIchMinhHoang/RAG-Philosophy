@@ -4,37 +4,24 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RAG Philosophy - Lumina</title>
-    <!-- KaTeX for LaTeX rendering -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
     <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
-
-    <!-- Marked for Markdown rendering -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="styles/main.css">
+    <link rel="stylesheet" href="styles/components/skeleton.css">
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
 </head>
 <body>
     <canvas id="gradientCanvas"></canvas>
-    
+
     <header class="navbar" style="display: none;">
         <button class="brand-button">
-            <img src="logo.svg" alt="Lumina Logo" class="navbar-logo">
+            <img src="assets/logo.svg" alt="Lumina Logo" class="navbar-logo">
             <span class="brand-text">LUMINA</span>
             <span class="brand-subtitle">notebook</span>
         </button>
         <div class="social-buttons">
-            <button class="social-button" title="Instagram">
-                <svg viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zM5.838 12a6.162 6.162 0 1 1 12.324 0 6.162 6.162 0 0 1-12.324 0zM12 16a4 4 0 1 1 0-8 4 4 0 0 1 0 8zm4.965-10.322a1.44 1.44 0 1 1 2.881.001 1.44 1.44 0 0 1-2.881-.001z"/>
-                </svg>
-            </button>
-            <button class="social-button" title="Facebook">
-                <svg viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
-                </svg>
-            </button>
             <button class="social-button account-button" data-scene="account" title="Account">
                 <span class="material-icons">account_circle</span>
             </button>
@@ -44,7 +31,7 @@
     <div id="scene-landing" class="scene">
         <div class="text-container">
             <div class="logo-text-wrapper">
-                <img src="logo.svg" alt="Lumina Logo" class="logo">
+                <img src="assets/logo.svg" alt="Lumina Logo" class="logo">
                 <h1 class="lumina-text">LUMINA</h1>
             </div>
             <p class="notebook-text">notebook</p>
@@ -54,16 +41,14 @@
             </div>
         </div>
     </div>
-    
+
     <div id="scene-account" class="scene" style="display: none;">
         <div class="form-container account-form-container">
             <h2 class="form-title">Account</h2>
             <div class="form-error" style="display: none; color: #ff4444; font-weight: bold; margin-bottom: 12px; padding: 8px; background: rgba(255,68,68,0.1); border-radius: 4px;"></div>
             <div class="form-success" style="display: none; color: #44ff44; font-weight: bold; margin-bottom: 12px; padding: 8px; background: rgba(68,255,68,0.1); border-radius: 4px;"></div>
             <form class="account-form">
-                <!-- Two Column Layout -->
                 <div class="account-form-columns">
-                    <!-- Left Column: User Information -->
                     <div class="account-column">
                         <h3 class="column-title">User Information</h3>
                         <div class="form-group">
@@ -83,8 +68,6 @@
                             <textarea id="account-bio" class="form-input" placeholder="Short bio" rows="3"></textarea>
                         </div>
                     </div>
-
-                    <!-- Right Column: Password Manager -->
                     <div class="account-column">
                         <h3 class="column-title">Change Password</h3>
                         <div class="form-group">
@@ -102,13 +85,13 @@
                         <button type="button" class="auth-button change-password-button" style="width: 100%; margin-bottom: 12px;">Change Password</button>
                     </div>
                 </div>
-
-                <!-- Buttons Row (Full Width) -->
                 <div class="form-buttons">
                     <button type="submit" class="auth-button">Save changes</button>
                     <button type="button" class="auth-button" data-back-to="dashboard">Cancel</button>
                 </div>
-
+                <div class="admin-entry" style="display:none; margin-top: 12px; text-align: right;">
+                    <button type="button" class="auth-button admin-console-button">Admin Console</button>
+                </div>
                 <div style="display:flex; gap:8px; margin-top:12px; justify-content:flex-end;">
                     <button type="button" class="auth-button logout-button">Log out</button>
                     <button type="button" class="auth-button delete-account-button" style="background: rgba(255,50,50,0.12); border-color: rgba(255,50,50,0.2);">Delete account</button>
@@ -125,7 +108,6 @@
                 <div class="form-group">
                     <label class="form-label"><span class="material-icons">account_circle</span> User name</label>
                     <input type="text" id="signup-username" class="form-input" placeholder="User name" required>
-                    <div id="signup-username-error" class="field-error"></div>
                 </div>
                 <div class="form-group">
                     <label class="form-label"><span class="material-icons">alternate_email</span> Email</label>
@@ -135,12 +117,10 @@
                 <div class="form-group">
                     <label class="form-label"><span class="material-icons">lock</span> Password</label>
                     <input type="password" id="signup-password" class="form-input" placeholder="Password" required>
-                    <div id="signup-password-error" class="field-error"></div>
                 </div>
                 <div class="form-group">
                     <label class="form-label"><span class="material-icons">lock</span> Confirm Password</label>
                     <input type="password" id="signup-confirm-password" class="form-input" placeholder="Confirm Password" required>
-                    <div id="signup-confirm-password-error" class="field-error"></div>
                 </div>
                 <div id="signup-general-error" class="general-error"></div>
                 <div class="form-buttons">
@@ -164,7 +144,6 @@
                 <div class="form-group">
                     <label class="form-label"><span class="material-icons">lock</span> Password</label>
                     <input id="signin-password" type="password" class="form-input" placeholder="Password" required>
-                    <div id="signin-password-error" class="field-error"></div>
                 </div>
                 <div id="signin-general-error" class="general-error"></div>
                 <div class="form-buttons">
@@ -177,57 +156,30 @@
 
     <div id="scene-dashboard" class="scene" style="display: none;">
         <div class="dashboard-container">
-
             <div class="dashboard-top">
                 <div class="left-controls">
                     <div class="sort-switch" role="tablist" aria-label="Sort notebooks">
-                        <button class="sort-option active" data-sort="recent">
-                            <span class="material-icons">history</span>
-                            <span class="label">Recently</span>
-                        </button>
-                        <button class="sort-option" data-sort="alpha">
-                            <span class="material-icons">sort_by_alpha</span>
-                            <span class="label">A → Z</span>
-                        </button>
+                        <button class="sort-option active" data-sort="recent"><span class="material-icons">history</span><span class="label">Recently</span></button>
+                        <button class="sort-option" data-sort="alpha"><span class="material-icons">sort_by_alpha</span><span class="label">A → Z</span></button>
                         <div class="sort-thumb" aria-hidden="true"></div>
                     </div>
-
-                    <button class="auth-button create-button" title="Create new notebook">
-                        <span class="material-icons">add</span>
-                        Create new notebook
-                    </button>
+                    <button class="auth-button create-button" title="Create new notebook"><span class="material-icons">add</span> Create new notebook</button>
                 </div>
-
                 <div class="center-controls">
-                    <div class="search-wrap">
-                        <input type="text" class="search-input" placeholder="Search notebooks...">
-                    </div>
+                    <div class="search-wrap"><input type="text" class="search-input" placeholder="Search notebooks..."></div>
                 </div>
-
                 <div class="right-controls">
-                    <button class="social-button search-button" title="Search">
-                        <span class="material-icons">search</span>
-                    </button>
-
+                    <button class="social-button search-button" title="Search"><span class="material-icons">search</span></button>
                     <div class="view-toggle" role="tablist" aria-label="View mode">
-                        <button class="view-option" data-view="grid" title="Grid view">
-                            <span class="material-icons">grid_view</span>
-                            <span class="label">Grid</span>
-                        </button>
-                        <button class="view-option" data-view="list" title="List view">
-                            <span class="material-icons">format_list_bulleted</span>
-                            <span class="label">List</span>
-                        </button>
+                        <button class="view-option active" data-view="grid" title="Grid view"><span class="material-icons">grid_view</span><span class="label">Grid</span></button>
+                        <button class="view-option" data-view="list" title="List view"><span class="material-icons">format_list_bulleted</span><span class="label">List</span></button>
                         <div class="view-thumb" aria-hidden="true"></div>
                     </div>
                 </div>
             </div>
-
             <div class="sections">
                 <div class="notebook-section community-section">
-                    <div class="section-header">
-                        <h3>Community notebooks:</h3>
-                    </div>
+                    <div class="section-header"><h3>Community notebooks:</h3></div>
                     <div class="notebook-grid community-grid" aria-live="polite">
                         <div class="notebook-item" data-title="Community A">
                             <button class="more-btn" aria-label="More"><span class="material-icons">more_vert</span></button>
@@ -250,15 +202,10 @@
                             <div class="item-title">Community D</div>
                         </div>
                     </div>
-                    <div class="section-footer">
-                        <button class="show-all-btn" data-target="community">Show all</button>
-                    </div>
+                    <div class="section-footer"><button class="show-all-btn" data-target="community">Show all</button></div>
                 </div>
-
                 <div class="notebook-section my-section">
-                    <div class="section-header">
-                        <h3>My notebooks:</h3>
-                    </div>
+                    <div class="section-header"><h3>My notebooks:</h3></div>
                     <div class="notebook-grid my-grid" aria-live="polite">
                         <div class="notebook-item" data-title="My Notebook 1">
                             <button class="more-btn" aria-label="More"><span class="material-icons">more_vert</span></button>
@@ -271,57 +218,32 @@
                             <div class="item-title">My Notebook 2</div>
                         </div>
                     </div>
-                    <div class="section-footer">
-                        <button class="show-all-btn" data-target="my">Show all</button>
-                    </div>
+                    <div class="section-footer"><button class="show-all-btn" data-target="my">Show all</button></div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Show All Scene (full-screen notebook view for Community or My notebooks) -->
     <div id="scene-showall" class="scene" style="display: none;">
         <div class="dashboard-container">
             <div class="dashboard-top">
                 <div class="left-controls">
                     <div class="sort-switch" role="tablist" aria-label="Sort notebooks">
-                        <button class="sort-option active" data-sort="recent">
-                            <span class="material-icons">history</span>
-                            <span class="label">Recently</span>
-                        </button>
-                        <button class="sort-option" data-sort="alpha">
-                            <span class="material-icons">sort_by_alpha</span>
-                            <span class="label">A → Z</span>
-                        </button>
+                        <button class="sort-option active" data-sort="recent"><span class="material-icons">history</span><span class="label">Recently</span></button>
+                        <button class="sort-option" data-sort="alpha"><span class="material-icons">sort_by_alpha</span><span class="label">A → Z</span></button>
                         <div class="sort-thumb" aria-hidden="true"></div>
                     </div>
                 </div>
-
-                <div class="center-controls">
-                    <div class="search-wrap">
-                        <input type="text" class="search-input" placeholder="Search notebooks...">
-                    </div>
-                </div>
-
+                <div class="center-controls"><div class="search-wrap"><input type="text" class="search-input" placeholder="Search notebooks..."></div></div>
                 <div class="right-controls">
-                    <button class="social-button search-button" title="Search">
-                        <span class="material-icons">search</span>
-                    </button>
-
+                    <button class="social-button search-button" title="Search"><span class="material-icons">search</span></button>
                     <div class="view-toggle" role="tablist" aria-label="View mode">
-                        <button class="view-option" data-view="grid" title="Grid view">
-                            <span class="material-icons">grid_view</span>
-                            <span class="label">Grid</span>
-                        </button>
-                        <button class="view-option" data-view="list" title="List view">
-                            <span class="material-icons">format_list_bulleted</span>
-                            <span class="label">List</span>
-                        </button>
+                        <button class="view-option active" data-view="grid" title="Grid view"><span class="material-icons">grid_view</span><span class="label">Grid</span></button>
+                        <button class="view-option" data-view="list" title="List view"><span class="material-icons">format_list_bulleted</span><span class="label">List</span></button>
                         <div class="view-thumb" aria-hidden="true"></div>
                     </div>
                 </div>
             </div>
-
             <div class="showall-content">
                 <div class="notebook-grid showall-grid" aria-live="polite"></div>
                 <button class="close-showall-btn" title="Close"><span class="material-icons">close</span></button>
@@ -329,42 +251,23 @@
         </div>
     </div>
 
-    <!-- Chat Scene -->
     <div id="scene-chat" class="scene" style="display: none;">
         <div class="chat-shell">
             <div class="chat-topbar">
-                <button class="auth-button chat-back-button" title="Back to dashboard">
-                    <span class="material-icons">arrow_back</span>
-                    Dashboard
-                </button>
-                <div class="chat-title-wrap">
-                    <span class="material-icons">auto_awesome</span>
-                    <span class="chat-title">Untitled notebook</span>
-                </div>
+                <button class="auth-button chat-back-button" title="Back to dashboard"><span class="material-icons">arrow_back</span> Dashboard</button>
+                <div class="chat-title-wrap"><span class="material-icons">auto_awesome</span><span class="chat-title">Untitled notebook</span></div>
                 <div class="chat-top-actions">
-                    <button class="panel-icon-button" title="Share">
-                        <span class="material-icons">ios_share</span>
-                    </button>
-                    <button class="panel-icon-button" title="Notebook settings">
-                        <span class="material-icons">tune</span>
-                    </button>
+                    <button class="panel-icon-button" title="Share"><span class="material-icons">ios_share</span></button>
+                    <button class="panel-icon-button" title="Notebook settings"><span class="material-icons">tune</span></button>
                 </div>
             </div>
-
             <div class="chat-layout">
                 <section class="chat-panel panel-left" data-panel="sources">
                     <div class="panel-header">
-                        <div class="panel-title">
-                            <span class="material-icons">inventory_2</span>
-                            Sources
-                        </div>
+                        <div class="panel-title"><span class="material-icons">inventory_2</span> Sources</div>
                         <div class="panel-actions">
-                            <button class="panel-icon-button source-add-button" title="Add source">
-                                <span class="material-icons">add</span>
-                            </button>
-                            <button class="panel-icon-button panel-toggle" data-collapse="sources" title="Collapse">
-                                <span class="material-icons">chevron_left</span>
-                            </button>
+                            <button class="panel-icon-button source-add-button" title="Add source"><span class="material-icons">add</span></button>
+                            <button class="panel-icon-button panel-toggle" data-collapse="sources" title="Collapse"><span class="material-icons">chevron_left</span></button>
                         </div>
                     </div>
                     <div class="panel-body">
@@ -375,17 +278,13 @@
                                 <button class="auth-button source-add-button">Add source</button>
                                 <button class="auth-button source-note-button">New note</button>
                             </div>
-                            <input id="sourceFileInput" type="file" multiple accept="image/*,.pdf,.txt,.md,.docx" />
+                            <input id="sourceFileInput" type="file" multiple accept="image/*,.pdf,.txt,.md,.docx">
                         </div>
                         <div class="source-empty">No sources yet</div>
                         <div class="source-list"></div>
                     </div>
                     <div class="panel-rail">
-                        <button class="panel-rail-button" data-expand="sources" title="Expand sources">
-                            <span class="material-icons">inventory_2</span>
-                            <span class="rail-label">Sources</span>
-                            <span class="material-icons">chevron_right</span>
-                        </button>
+                        <button class="panel-rail-button" data-expand="sources" title="Expand sources"><span class="material-icons">inventory_2</span><span class="rail-label">Sources</span><span class="material-icons">chevron_right</span></button>
                     </div>
                 </section>
 
@@ -393,15 +292,8 @@
 
                 <section class="chat-panel panel-center" data-panel="chat">
                     <div class="panel-header">
-                        <div class="panel-title">
-                            <span class="material-icons">forum</span>
-                            Conversation
-                        </div>
-                        <div class="panel-actions">
-                            <button class="panel-icon-button" data-action="clear-chat" title="Clear chat">
-                                <span class="material-icons">delete_sweep</span>
-                            </button>
-                        </div>
+                        <div class="panel-title"><span class="material-icons">forum</span> Conversation</div>
+                        <div class="panel-actions"><button class="panel-icon-button" data-action="clear-chat" title="Clear chat"><span class="material-icons">delete_sweep</span></button></div>
                     </div>
                     <div class="panel-body chat-body">
                         <div class="chat-thread">
@@ -412,9 +304,7 @@
                         </div>
                         <form class="chat-input">
                             <textarea id="chatPrompt" class="form-input" rows="2" placeholder="Ask anything about your sources..."></textarea>
-                            <button type="submit" class="auth-button send-button" title="Send">
-                                <span class="material-icons">north_east</span>
-                            </button>
+                            <button type="submit" class="auth-button send-button" title="Send"><span class="material-icons">north_east</span></button>
                         </form>
                     </div>
                 </section>
@@ -423,68 +313,125 @@
 
                 <section class="chat-panel panel-right" data-panel="tools">
                     <div class="panel-header">
-                        <div class="panel-title">
-                            <span class="material-icons">preview</span>
-                            Source Viewer
-                        </div>
-                        <div class="panel-actions">
-                            <button class="panel-icon-button panel-toggle" data-collapse="tools" title="Collapse">
-                                <span class="material-icons">chevron_right</span>
-                            </button>
-                        </div>
+                        <div class="panel-title"><span class="material-icons">preview</span> Source Viewer</div>
+                        <div class="panel-actions"><button class="panel-icon-button panel-toggle" data-collapse="tools" title="Collapse"><span class="material-icons">chevron_right</span></button></div>
                     </div>
                     <div class="panel-body">
                         <div id="sourceViewer" class="source-viewer">
-                            <div class="viewer-empty">
-                                <span class="material-icons">find_in_page</span>
-                                <p>Click a source or citation to view the page</p>
-                            </div>
+                            <div class="viewer-empty"><span class="material-icons">find_in_page</span><p>Click a source or citation to view the page</p></div>
                             <div class="viewer-content" style="display: none;">
                                 <div class="viewer-controls">
-                                    <div class="viewer-page-controls">
-                                        <button id="viewerPrevPage" class="viewer-btn" title="Previous Page">
-                                            <span class="material-icons">chevron_left</span>
-                                        </button>
-                                        <span id="viewerPageNum" class="viewer-pagenum">Page 1</span>
-                                        <button id="viewerNextPage" class="viewer-btn" title="Next Page">
-                                            <span class="material-icons">chevron_right</span>
-                                        </button>
-                                    </div>
-                                    <div class="viewer-zoom-controls">
-                                        <button id="viewerZoomOut" class="viewer-btn" title="Zoom Out">
-                                            <span class="material-icons">remove</span>
-                                        </button>
-                                        <span id="viewerZoomLevel" class="viewer-zoomnum">100%</span>
-                                        <button id="viewerZoomIn" class="viewer-btn" title="Zoom In">
-                                            <span class="material-icons">add</span>
-                                        </button>
-                                        <button id="viewerZoomReset" class="viewer-btn" title="Reset Zoom">
-                                            <span class="material-icons">restart_alt</span>
-                                        </button>
-                                    </div>
+                                    <div class="viewer-info"><span id="viewerFileName" class="viewer-filename">filename.pdf</span></div>
                                 </div>
-                                <div class="viewer-header-info">
-                                    <span id="viewerFileName" class="viewer-filename">filename.pdf</span>
-                                </div>
-                                <div class="viewer-image-wrap">
-                                    <img id="viewerImage" src="" alt="Page Preview">
-                                </div>
+                                <div class="viewer-pdf-wrap"><embed id="pdfViewer" type="application/pdf"></div>
                             </div>
                         </div>
                     </div>
                     <div class="panel-rail">
-                        <button class="panel-rail-button" data-expand="tools" title="Expand viewer">
-                            <span class="material-icons">preview</span>
-                            <span class="rail-label">Source Viewer</span>
-                            <span class="material-icons">chevron_left</span>
-                        </button>
+                        <button class="panel-rail-button" data-expand="tools" title="Expand viewer"><span class="material-icons">preview</span><span class="rail-label">Source Viewer</span><span class="material-icons">chevron_left</span></button>
                     </div>
                 </section>
             </div>
         </div>
     </div>
 
-    <!-- Image / Color picker modal (handles upload or color selection) -->
+    <div id="scene-admin" class="scene" style="display: none;">
+        <div class="admin-shell">
+            <div class="admin-topbar">
+                <div class="admin-title-wrap">
+                    <span class="material-icons">admin_panel_settings</span>
+                    <div class="admin-title">Admin Console</div>
+                </div>
+                <div class="admin-actions">
+                    <button class="auth-button admin-back-button"><span class="material-icons">arrow_back</span> Dashboard</button>
+                </div>
+            </div>
+
+            <div class="admin-tabs" role="tablist" aria-label="Admin sections">
+                <button class="admin-tab active" data-tab="users">Users</button>
+                <button class="admin-tab" data-tab="documents">Documents</button>
+                <button class="admin-tab" data-tab="jobs">Jobs</button>
+            </div>
+
+            <div class="admin-content">
+                <section class="admin-panel active" data-panel="users">
+                    <header class="admin-panel-header">
+                        <div class="panel-title">User directory</div>
+                        <div class="panel-actions">
+                            <button class="auth-button admin-refresh" data-action="refresh-users"><span class="material-icons">refresh</span> Refresh</button>
+                        </div>
+                    </header>
+                    <div class="admin-search-bar">
+                        <span class="material-icons">search</span>
+                        <input type="text" class="admin-search-input" data-search="users" placeholder="Search users by name or email...">
+                    </div>
+                    <div class="admin-panel-body">
+                        <form class="admin-create-form" data-form="create-user">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label class="form-label">Name</label>
+                                    <input type="text" class="form-input" name="username" placeholder="Full name" required>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Email</label>
+                                    <input type="email" class="form-input" name="email" placeholder="name@lumina.com.vn" required>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Password</label>
+                                    <input type="password" class="form-input" name="password" placeholder="Set temporary password" required>
+                                </div>
+                            </div>
+                            <div class="form-actions">
+                                <div class="form-feedback" data-feedback="create-user"></div>
+                                <button type="submit" class="auth-button admin-create-user"><span class="material-icons">person_add</span> Create user</button>
+                            </div>
+                        </form>
+
+                        <div class="admin-list" data-list="users">
+                            <div class="list-empty" data-empty="users">No users found. Create the first user.</div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="admin-panel" data-panel="documents">
+                    <header class="admin-panel-header">
+                        <div class="panel-title">Documents</div>
+                        <div class="panel-actions">
+                            <button class="auth-button admin-refresh" data-action="refresh-documents"><span class="material-icons">refresh</span> Refresh</button>
+                        </div>
+                    </header>
+                    <div class="admin-search-bar">
+                        <span class="material-icons">search</span>
+                        <input type="text" class="admin-search-input" data-search="documents" placeholder="Search documents by name or ID...">
+                    </div>
+                    <div class="admin-panel-body">
+                        <div class="admin-list" data-list="documents">
+                            <div class="list-empty" data-empty="documents">No documents found. Upload a document to begin.</div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="admin-panel" data-panel="jobs">
+                    <header class="admin-panel-header">
+                        <div class="panel-title">Jobs</div>
+                        <div class="panel-actions">
+                            <button class="auth-button admin-refresh" data-action="refresh-jobs"><span class="material-icons">refresh</span> Refresh</button>
+                        </div>
+                    </header>
+                    <div class="admin-search-bar">
+                        <span class="material-icons">search</span>
+                        <input type="text" class="admin-search-input" data-search="jobs" placeholder="Search jobs by ID, document or status...">
+                    </div>
+                    <div class="admin-panel-body">
+                        <div class="admin-list" data-list="jobs">
+                            <div class="list-empty" data-empty="jobs">No jobs running yet. Ingest a document to see jobs.</div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </div>
+    </div>
+
     <div id="imageModal" class="image-modal" aria-hidden="true" style="display:none;">
         <div class="image-modal-backdrop"></div>
         <div class="image-modal-body" role="dialog" aria-modal="true" aria-label="Set cover image">
@@ -493,11 +440,10 @@
                 <button class="tab active" data-tab="upload">Upload</button>
                 <button class="tab" data-tab="color">Color</button>
             </div>
-
             <div class="image-modal-content">
                 <div class="tab-panel" data-panel="upload">
                     <div id="imagePreview" class="image-preview" aria-hidden="true"></div>
-                    <input id="imageFileInput" type="file" accept="image/*" style="display:none" />
+                    <input id="imageFileInput" type="file" accept="image/*" style="display:none">
                     <div class="upload-controls" style="display:flex;gap:8px;align-items:center;margin-top:8px;">
                         <button id="chooseFileBtn" class="auth-button">Choose file</button>
                         <label style="color:#fff; margin-left:8px; font-weight:600;">Mode:
@@ -508,15 +454,13 @@
                         </label>
                     </div>
                 </div>
-
                 <div class="tab-panel hidden" data-panel="color" style="margin-top:8px;">
                     <div style="display:flex;gap:12px;align-items:center;">
-                        <input id="colorPicker" type="color" value="#7CC4ED" />
+                        <input id="colorPicker" type="color" value="#7CC4ED">
                         <div id="colorPreview" class="color-preview" style="width:80px;height:48px;border-radius:8px;border:1px solid rgba(255,255,255,0.08)"></div>
                     </div>
                 </div>
             </div>
-
             <div class="image-modal-actions" style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;">
                 <button id="applyCoverBtn" class="auth-button">Apply</button>
                 <button id="cancelCoverBtn" class="auth-button">Cancel</button>
@@ -524,9 +468,6 @@
         </div>
     </div>
 
-    <script src="api.js"></script>
-    <script src="transitions.js"></script>
-    <script src="script.js"></script>
-
+    <script type="module" src="src/main.js?v=20260512-1"></script>
 </body>
 </html>

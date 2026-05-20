@@ -8,13 +8,18 @@ Sử dụng ChatGoogleGenerativeAI (Gemini) kết hợp với retriever
 from __future__ import annotations
 
 import logging
-from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain.chains.retrieval import create_retrieval_chain
 
-from common.logging_utils import configure_logging, get_logger
-from config import Config
+try:
+    from .common.llm import build_chat_llm
+    from .common.logging_utils import configure_logging, get_logger
+    from .config import Config
+except ImportError:  # pragma: no cover
+    from common.llm import build_chat_llm
+    from common.logging_utils import configure_logging, get_logger
+    from config import Config
 
 configure_logging()
 logger = get_logger(__name__)
@@ -49,11 +54,7 @@ def setup_rag_chain(retriever):
     logger.info(f"Đang khởi tạo LLM: {Config.LLM_MODEL}")
 
     # 1. Khởi tạo LLM (Gemini)
-    llm = ChatGoogleGenerativeAI(
-        model=Config.LLM_MODEL,
-        temperature=0.2,
-        google_api_key=Config.GEMINI_API_KEY,
-    )
+    llm = build_chat_llm(temperature=0.2)
 
     # 2. Tạo prompt template
     prompt = ChatPromptTemplate.from_messages([

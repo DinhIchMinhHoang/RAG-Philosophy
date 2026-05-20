@@ -16,9 +16,9 @@ import logging
 import tempfile
 import shutil
 from typing import List, AsyncGenerator, Optional
+import asyncio
 
 from langchain_core.documents import Document
-from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnablePassthrough
@@ -38,6 +38,7 @@ if _RAG_CORE_DIR not in sys.path:
     sys.path.insert(0, _RAG_CORE_DIR)
 
 from rag_core.config import Config as RAGConfig           # rag_core/config.py
+from rag_core.common.llm import build_chat_llm
 from rag_core.step1_parser import HybridPDFParser          # rag_core/step1_parser.py
 from rag_core.step2_chunker import chunk_documents         # rag_core/step2_chunker.py
 from rag_core.step3_vector_db import build_vector_db       # rag_core/step3_vector_db.py
@@ -130,7 +131,9 @@ class RAGService:
             return
 
         # Retrieve context documents
-        docs = self._retriever.invoke(question)
+        # Retrieval may perform CPU work (BM25) and/or network I/O (Cohere rerank).
+        # Run in a worker thread to avoid blocking the event loop.
+        docs = await asyncio.to_thread(self._retriever.invoke, question)
         if not docs:
             yield "Không tìm thấy tài liệu phù hợp với câu hỏi của bạn."
             return
@@ -147,10 +150,9 @@ class RAGService:
         context_text = "\n\n---\n\n".join(context_parts)
 
         # Build streaming LLM chain
-        llm = ChatGoogleGenerativeAI(
+        llm = build_chat_llm(
             model=RAGConfig.LLM_MODEL,
             temperature=0.2,
-            google_api_key=RAGConfig.GEMINI_API_KEY,
             # streaming=True,  # astream() sẽ tự động bật streaming mode
         )
 

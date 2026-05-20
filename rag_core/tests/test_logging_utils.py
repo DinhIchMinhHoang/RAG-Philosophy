@@ -1,9 +1,16 @@
+<<<<<<< HEAD
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import logging
 import unittest
 
 from common.logging_utils import configure_logging, get_logger
+=======
+import logging
+import unittest
+
+from rag_core.common.logging_utils import configure_logging, get_logger
+>>>>>>> 9b192d1d56a53f6a50359f035495dbb7c35b64ca
 
 
 class TestLoggingUtils(unittest.TestCase):

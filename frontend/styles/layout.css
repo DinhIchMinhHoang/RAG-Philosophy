@@ -1,0 +1,161 @@
+.scene {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 20;
+}
+
+.navbar {
+    position: fixed;
+    top: 20px;
+    left: 20px;
+    right: 20px;
+    height: 80px;
+    background: linear-gradient(135deg, rgba(2, 6, 23, 0.4) 0%, rgba(124, 58, 237, 0.05) 100%);
+    border-radius: var(--radius-xl);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4),
+                inset 0 0 32px rgba(124, 58, 237, 0.15),
+                0 0 60px rgba(6, 182, 212, 0.15);
+    backdrop-filter: var(--blur-xl);
+    -webkit-backdrop-filter: var(--blur-xl);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    display: none;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 30px;
+    z-index: 100;
+    will-change: opacity, transform;
+}
+
+.brand-button {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 8px 16px;
+    border-radius: var(--radius-xl);
+    transition: all var(--transition-spring);
+    height: 60px;
+}
+
+.brand-button:hover {
+    background: linear-gradient(135deg, rgba(2, 6, 23, 0.5) 0%, rgba(124, 58, 237, 0.1) 100%);
+    box-shadow: 0 4px 20px rgba(124, 58, 237, 0.2), inset 0 0 20px rgba(124, 58, 237, 0.15);
+}
+
+.brand-button:active { transform: scale(0.98); }
+
+.brand-button img, .navbar-logo {
+    height: 48px;
+    width: 48px;
+    object-fit: contain;
+}
+
+.brand-text {
+    font-size: 20px;
+    font-weight: 700;
+    color: #fff;
+    line-height: 1;
+    letter-spacing: 0.3px;
+}
+
+.brand-subtitle {
+    font-size: 14px;
+    font-weight: 400;
+    color: #fff;
+    line-height: 1;
+    letter-spacing: 0.2px;
+}
+
+.social-buttons {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+}
+
+.social-button {
+    width: 48px;
+    height: 48px;
+    border-radius: var(--radius-xl);
+    background: linear-gradient(135deg, rgba(124, 58, 237, 0.15) 0%, rgba(124, 58, 237, 0.08) 100%);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: #fff;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all var(--transition-spring);
+    padding: 0;
+    backdrop-filter: var(--blur-md);
+    -webkit-backdrop-filter: var(--blur-md);
+}
+
+.social-button svg { width: 24px; height: 24px; }
+
+.social-button:hover {
+    background: linear-gradient(135deg, rgba(124, 58, 237, 0.25) 0%, rgba(6, 182, 212, 0.15) 100%);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    box-shadow: 0 8px 32px rgba(124, 58, 237, 0.25), inset 0 0 20px rgba(2, 6, 23, 0.5), 0 0 30px rgba(6, 182, 212, 0.2);
+    transform: translateY(-2px);
+}
+
+.social-button:active {
+    transform: scale(0.94) translateY(0);
+    background: rgba(255, 255, 255, 0.2);
+}
+
+@keyframes fadeOutBottom {
+    from { opacity: 1; transform: var(--center, translate(0,0)) translateY(0); }
+    to { opacity: 0; transform: var(--center, translate(0,0)) translateY(40px); }
+}
+
+@keyframes fadeInTop {
+    from { opacity: 0; transform: var(--center, translate(0,0)) translateY(-40px); }
+    to { opacity: 1; transform: var(--center, translate(0,0)) translateY(0); }
+}
+
+.fade-out-bottom { animation: fadeOutBottom var(--transition-base) forwards !important; }
+.fade-in-top { animation: fadeInTop var(--transition-base) forwards !important; }
+
+.scene > *, .navbar {
+    transition: opacity var(--transition-base), transform var(--transition-base);
+    transform: var(--center, translate(0,0)) translateY(var(--anim-y, 0px));
+    opacity: calc(var(--anim-opacity, 1));
+    will-change: opacity, transform;
+}
+
+.pre-hidden {
+    --anim-y: -40px;
+    --anim-opacity: 0;
+}
+
+body.chat-active .navbar { display: none !important; }
+body.chat-active .chat-shell {
+    top: 10px !important; left: 10px !important; right: 10px !important; bottom: 10px !important;
+    padding: 8px !important; gap: 8px !important;
+}
+
+body.is-resizing, body.is-resizing * { cursor: col-resize !important; user-select: none; }
+
+@media (max-width: 1100px) {
+    .chat-layout { grid-template-columns: 1fr; grid-auto-rows: minmax(160px, auto); gap: 10px; }
+    .chat-resizer { display: none; }
+}
+
+@media (max-width: 720px) {
+    .chat-shell { top: 100px; left: 12px; right: 12px; bottom: 12px; }
+    .chat-topbar { flex-direction: column; align-items: flex-start; }
+    .chat-top-actions { align-self: flex-end; }
+}
+
+@media (max-width: 768px) {
+    .account-form-container { max-width: 95vw; }
+    .account-form-columns { flex-direction: column; gap: 16px; }
+}

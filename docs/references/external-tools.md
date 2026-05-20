@@ -43,7 +43,11 @@ python-dotenv
 
 ```bash
 # Manual API testing with curl
+<<<<<<< HEAD
 curl -X POST http://localhost:8000/chat/stream \
+=======
+curl -X POST http://localhost:8000/api/chat/stream \
+>>>>>>> 9b192d1d56a53f6a50359f035495dbb7c35b64ca
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{"message": "What is philosophy?"}'
@@ -64,4 +68,8 @@ curl -X POST http://localhost:8000/chat/stream \
 - **Memory Bank**: `memory-bank/rag_project/`
   - `activeContext.md`: Current work
   - `productContext.md`: Product decisions
+<<<<<<< HEAD
 - **Docs**: This `docs/` directory
+=======
+- **Docs**: This `docs/` directory
+>>>>>>> 9b192d1d56a53f6a50359f035495dbb7c35b64ca
