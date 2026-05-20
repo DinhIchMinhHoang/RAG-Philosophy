@@ -58,6 +58,27 @@ class JobUpdaterTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             updater.set_state(self.job.id, stage="parsing")
 
+    def test_start_run_can_restart_later_stage_for_retry(self) -> None:
+        updater = JobUpdater(self.session)
+
+        updater.set_state(
+            self.job.id,
+            status="queued",
+            stage="embedding",
+            progress_pct=75,
+            stage_detail="retrying_after_error: timeout",
+            error_message="temporary outage",
+        )
+        restarted = updater.start_run(self.job.id, pipeline_version="1.0.1")
+
+        self.assertEqual(restarted.status, "running")
+        self.assertEqual(restarted.stage, "fetching_object")
+        self.assertEqual(restarted.progress_pct, 0)
+        self.assertEqual(restarted.stage_detail, "starting")
+        self.assertIsNone(restarted.error_message)
+        self.assertEqual(restarted.pipeline_version, "1.0.1")
+        self.assertIsNotNone(restarted.started_at)
+
     def test_fail_writes_terminal_fields(self) -> None:
         updater = JobUpdater(self.session)
 

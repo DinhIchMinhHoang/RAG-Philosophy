@@ -37,8 +37,6 @@ DEVICE = "cpu"  # Change to "cuda" for GPU
 
 **Mitigation**: Use smaller model or GPU
 
-<<<<<<< HEAD
-=======
 ### Hybrid Retrieval Overhead
 
 **Bottleneck**: BM25 adds an in-memory sparse scan over child docs for each query
@@ -54,7 +52,6 @@ DEVICE = "cpu"  # Change to "cuda" for GPU
 - Filter candidate docs before sparse scoring
 - Move to a sparse index if hybrid traffic grows
 
->>>>>>> 9b192d1d56a53f6a50359f035495dbb7c35b64ca
 ### LLM Generation (Step 4)
 
 **Bottleneck**: Gemini API latency
@@ -85,9 +82,5 @@ print(f"Step took {time.time() - start:.2f}s")
 | Qdrant (:memory:) | ~50MB per 2000 vectors |
 | InMemoryStore | ~10MB per 100 parent docs |
 | Embedding model | ~500MB |
-<<<<<<< HEAD
-| LLM (Gemini API) | N/A (remote) |
-=======
 | Hybrid BM25 token cache | Scales with child doc count |
 | LLM (Gemini API) | N/A (remote) |
->>>>>>> 9b192d1d56a53f6a50359f035495dbb7c35b64ca

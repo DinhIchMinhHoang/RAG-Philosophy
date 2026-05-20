@@ -88,6 +88,7 @@ export function initAuthScene(transitionManager) {
                 const usernameGuess = email.split('@')[0] || 'user';
                 store.setUser({ username: usernameGuess, email, displayName: usernameGuess, bio: '', isAdmin: isAdminEmail(email) });
                 transitionManager.updateAuthUI();
+                document.dispatchEvent(new CustomEvent('auth:changed'));
                 signInForm.reset();
                 transitionManager.transitionTo('dashboard');
             } catch (err) {
@@ -118,6 +119,7 @@ export function initAuthScene(transitionManager) {
                 await signup(username, email, password);
                 store.setUser({ username, email, displayName: username, bio: '', isAdmin: isAdminEmail(email) });
                 transitionManager.updateAuthUI();
+                document.dispatchEvent(new CustomEvent('auth:changed'));
                 signUpForm.reset();
                 transitionManager.transitionTo('dashboard');
             } catch (err) {
@@ -202,6 +204,7 @@ export function initAuthScene(transitionManager) {
                 clearToken();
                 store.clearUser();
                 transitionManager.updateAuthUI();
+                document.dispatchEvent(new CustomEvent('auth:changed'));
                 transitionManager.transitionTo('landing');
             });
         }

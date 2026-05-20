@@ -249,6 +249,8 @@ The persistent ingest flow is implemented and stateful:
 6. Qdrant vectors are deleted by document/version before reindex, then upserted with deterministic UUID5 point IDs.
 7. Parent and child chunk metadata is persisted in SQL.
 
+Transient worker failures reuse the same `IngestJob` row: Celery marks it `queued` on retry, and the next `start_run()` rewinds the job to `running` at `fetching_object` with progress reset to zero.
+
 This is one of the strongest parts of the backend. It gives the UI real job polling and gives the system a path toward idempotent reindexing.
 
 ## Chat And Streaming

@@ -1,8 +1,9 @@
-#!/bin/bash
+#!/bin/sh
 set -e
 
 echo "Starting Ollama server in background..."
-exec /bin/ollama serve &
+/bin/ollama serve &
+ollama_pid="$!"
 
 echo "Waiting for Ollama API to be ready..."
 until curl -s http://localhost:11434/api/version > /dev/null 2>&1; do
@@ -19,4 +20,4 @@ else
 fi
 
 echo "Ollama setup complete, keeping server running..."
-wait
+wait "$ollama_pid"

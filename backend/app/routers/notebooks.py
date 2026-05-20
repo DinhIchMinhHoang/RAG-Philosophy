@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Query, Session
 
 from .. import database, models
 from ..core.dependencies import get_current_user
@@ -33,22 +33,32 @@ class NotebookResponse(BaseModel):
     created_at: str
 
 
+def _notebook_response(notebook: models.Notebook) -> NotebookResponse:
+    return NotebookResponse(
+        id=notebook.id,
+        title=notebook.title,
+        owner_id=notebook.owner_id,
+        is_community=bool(notebook.is_community),
+        cover_url=notebook.cover_url,
+        cover_mode=notebook.cover_mode,
+        cover_color=notebook.cover_color,
+        created_at=notebook.created_at.isoformat(),
+    )
+
+
+def _visible_notebooks_query(db: Session, user_id: int) -> Query[models.Notebook]:
+    return db.query(models.Notebook).filter(
+        (models.Notebook.owner_id == user_id) | (models.Notebook.is_community == 1)
+    )
+
+
 @router.get("", response_model=list[NotebookResponse])
 def list_notebooks(
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(database.get_db),
 ):
-    nb = db.query(models.Notebook).filter(
-        (models.Notebook.owner_id == current_user.id) | models.Notebook.is_community
-    ).order_by(models.Notebook.created_at.desc()).all()
-    return [
-        NotebookResponse(
-            id=n.id, title=n.title, owner_id=n.owner_id, is_community=bool(n.is_community),
-            cover_url=n.cover_url, cover_mode=n.cover_mode, cover_color=n.cover_color,
-            created_at=n.created_at.isoformat(),
-        )
-        for n in nb
-    ]
+    notebooks = _visible_notebooks_query(db, current_user.id).order_by(models.Notebook.created_at.desc()).all()
+    return [_notebook_response(notebook) for notebook in notebooks]
 
 
 @router.post("", status_code=status.HTTP_201_CREATED, response_model=NotebookResponse)
@@ -57,15 +67,15 @@ def create_notebook(
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(database.get_db),
 ):
-    nb = models.Notebook(title=payload.title, owner_id=current_user.id, is_community=payload.is_community)
+    nb = models.Notebook(
+        title=payload.title,
+        owner_id=current_user.id,
+        is_community=1 if payload.is_community else 0,
+    )
     db.add(nb)
     db.commit()
     db.refresh(nb)
-    return NotebookResponse(
-        id=nb.id, title=nb.title, owner_id=nb.owner_id, is_community=bool(nb.is_community),
-        cover_url=nb.cover_url, cover_mode=nb.cover_mode, cover_color=nb.cover_color,
-        created_at=nb.created_at.isoformat(),
-    )
+    return _notebook_response(nb)
 
 
 @router.patch("/{notebook_id}", response_model=NotebookResponse)
@@ -90,11 +100,7 @@ def update_notebook(
         nb.cover_color = payload.cover_color
     db.commit()
     db.refresh(nb)
-    return NotebookResponse(
-        id=nb.id, title=nb.title, owner_id=nb.owner_id, is_community=bool(nb.is_community),
-        cover_url=nb.cover_url, cover_mode=nb.cover_mode, cover_color=nb.cover_color,
-        created_at=nb.created_at.isoformat(),
-    )
+    return _notebook_response(nb)
 
 
 @router.delete("/{notebook_id}")

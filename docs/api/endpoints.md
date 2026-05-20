@@ -5,8 +5,10 @@
 ## Base URL
 
 ```
-http://localhost:8000
+http://localhost
 ```
+
+The browser and frontend client talk to the API through the Nginx entrypoint at `/api/*`.
 
 ## Authentication Endpoints
 
@@ -159,6 +161,8 @@ List currently ingested source files.
 ]
 ```
 
+`latest_job` is the newest ingest or reindex job for that document. During Celery retries, the same job id may temporarily move back to `queued` before the worker restarts it from `fetching_object`.
+
 ---
 
 ### DELETE /api/documents/{document_id}
@@ -168,15 +172,39 @@ Delete a document and associated vectors.
 **Response (200):**
 ```json
 {
+  "document_id": "doc-uuid",
+  "deleted": true,
+  "status": "deleted"
+}
+```
+
+### POST /api/documents/{document_id}/reindex
+
+Start a new ingest job for an existing document.
+
+**Request Body:**
+```json
+{
+    "pipeline_version": "v1"
+}
+```
+
+The JSON body is required, but `pipeline_version` is optional when the backend default pipeline version is acceptable.
+
+**Response (202):**
+```json
+{
     "document_id": "doc-uuid",
-    "deleted": true,
-    "status": "deleted"
+    "job_id": "job-uuid",
+    "status": "queued",
+    "pipeline_version": "v1",
+    "object_key": "doc-uuid/philosophy101.pdf"
 }
 ```
 
 ---
 
-### GET /documents/page-image/{filename}/{page_number}
+### GET /api/documents/{document_id}/page-image/{page_number}
 
 Get a rendered page from a PDF as PNG.
 
@@ -186,6 +214,11 @@ Get a rendered page from a PDF as PNG.
 
 **Errors:**
 - 404: File or page not found
+
+Legacy aliases still exist for filename-based access:
+
+- `GET /documents/page-image/{filename}/{page_number}`
+- `GET /api/documents/page-image/{filename}/{page_number}`
 
 ---
 
@@ -217,7 +250,8 @@ data: {"token": "trên "}
 data: {"token": "tài "}
 data: {"token": "liệu, "}
 ...
-data: {"token": "", "done": true}
+data: {"type": "final", "token": "", "done": true, "answer": "...", "citations": [], "conversation_id": "uuid", "message_id": "uuid", "rewritten_query": "..."}
+data: {"type": "error", "token": "", "done": true, "error": "chat_stream_failed", "citations": []}
 ```
 
 **Errors:**
@@ -247,7 +281,10 @@ Content-Type: application/json
 ```json
 {
     "answer": "...",
-    "citations": []
+    "citations": [],
+    "conversation_id": "uuid",
+    "message_id": "uuid",
+    "rewritten_query": "..."
 }
 ```
 
@@ -290,6 +327,6 @@ Health check endpoint.
 **Response (200):**
 ```json
 {
-    "message": "Chào mừng đến hệ thống Lumina RAG"
+    "message": "Welcome to Lumina RAG"
 }
 ```

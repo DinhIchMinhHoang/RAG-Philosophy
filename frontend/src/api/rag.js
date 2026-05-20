@@ -1,8 +1,9 @@
 import { BASE_URL, getToken, request } from './client.js';
 
-export async function uploadDocument(file) {
+export async function uploadDocument(file, { notebookId } = {}) {
     const formData = new FormData();
     formData.append('file', file);
+    if (notebookId) formData.append('notebook_id', String(notebookId));
     const headers = {};
     const token = getToken();
     if (token) headers['Authorization'] = `Bearer ${token}`;

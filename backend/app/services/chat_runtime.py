@@ -15,7 +15,7 @@ from ..ingest.qdrant_store import build_qdrant_client
 from ..models import DocumentChunk
 
 try:
-    from rag_core.common.embeddings import build_embeddings as build_embeddings_from_common
+    from rag_core.common.embeddings import get_embeddings as get_embeddings_from_common
     from rag_core.common.llm import build_chat_llm, infer_llm_provider
     from rag_core.config import Config as RagConfig
 except Exception as exc:  # pragma: no cover
@@ -64,7 +64,7 @@ class ChatRuntimeService:
 
     def _get_embeddings(self):
         if self._embeddings is None:
-            self._embeddings = build_embeddings_from_common()
+            self._embeddings = get_embeddings_from_common()
         return self._embeddings
 
     def _dedupe_contexts(self, contexts: list[RetrievedContext]) -> list[RetrievedContext]:
@@ -151,27 +151,72 @@ class ChatRuntimeService:
             logger.warning("answer_unknown_citation_markers: %s", ",".join(unknown_ids))
         return filtered
 
-    def retrieve(self, db: Session, question: str, *, pipeline_version: str) -> list[RetrievedContext]:
+    def retrieve(
+        self,
+        db: Session,
+        question: str,
+        *,
+        pipeline_version: str,
+        user_id: int | None = None,
+        notebook_id: int | None = None,
+    ) -> list[RetrievedContext]:
         mode = settings.retrieval_mode
         if mode == "hybrid":
-            return self._retrieve_hybrid(db, question, pipeline_version=pipeline_version)
-        return self._retrieve_dense(db, question, pipeline_version=pipeline_version)
+            return self._retrieve_hybrid(
+                db,
+                question,
+                pipeline_version=pipeline_version,
+                user_id=user_id,
+                notebook_id=notebook_id,
+            )
+        return self._retrieve_dense(
+            db,
+            question,
+            pipeline_version=pipeline_version,
+            user_id=user_id,
+            notebook_id=notebook_id,
+        )
 
-    def _retrieve_hybrid(self, db: Session, question: str, *, pipeline_version: str) -> list[RetrievedContext]:
+    def _retrieve_hybrid(
+        self,
+        db: Session,
+        question: str,
+        *,
+        pipeline_version: str,
+        user_id: int | None = None,
+        notebook_id: int | None = None,
+    ) -> list[RetrievedContext]:
         # Run-ready hybrid stub: keep same interface and return dense results,
         # while reserving hook points for future sparse merge + RRF.
         logger.info("hybrid_mode_stub_dense_passthrough")
-        return self._retrieve_dense(db, question, pipeline_version=pipeline_version)
-
-    def _retrieve_dense(self, db: Session, question: str, *, pipeline_version: str) -> list[RetrievedContext]:
-        vector = self._get_embeddings().embed_query(question)
-        client = build_qdrant_client()
-        query_filter = rest.Filter(
-            must=[
-                rest.FieldCondition(key="pipeline_version", match=rest.MatchValue(value=pipeline_version)),
-                rest.FieldCondition(key="kind", match=rest.MatchValue(value="child")),
-            ]
+        return self._retrieve_dense(
+            db,
+            question,
+            pipeline_version=pipeline_version,
+            user_id=user_id,
+            notebook_id=notebook_id,
         )
+
+    def _retrieve_dense(
+        self,
+        db: Session,
+        question: str,
+        *,
+        pipeline_version: str,
+        user_id: int | None = None,
+        notebook_id: int | None = None,
+    ) -> list[RetrievedContext]:
+        vector = self._get_embeddings().embed_query(question)
+        must_filters = [
+            rest.FieldCondition(key="pipeline_version", match=rest.MatchValue(value=pipeline_version)),
+            rest.FieldCondition(key="kind", match=rest.MatchValue(value="child")),
+        ]
+        if user_id is not None:
+            must_filters.append(rest.FieldCondition(key="owner_id", match=rest.MatchValue(value=user_id)))
+        if notebook_id is not None:
+            must_filters.append(rest.FieldCondition(key="notebook_id", match=rest.MatchValue(value=notebook_id)))
+        client = build_qdrant_client()
+        query_filter = rest.Filter(must=must_filters)
 
         try:
             hits = client.search(
@@ -204,15 +249,17 @@ class ChatRuntimeService:
             return []
 
         parent_ids = list(ranked_parents.keys())
-        parent_rows = (
-            db.query(DocumentChunk)
-            .filter(
-                DocumentChunk.id.in_(parent_ids),
-                DocumentChunk.kind == "parent",
-                DocumentChunk.pipeline_version == pipeline_version,
-            )
-            .all()
+        parent_query = db.query(DocumentChunk).filter(
+            DocumentChunk.id.in_(parent_ids),
+            DocumentChunk.kind == "parent",
+            DocumentChunk.pipeline_version == pipeline_version,
         )
+        if user_id is not None:
+            parent_query = parent_query.filter(DocumentChunk.owner_id == user_id)
+        if notebook_id is not None:
+            parent_query = parent_query.filter(DocumentChunk.notebook_id == notebook_id)
+
+        parent_rows = parent_query.all()
         parent_map = {row.id: row for row in parent_rows}
 
         ordered: list[RetrievedContext] = []

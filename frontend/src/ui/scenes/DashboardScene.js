@@ -2,6 +2,10 @@ import { hideImageModal, showImageModal } from '../components/Modal.js';
 import { isAuthenticated } from '../../api/client.js';
 import { getNotebooks, createNotebook, updateNotebook, deleteNotebook } from '../../api/notebooks.js';
 
+export function shouldLoadNotebooks() {
+    return isAuthenticated();
+}
+
 function renderSkeletonCards(grid, count = 6) {
     grid.innerHTML = '';
     for (let i = 0; i < count; i++) {
@@ -46,9 +50,16 @@ function buildNotebookItem(nb) {
     return item;
 }
 
-function renderNotebooks(grid, notebooks) {
+function renderNotebooks(grid, notebooks, emptyMessage) {
     grid.innerHTML = '';
-    (notebooks || []).forEach(nb => grid.appendChild(buildNotebookItem(nb)));
+    if (!notebooks || notebooks.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'notebook-empty-state';
+        empty.textContent = emptyMessage;
+        grid.appendChild(empty);
+        return;
+    }
+    notebooks.forEach(nb => grid.appendChild(buildNotebookItem(nb)));
 }
 
 function repositionThumb(thumb, opt, pad) {
@@ -290,15 +301,18 @@ export function initDashboardScene(transitionManager) {
                 const notebooks = await getNotebooks();
                 const community = (notebooks || []).filter(n => n.is_community);
                 const mine = (notebooks || []).filter(n => !n.is_community);
-                renderNotebooks(communityGrid, community);
-                renderNotebooks(myGrid, mine);
+                renderNotebooks(communityGrid, community, 'No community notebooks yet');
+                renderNotebooks(myGrid, mine, 'No notebooks yet');
             } catch (err) {
                 console.error('[Dashboard] Failed to load notebooks', err);
-                communityGrid.innerHTML = '<div style="color:rgba(255,255,255,0.4);padding:12px;">Failed to load notebooks</div>';
+                communityGrid.innerHTML = '<div class="notebook-empty-state">Failed to load notebooks</div>';
                 myGrid.innerHTML = '';
             }
         }
-        loadNotebooks();
+        document.addEventListener('auth:changed', () => {
+            if (shouldLoadNotebooks()) loadNotebooks();
+        });
+        if (shouldLoadNotebooks()) loadNotebooks();
 
         document.addEventListener('click', (ev) => {
             const item = ev.target.closest('.notebook-item');

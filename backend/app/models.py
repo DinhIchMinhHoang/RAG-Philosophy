@@ -45,6 +45,8 @@ class DocumentRecord(Base):
     __tablename__ = "documents"
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: str(uuid.uuid4()))
+    owner_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    notebook_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("notebooks.id", ondelete="SET NULL"), nullable=True, index=True)
     filename: Mapped[str] = mapped_column(String(512), nullable=False)
     object_key: Mapped[str] = mapped_column(String(1024), nullable=False, unique=True)
     mime_type: Mapped[str] = mapped_column(String(128), nullable=False)
@@ -81,6 +83,8 @@ class DocumentChunk(Base):
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: str(uuid.uuid4()))
     document_id: Mapped[str] = mapped_column(String(64), ForeignKey("documents.id", ondelete="CASCADE"), nullable=False, index=True)
+    owner_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    notebook_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("notebooks.id", ondelete="SET NULL"), nullable=True, index=True)
     job_id: Mapped[str | None] = mapped_column(String(64), ForeignKey("ingest_jobs.id", ondelete="SET NULL"), nullable=True, index=True)
     kind: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
     parent_chunk_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
@@ -101,7 +105,7 @@ class Notebook(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     title: Mapped[str] = mapped_column(String(256), nullable=False)
     owner_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    is_community: Mapped[bool] = mapped_column(Integer, nullable=False, default=False)
+    is_community: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     cover_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     cover_mode: Mapped[str | None] = mapped_column(String(32), nullable=True)
     cover_color: Mapped[str | None] = mapped_column(String(32), nullable=True)

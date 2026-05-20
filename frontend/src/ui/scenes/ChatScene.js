@@ -35,7 +35,8 @@ function citationButtonHtml(citation, label) {
     const citationId = citation?.citation_id || '';
     const source = citation?.source || '';
     const page = citation?.page || '';
-    return `<button class="citation-btn" data-citation-id="${escapeHtml(citationId)}" data-file="${escapeHtml(source)}" data-page="${escapeHtml(page)}" title="${escapeHtml(citationLabel(citation))}"><span class="material-icons">find_in_page</span>${escapeHtml(label)}</button>`;
+    const documentId = citation?.document_id || '';
+    return `<button class="citation-btn" data-citation-id="${escapeHtml(citationId)}" data-document-id="${escapeHtml(documentId)}" data-file="${escapeHtml(source)}" data-page="${escapeHtml(page)}" title="${escapeHtml(citationLabel(citation))}"><span class="material-icons">find_in_page</span>${escapeHtml(label)}</button>`;
 }
 
 function renderCitationChips(container, citations = []) {
@@ -52,10 +53,11 @@ function renderCitationChips(container, citations = []) {
         chip.className = 'source-chip';
         chip.type = 'button';
         chip.title = citationLabel(citation);
+        chip.dataset.documentId = citation.document_id || '';
         chip.dataset.file = citation.source || '';
         chip.dataset.page = citation.page || '';
         chip.innerHTML = `<span class="material-icons">description</span><span>${escapeHtml(citationLabel(citation))}</span>`;
-        chip.addEventListener('click', () => showPagePreview(citation.source, citation.page));
+        chip.addEventListener('click', () => showPagePreview(citation.source, citation.page, citation.document_id));
         container.appendChild(chip);
     });
 }
@@ -87,23 +89,25 @@ function processRichText(container, text, citations = []) {
 
     container.querySelectorAll('.citation-btn').forEach(btn => {
         btn.addEventListener('click', () => {
+            const documentId = btn.getAttribute('data-document-id');
             const file = btn.getAttribute('data-file');
             const page = btn.getAttribute('data-page');
             const firstSource = document.querySelector('#scene-chat .source-name')?.textContent;
-            showPagePreview(file || firstSource, page);
+            showPagePreview(file || firstSource, page, documentId);
         });
     });
 }
 
-const viewerState = { filename: null, page: null };
+const viewerState = { filename: null, page: null, documentId: null };
 let activeStreamController = null;
 let activeConversationId = null;
 let setCollapsedFn = null;
 
-export function showPagePreview(filename, page = null) {
+export function showPagePreview(filename, page = null, documentId = null) {
     if (!filename) return;
     viewerState.filename = filename;
     viewerState.page = page;
+    viewerState.documentId = documentId || null;
 
     const viewer = document.querySelector('#sourceViewer');
     const empty = viewer?.querySelector('.viewer-empty');
@@ -117,7 +121,11 @@ export function showPagePreview(filename, page = null) {
     if (embed) {
         const pageNumber = Number(page);
         const pageFragment = Number.isFinite(pageNumber) && pageNumber > 0 ? `#page=${pageNumber}` : '';
-        embed.src = `${BASE_URL}/documents/file/${encodeURIComponent(filename)}${pageFragment}`;
+        const fileKey = documentId || filename;
+        const filePath = documentId
+            ? `/documents/${encodeURIComponent(fileKey)}/file`
+            : `/documents/file/${encodeURIComponent(fileKey)}`;
+        embed.src = `${BASE_URL}${filePath}${pageFragment}`;
     }
 
     if (document.querySelector('.chat-shell')?.getAttribute('data-right-collapsed') === 'true') {
@@ -324,14 +332,16 @@ export function initChatScene(transitionManager) {
             item.className = 'source-item';
             item.style.cursor = 'pointer';
             item.innerHTML = `<div class="source-icon"><span class="material-icons">${icon}</span></div><div class="source-meta"><div class="source-name">${file.name}</div><div class="source-type uploading">${meta}</div></div>`;
-            item.addEventListener('click', () => { if (isPDF) showPagePreview(file.name); });
+            item.addEventListener('click', () => { if (isPDF) showPagePreview(file.name, null, item.dataset.documentId || null); });
             sourceList.appendChild(item);
             updateSourceEmpty(sourceEmpty, sourceList);
 
             if (isPDF) {
                 const metaEl = item.querySelector('.source-type');
                 try {
-                    const result = await uploadDocument(file);
+                    const notebookId = chatScene.dataset.notebookId ? Number(chatScene.dataset.notebookId) : null;
+                    const result = await uploadDocument(file, { notebookId });
+                    if (result.document_id) item.dataset.documentId = result.document_id;
                     if (result.pages !== undefined || result.chunks !== undefined) {
                         setSourceMeta(metaEl, `${result.pages ?? 0} pages, ${result.chunks ?? 0} chunks`, false);
                     } else if (result.job_id) {

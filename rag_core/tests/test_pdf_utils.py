@@ -1,17 +1,8 @@
-<<<<<<< HEAD
-import sys, os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-=======
->>>>>>> 9b192d1d56a53f6a50359f035495dbb7c35b64ca
 import os
 import tempfile
 import unittest
 
-<<<<<<< HEAD
-from common.pdf_utils import collect_pdf_paths
-=======
 from rag_core.common.pdf_utils import collect_pdf_paths
->>>>>>> 9b192d1d56a53f6a50359f035495dbb7c35b64ca
 
 
 class TestPdfUtils(unittest.TestCase):

@@ -133,6 +133,13 @@ Job enums are unchanged:
 - status: `queued`, `running`, `succeeded`, `failed`
 - stage: `fetching_object`, `parsing`, `chunking`, `embedding`, `indexing_vector`, `persisting_metadata`
 
+Retry behavior:
+
+- transient worker failures reuse the same job row
+- Celery retry marks the job `queued` with `stage_detail=retrying_after_error: ...`
+- the next `start_run` rewinds the same job to `running` at `fetching_object` with `progress_pct=0`
+- terminal failures keep the same job and set `status=failed`, `stage_detail=ingest_failed`, and `error_message`
+
 ## Error Envelope
 
 All JSON errors use:

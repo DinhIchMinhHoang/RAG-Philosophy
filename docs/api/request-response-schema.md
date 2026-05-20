@@ -48,6 +48,7 @@ Only `message` is required. The backend creates a conversation when `conversatio
 ```json
 {"type": "token", "token": "chunk_of_text", "done": false}
 {"type": "final", "token": "", "done": true, "answer": "... [C1]", "citations": [{"citation_id": "C1", "rank": 1, "source": "intro.pdf", "page": 12, "snippet": "...", "document_id": "uuid", "chunk_id": "uuid", "doc_id": "uuid"}], "conversation_id": "uuid", "message_id": "uuid", "rewritten_query": "..."}
+{"type": "error", "token": "", "done": true, "error": "chat_stream_failed", "citations": []}
 ```
 
 Final `citations` includes only citations whose marker appears in `answer`.
@@ -67,6 +68,23 @@ Final `citations` includes only citations whose marker appears in `answer`.
     "status": "queued",
     "pipeline_version": "v1",
     "object_key": "doc-uuid/philosophy.pdf"
+}
+```
+
+### Job Response
+```json
+{
+    "job_id": "job-uuid",
+    "document_id": "doc-uuid",
+    "status": "queued",
+    "stage": "fetching_object",
+    "progress_pct": 0,
+    "stage_detail": "queued",
+    "error_message": null,
+    "pipeline_version": "v1",
+    "queued_at": "2026-05-15T10:00:00Z",
+    "started_at": null,
+    "finished_at": null
 }
 ```
 
@@ -94,6 +112,20 @@ Final `citations` includes only citations whose marker appears in `answer`.
 **500 - Internal Server Error:**
 ```json
 {"detail": "Failed to process file: error message"}
+```
+
+Current backend errors are wrapped in a stable envelope:
+
+```json
+{
+  "error": {
+    "code": "http_400",
+    "message": "Message cannot be empty",
+    "request_id": "uuid",
+    "details": null
+  },
+  "detail": "Message cannot be empty"
+}
 ```
 
 ## Field Validation Rules

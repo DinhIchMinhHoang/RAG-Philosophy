@@ -18,17 +18,11 @@ The UET RAG system is a full-stack document question-answering application consi
 │                    FastAPI Backend (Port 8000)                         │
 │   ├── main.py          - App entry, CORS, router registration          │
 │   ├── routers/                                                         │
-<<<<<<< HEAD
-│   │   ├── auth.py      - /signup, /login, /change-password             │
-│   │   ├── chat.py      - /chat/stream (SSE)                            │
-│   │   └── documents.py - /documents/upload, /documents/sources        │
-=======
 │   │   ├── auth.py      - /api/signup, /api/login, /api/change-password │
 │   │   ├── chat.py      - /api/chat/stream (SSE)                        │
-│   │   └── documents.py - /documents/file, /documents/page-image        │
->>>>>>> 9b192d1d56a53f6a50359f035495dbb7c35b64ca
+│   │   └── documents.py - /api/documents/{document_id}/file, /api/documents/{document_id}/page-image/{page_number} │
 │   ├── services/                                                         │
-│   │   └── rag_service.py - Singleton wrapping rag_core pipeline       │
+│   │   └── chat_runtime.py - Persistent retrieval and citation runtime  │
 │   ├── core/                                                             │
 │   │   └── security.py  - JWT token handling (HS256, Argon2)           │
 │   ├── models.py        - SQLAlchemy User model                        │
@@ -88,12 +82,8 @@ All configuration is centralized in `rag_core/config.py`:
 
 ## Data Flow
 
-<<<<<<< HEAD
-1. **PDF Upload**: User uploads PDF via `/documents/upload`
-=======
 1. **PDF Upload**: User uploads PDF via `/api/documents`
->>>>>>> 9b192d1d56a53f6a50359f035495dbb7c35b64ca
-2. **Ingestion Pipeline**: PDF → Pages → Chunks → Vectors → Retriever
+2. **Ingestion Pipeline**: backend creates a persisted `DocumentRecord` and `IngestJob`, then the worker fetches PDF bytes, parses pages, chunks text, embeds child chunks, writes Qdrant vectors, and stores chunk metadata
 3. **Query Flow**: User question → Retriever (child→parent) → LLM → SSE Stream
 4. **Response**: Token-by-token streaming with source citations
 
@@ -124,7 +114,7 @@ RAG-Philosophy/
 │   └── app/
 │       ├── main.py
 │       ├── routers/    # auth, chat, documents
-│       ├── services/   # rag_service
+│       ├── services/   # chat_runtime, chat_history, versioned_retrieval
 │       ├── core/      # security
 │       ├── models.py
 │       ├── schemas.py
@@ -139,8 +129,4 @@ RAG-Philosophy/
 │   ├── processed/     # Markdown after parsing
 │   └── stores/        # Qdrant + doc_store
 └── memory-bank/       # Project context
-<<<<<<< HEAD
 ```
-=======
-```
->>>>>>> 9b192d1d56a53f6a50359f035495dbb7c35b64ca

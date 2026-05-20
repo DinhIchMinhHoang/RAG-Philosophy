@@ -1,6 +1,11 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
+try:
+    from . import _bootstrap  # noqa: F401
+except ImportError:  # pragma: no cover
+    import _bootstrap  # noqa: F401
+
 from langchain_core.documents import Document
 from langchain_core.stores import InMemoryStore
 
@@ -69,10 +74,11 @@ class TestHybridRetriever(unittest.TestCase):
         mock_init.return_value = MagicMock()
         child_docs = [Document(page_content="child", metadata={"doc_id": "x", "source": "s", "page": 1})]
 
-        step3_vector_db._build_qdrant_store(child_docs, mock_init.return_value)
+        step3_vector_db._build_qdrant_store(child_docs, mock_init.return_value, ids=["point-1"])
 
         _, kwargs = mock_from_documents.call_args
         self.assertEqual(kwargs["location"], Config.QDRANT_LOCATION)
+        self.assertEqual(kwargs["ids"], ["point-1"])
 
     def test_build_vector_db_rejects_child_docs_missing_doc_id(self):
         child_docs = [Document(page_content="child", metadata={"source": "s", "page": 1})]
@@ -89,7 +95,7 @@ class TestHybridRetriever(unittest.TestCase):
         mock_build_qdrant.return_value = MagicMock()
         mock_build_store.return_value = InMemoryStore()
 
-        child_docs = [Document(page_content="child", metadata={"doc_id": "x", "source": "s", "page": 1})]
+        child_docs = [Document(page_content="child", metadata={"doc_id": "x", "source": "s", "page": 1, "_child_point_id": "point-1"})]
         parent_docs = [Document(page_content="parent", metadata={"doc_id": "x", "source": "s", "page": 1})]
 
         with patch.object(Config, "HYBRID_ENABLED", True):

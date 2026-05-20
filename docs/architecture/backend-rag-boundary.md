@@ -2,7 +2,7 @@
 
 ## Overview
 
-The backend (`backend/app/`) wraps the RAG core (`rag_core/`) as a service layer. The boundary is defined by `RAGService` in `backend/app/services/rag_service.py`, which acts as a singleton facade to the pipeline.
+The backend (`backend/app/`) wraps the RAG core (`rag_core/`) as a service layer. The active production path is the persistent ingest/chat stack in `backend/app/routers/ingest.py`, `backend/app/worker/tasks.py`, and `backend/app/services/chat_runtime.py`. `backend/app/services/rag_service.py` remains a legacy singleton facade for the standalone core path.
 
 ## Responsibility Separation
 
@@ -12,23 +12,19 @@ The backend (`backend/app/`) wraps the RAG core (`rag_core/`) as a service layer
 - **Authentication**: JWT token generation/validation, password hashing
 - **File Management**: Temporary file storage for uploaded PDFs
 - **SSE Streaming**: Token-by-token response streaming
-- **Database**: User management via SQLite/SQLAlchemy
+- **Database**: User, document, job, and chat history persistence
 
 ### RAG Core Responsibilities (Python Pipeline)
 
 - **PDF Parsing**: Hybrid two-pass algorithm (pymupdf4llm + Ollama)
-- **Text Chunking**: Parent-child splitting with doc_id management
+- **Text Chunking**: Parent-child splitting with `doc_id` management
 - **Vector Indexing**: Qdrant + InMemoryStore setup
 - **Retrieval**: MultiVectorRetriever execution
 - **Generation**: LLM chain setup and invocation
 
 ## Interface Contract
 
-<<<<<<< HEAD
-### Backend → RAG Core
-=======
-### Backend ? RAG Core
->>>>>>> 9b192d1d56a53f6a50359f035495dbb7c35b64ca
+### Backend -> RAG Core
 
 ```python
 # backend/app/services/rag_service.py
@@ -61,11 +57,13 @@ from rag_core.step3_vector_db import build_vector_db
 ## Error Handling
 
 ### RAG Core Errors
+
 - `ValueError`: Empty documents after parsing
-- `KeyError`: Missing doc_id in metadata
+- `KeyError`: Missing `doc_id` in metadata
 - Parsing exceptions are caught and logged; fallback to raw text extraction
 
 ### Backend Errors
+
 - HTTP 400: Invalid request (empty message, non-PDF upload)
 - HTTP 401: Unauthorized (invalid/missing JWT)
 - HTTP 404: File not found (document reset)
@@ -73,7 +71,7 @@ from rag_core.step3_vector_db import build_vector_db
 
 ## State Management
 
-### RAGService Singleton Pattern
+### Legacy RAGService Singleton Pattern
 
 ```python
 # backend/app/services/rag_service.py
@@ -95,13 +93,7 @@ State is maintained in instance variables:
 
 ## Testing Boundary
 
-<<<<<<< HEAD
-- Backend tested via manual API calls (`/documents/upload`, `/chat/stream`)
-- RAG core tested via `python rag_core/main_test.py` smoke tests
-- Unit tests in `rag_core/tests/` (9 tests, all passing)
-=======
 - Backend tested via manual API calls (`/api/documents`, `/api/chat/stream`)
 - RAG core tested via `python rag_core/main_test.py` smoke tests
 - Unit tests in `rag_core/tests/` use package imports now and no longer modify `sys.path`
 - The runtime backend still keeps a small import guard so `rag_core` is importable when running under the backend process
->>>>>>> 9b192d1d56a53f6a50359f035495dbb7c35b64ca

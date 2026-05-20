@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from functools import lru_cache
 from typing import Iterable
 
 from qdrant_client import QdrantClient
@@ -41,16 +42,53 @@ def _format_api_exception(exc: ApiException) -> str:
 
 
 
-def build_qdrant_client() -> QdrantClient:
-    api_key = settings.qdrant_api_key or None
+@lru_cache(maxsize=8)
+def _cached_qdrant_client(
+    qdrant_url: str | None,
+    qdrant_host: str,
+    qdrant_port: int,
+    qdrant_api_key: str | None,
+) -> QdrantClient:
+    api_key = qdrant_api_key or None
     # Avoid sending API key over plain HTTP; local compose usually uses no auth.
-    if settings.qdrant_url and settings.qdrant_url.startswith("http://"):
+    if qdrant_url and qdrant_url.startswith("http://"):
         api_key = None
 
-    if settings.qdrant_url:
-        return QdrantClient(url=settings.qdrant_url, api_key=api_key)
-    return QdrantClient(host=settings.qdrant_host, port=settings.qdrant_port, api_key=api_key)
+    if qdrant_url:
+        return QdrantClient(url=qdrant_url, api_key=api_key)
+    return QdrantClient(host=qdrant_host, port=qdrant_port, api_key=api_key)
 
+
+def build_qdrant_client() -> QdrantClient:
+    return _cached_qdrant_client(
+        settings.qdrant_url,
+        settings.qdrant_host,
+        settings.qdrant_port,
+        settings.qdrant_api_key,
+    )
+
+
+def _ensure_payload_indexes(client: QdrantClient) -> None:
+    if not hasattr(client, "create_payload_index"):
+        return
+
+    index_specs = {
+        "document_id": rest.PayloadSchemaType.KEYWORD,
+        "owner_id": rest.PayloadSchemaType.INTEGER,
+        "notebook_id": rest.PayloadSchemaType.INTEGER,
+        "pipeline_version": rest.PayloadSchemaType.KEYWORD,
+        "kind": rest.PayloadSchemaType.KEYWORD,
+    }
+    for field_name, schema in index_specs.items():
+        try:
+            client.create_payload_index(
+                collection_name=settings.qdrant_collection,
+                field_name=field_name,
+                field_schema=schema,
+            )
+        except Exception:
+            # Existing indexes and older local clients should not block ingest.
+            continue
 
 
 def ensure_collection(client: QdrantClient, vector_size: int) -> None:
@@ -61,6 +99,7 @@ def ensure_collection(client: QdrantClient, vector_size: int) -> None:
             collection_name=settings.qdrant_collection,
             vectors_config=rest.VectorParams(size=vector_size, distance=rest.Distance.COSINE),
         )
+    _ensure_payload_indexes(client)
 
 
 
@@ -74,6 +113,8 @@ def deterministic_point_id(document_id: str, pipeline_version: str, chunk_id: st
 def build_qdrant_payload(chunk: DocumentChunk) -> dict:
     return {
         "document_id": chunk.document_id,
+        "owner_id": chunk.owner_id,
+        "notebook_id": chunk.notebook_id,
         "doc_id": chunk.doc_id,
         "parent_chunk_id": chunk.parent_chunk_id,
         "source": chunk.source,

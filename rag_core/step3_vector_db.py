@@ -1,26 +1,5 @@
 from __future__ import annotations
 
-<<<<<<< HEAD
-Kiến trúc Parent-Document Retrieval:
-  • child_docs  → được nhúng thành vector và lưu vào Qdrant (vector search).
-  • parent_docs → được lưu vào InMemoryStore (tra cứu theo doc_id → full context).
-  • MultiVectorRetriever kết nối hai kho trên qua id_key="doc_id":
-      1. Tìm child_docs gần nhất trong Qdrant.
-      2. Dùng doc_id của child để lấy parent tương ứng từ InMemoryStore.
-      3. Trả Parent Documents cho LLM → câu trả lời có ngữ cảnh đầy đủ.
-
-Public API:
-  build_vector_db(child_docs, parent_docs) -> MultiVectorRetriever
-
-Metadata BẢO TỒN:
-  Mỗi Document trả về bởi retriever có đầy đủ {'source': str, 'page': int}.
-"""
-
-from __future__ import annotations
-
-import logging
-=======
->>>>>>> 9b192d1d56a53f6a50359f035495dbb7c35b64ca
 from typing import List
 
 from langchain.retrievers import MultiVectorRetriever
@@ -29,37 +8,6 @@ from langchain_core.stores import InMemoryStore
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_qdrant import QdrantVectorStore
 
-<<<<<<< HEAD
-from common.logging_utils import configure_logging, get_logger
-from common.embeddings import build_embeddings as build_embeddings_from_common
-from config import Config
-
-configure_logging()
-logger = get_logger(__name__)
-
-
-def _init_embeddings() -> HuggingFaceEmbeddings:
-    """
-    Khởi tạo HuggingFaceEmbeddings cho Harrier model.
-
-    Cấu hình:
-      - model_name: Config.EMBEDDING_MODEL_NAME (microsoft/harrier-oss-v1-270m)
-      - device: Config.DEVICE (chuyển sang 'cuda' nếu có GPU)
-      - trust_remote_code: True — bắt buộc cho Harrier custom architecture
-      - normalize_embeddings: True — chuẩn hóa L2 cho Cosine Similarity chính xác
-
-    Returns:
-        HuggingFaceEmbeddings đã sẵn sàng dùng.
-    """
-    logger.info(
-        f"[Step 3] Đang tải embedding model: {Config.EMBEDDING_MODEL_NAME}"
-    )
-    embeddings = build_embeddings_from_common()
-    logger.info(
-        f"[Step 3] ✅ Embedding model '{Config.EMBEDDING_MODEL_NAME}' đã tải thành công"
-    )
-    return embeddings
-=======
 try:
     from .common.embeddings import build_embeddings as build_embeddings_from_common
     from .config import Config
@@ -74,7 +22,6 @@ except ImportError:  # pragma: no cover
 
 def _init_embeddings() -> HuggingFaceEmbeddings:
     return build_embeddings_from_common()
->>>>>>> 9b192d1d56a53f6a50359f035495dbb7c35b64ca
 
 
 def _build_qdrant_store(

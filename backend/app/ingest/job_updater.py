@@ -75,6 +75,27 @@ class JobUpdater:
         self.db.refresh(job)
         return job
 
+    def start_run(self, job_id: str, *, pipeline_version: str) -> IngestJob:
+        job = self.get_job(job_id)
+        now = datetime.now(timezone.utc)
+
+        # Celery retries replay the ingest pipeline from the beginning on the
+        # same job row, so this is the only path allowed to rewind progress.
+        job.status = "running"
+        if job.started_at is None:
+            job.started_at = now
+        job.finished_at = None
+        job.stage = STAGE_ORDER[0]
+        job.progress_pct = 0
+        job.stage_detail = "starting"
+        job.error_message = None
+        job.pipeline_version = pipeline_version
+
+        self.db.add(job)
+        self.db.commit()
+        self.db.refresh(job)
+        return job
+
     def advance_stage(self, job_id: str, stage: str, *, ratio: float = 0.0, stage_detail: Optional[str] = None) -> IngestJob:
         progress_pct = stage_progress(stage, ratio)
         return self.set_state(

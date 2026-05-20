@@ -2,16 +2,16 @@
 
 ## Document Ingestion Flow
 
+Current backend ingest flow is persistent and job-based: `/api/documents` creates a `DocumentRecord` plus `IngestJob`, Celery retries reuse the same job row, and the worker updates job state while fetching, parsing, chunking, embedding, indexing, and persisting metadata.
+
+The diagram below is the older standalone `rag_core` flow and is kept as a legacy reference.
+
 ```
 User Upload (PDF)
        │
        ▼
 ┌──────────────────┐
-<<<<<<< HEAD
-│ /documents/upload│ ◄─── FastAPI router (backend/app/routers/documents.py)
-=======
 │ /api/documents  │ ◄─── FastAPI router (backend/app/routers/ingest.py)
->>>>>>> 9b192d1d56a53f6a50359f035495dbb7c35b64ca
 └────────┬─────────┘
          │
          ▼
@@ -73,11 +73,7 @@ User Question (Chat Input)
         │
         ▼
 ┌───────────────────────┐
-<<<<<<< HEAD
-│ /chat/stream (POST)  │ ◄─── {message: "..."}
-=======
 │ /api/chat/stream (POST)  │ ◄─── {message: "..."}
->>>>>>> 9b192d1d56a53f6a50359f035495dbb7c35b64ca
 └──────────┬────────────┘
            │
            ▼
@@ -132,7 +128,9 @@ User Question (Chat Input)
 
 ## State Transitions
 
-### RAGService State Machine
+The state diagram below is for the legacy `RAGService` singleton path, not the persistent backend ingest job state machine.
+
+### Legacy RAGService State Machine
 
 ```
 ┌─────────────┐     ┌──────────────┐     ┌─────────────┐
@@ -147,8 +145,4 @@ User Question (Chat Input)
 - **EMPTY**: `_retriever = None`, no sources
 - **LOADING**: During `ingest_file()` call
 - **READY**: After successful `build_vector_db()` call
-<<<<<<< HEAD
 - **RESET**: Clears all state, returns to EMPTY
-=======
-- **RESET**: Clears all state, returns to EMPTY
->>>>>>> 9b192d1d56a53f6a50359f035495dbb7c35b64ca

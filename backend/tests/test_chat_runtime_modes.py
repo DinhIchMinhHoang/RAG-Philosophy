@@ -5,6 +5,11 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
+
+from backend.app import models
 from backend.app.services import chat_runtime
 from backend.app.services.chat_runtime import ChatRuntimeService, RetrievedContext
 
@@ -67,6 +72,90 @@ class ChatRuntimeModeTests(unittest.TestCase):
 
         self.assertEqual(result, self.contexts)
         hybrid_mock.assert_called_once()
+
+    def test_retrieve_filters_parent_chunks_by_owner_without_notebook(self) -> None:
+        engine = create_engine(
+            "sqlite://",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+        models.Base.metadata.create_all(engine)
+        db = SessionLocal()
+        try:
+            db.add_all(
+                [
+                    models.DocumentChunk(
+                        id="parent-1",
+                        document_id="doc-1",
+                        owner_id=1,
+                        notebook_id=None,
+                        kind="parent",
+                        parent_chunk_id=None,
+                        chunk_order=0,
+                        text="allowed context",
+                        source="allowed.pdf",
+                        page=1,
+                        doc_id="allowed",
+                        pipeline_version="1.0.0",
+                    ),
+                    models.DocumentChunk(
+                        id="parent-2",
+                        document_id="doc-2",
+                        owner_id=2,
+                        notebook_id=None,
+                        kind="parent",
+                        parent_chunk_id=None,
+                        chunk_order=0,
+                        text="leaked context",
+                        source="leaked.pdf",
+                        page=1,
+                        doc_id="leaked",
+                        pipeline_version="1.0.0",
+                    ),
+                ]
+            )
+            db.commit()
+
+            fake_hits = [
+                SimpleNamespace(
+                    score=0.9,
+                    payload={"parent_chunk_id": "parent-1", "document_id": "doc-1"},
+                ),
+                SimpleNamespace(
+                    score=0.8,
+                    payload={"parent_chunk_id": "parent-2", "document_id": "doc-2"},
+                ),
+            ]
+
+            class FakeClient:
+                def __init__(self) -> None:
+                    self.query_filter = None
+
+                def search(self, **kwargs):
+                    self.query_filter = kwargs.get("query_filter")
+                    return fake_hits
+
+            fake_client = FakeClient()
+
+            with patch.object(self.service, "_get_embeddings", return_value=SimpleNamespace(embed_query=lambda _q: [0.1])), patch.object(
+                chat_runtime, "build_qdrant_client", return_value=fake_client
+            ):
+                results = self.service.retrieve(
+                    db=db,
+                    question="q",
+                    pipeline_version="1.0.0",
+                    user_id=1,
+                    notebook_id=None,
+                )
+
+            self.assertEqual([item.document_id for item in results], ["doc-1"])
+            self.assertEqual(results[0].source, "allowed.pdf")
+            self.assertIn("owner_id", repr(fake_client.query_filter))
+            self.assertNotIn("notebook_id", repr(fake_client.query_filter))
+        finally:
+            db.close()
+            engine.dispose()
 
     def test_citations_from_context_assigns_stable_ids_and_dedupes(self) -> None:
         duplicate = RetrievedContext(

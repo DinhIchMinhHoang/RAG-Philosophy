@@ -1,0 +1,981 @@
+{
+  "run_id": "20260520-060511",
+  "notebook": {
+    "id": 6,
+    "title": "E2E Test Notebook - 20260520-060511",
+    "owner_id": 1,
+    "is_community": false,
+    "cover_url": null,
+    "cover_mode": null,
+    "cover_color": null,
+    "created_at": "2026-05-20T06:05:16.513607+00:00"
+  },
+  "upload": {
+    "document_id": "79595601-3e94-427e-8f9b-6d1b50742881",
+    "job_id": "f82605ee-eed0-4970-9a3c-7e6d2f8fc4da",
+    "status": "queued",
+    "pipeline_version": "1.0.0",
+    "object_key": "79595601-3e94-427e-8f9b-6d1b50742881/Deep Learning (243-247).pdf"
+  },
+  "progress_updates": [
+    {
+      "status": "running",
+      "stage": "parsing",
+      "progress_pct": 12,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "running",
+      "stage": "embedding",
+      "progress_pct": 56,
+      "error_message": null
+    },
+    {
+      "status": "succeeded",
+      "stage": "persisting_metadata",
+      "progress_pct": 100,
+      "error_message": null
+    }
+  ],
+  "timings": [
+    {
+      "operation": "Page load",
+      "duration_ms": 594,
+      "status": "ok",
+      "notes": ""
+    },
+    {
+      "operation": "Login",
+      "duration_ms": 2492,
+      "status": 200,
+      "notes": "http://localhost/api/login"
+    },
+    {
+      "operation": "Create notebook",
+      "duration_ms": 60,
+      "status": 201,
+      "notes": "id=6"
+    },
+    {
+      "operation": "Chat before upload - first token/text",
+      "duration_ms": 5,
+      "status": 200,
+      "notes": "http://localhost/api/chat/stream"
+    },
+    {
+      "operation": "Chat before upload - total",
+      "duration_ms": 9,
+      "status": 200,
+      "notes": "final"
+    },
+    {
+      "operation": "File upload request",
+      "duration_ms": 477,
+      "status": 202,
+      "notes": "job_id=f82605ee-eed0-4970-9a3c-7e6d2f8fc4da"
+    },
+    {
+      "operation": "File visible in UI",
+      "duration_ms": 486,
+      "status": "ok",
+      "notes": ""
+    },
+    {
+      "operation": "Ingest started",
+      "duration_ms": 31,
+      "status": "running",
+      "notes": "parsing"
+    },
+    {
+      "operation": "Ingest completed",
+      "duration_ms": 221279,
+      "status": "succeeded",
+      "notes": "persisting_metadata"
+    },
+    {
+      "operation": "Chat after upload - summary - first token/text",
+      "duration_ms": 14,
+      "status": 200,
+      "notes": "http://localhost/api/chat/stream"
+    },
+    {
+      "operation": "Chat after upload - summary - total",
+      "duration_ms": 37,
+      "status": 200,
+      "notes": ""
+    },
+    {
+      "operation": "Chat after upload - retrieval - first token/text",
+      "duration_ms": 5,
+      "status": 502,
+      "notes": "http://localhost/api/chat/stream"
+    },
+    {
+      "operation": "Chat after upload - retrieval - total",
+      "duration_ms": 8,
+      "status": 502,
+      "notes": ""
+    },
+    {
+      "operation": "Follow-up key points - first token/text",
+      "duration_ms": 4,
+      "status": 502,
+      "notes": "http://localhost/api/chat/stream"
+    },
+    {
+      "operation": "Follow-up key points - total",
+      "duration_ms": 7,
+      "status": 502,
+      "notes": ""
+    },
+    {
+      "operation": "Follow-up explain second - first token/text",
+      "duration_ms": 5,
+      "status": 502,
+      "notes": "http://localhost/api/chat/stream"
+    },
+    {
+      "operation": "Follow-up explain second - total",
+      "duration_ms": 9,
+      "status": 502,
+      "notes": ""
+    },
+    {
+      "operation": "Cleanup notebook",
+      "duration_ms": 0,
+      "status": 502,
+      "notes": "id=6"
+    }
+  ],
+  "chat_results": [
+    {
+      "label": "Chat before upload",
+      "endpoint": "http://localhost/api/chat/stream",
+      "status": 200,
+      "request_duration_ms": 107,
+      "first_token_latency_ms": 5,
+      "total_duration_ms": 9,
+      "final_event": {
+        "type": "final",
+        "token": "",
+        "done": true,
+        "answer": "This notebook does not have any processed documents yet. Please upload a file first so I can answer based on its contents.",
+        "citations": [],
+        "conversation_id": "2e93b94e-3c33-4de5-a6ec-0fa1962c4ce8",
+        "message_id": "744f8e53-2042-46e0-bbd7-38c36bfb6195",
+        "rewritten_query": "What is this notebook about?"
+      },
+      "response_text": "This notebook does not have any processed documents yet. Please upload a file first so I can answer based on its contents."
+    },
+    {
+      "label": "Chat after upload - summary",
+      "endpoint": "http://localhost/api/chat/stream",
+      "status": 200,
+      "request_duration_ms": 123500,
+      "first_token_latency_ms": 14,
+      "total_duration_ms": 37,
+      "final_event": null,
+      "response_text": "Error: network error"
+    },
+    {
+      "label": "Chat after upload - retrieval",
+      "endpoint": "http://localhost/api/chat/stream",
+      "status": 502,
+      "request_duration_ms": 118,
+      "first_token_latency_ms": 5,
+      "total_duration_ms": 8,
+      "final_event": null,
+      "response_text": "Error: Chat error: 502"
+    },
+    {
+      "label": "Follow-up key points",
+      "endpoint": "http://localhost/api/chat/stream",
+      "status": 502,
+      "request_duration_ms": 55,
+      "first_token_latency_ms": 4,
+      "total_duration_ms": 7,
+      "final_event": null,
+      "response_text": "Error: Chat error: 502"
+    },
+    {
+      "label": "Follow-up explain second",
+      "endpoint": "http://localhost/api/chat/stream",
+      "status": 502,
+      "request_duration_ms": 70,
+      "first_token_latency_ms": 5,
+      "total_duration_ms": 9,
+      "final_event": null,
+      "response_text": "Error: Chat error: 502"
+    }
+  ],
+  "screenshots": [
+    "D:\\RAG-Philosophy\\e2e-artifacts\\20260520-060511\\after-login.png",
+    "D:\\RAG-Philosophy\\e2e-artifacts\\20260520-060511\\after-notebook-create.png",
+    "D:\\RAG-Philosophy\\e2e-artifacts\\20260520-060511\\notebook-opened.png",
+    "D:\\RAG-Philosophy\\e2e-artifacts\\20260520-060511\\after-pre-upload-chat.png",
+    "D:\\RAG-Philosophy\\e2e-artifacts\\20260520-060511\\after-upload-request.png",
+    "D:\\RAG-Philosophy\\e2e-artifacts\\20260520-060511\\after-ingest-complete.png",
+    "D:\\RAG-Philosophy\\e2e-artifacts\\20260520-060511\\after-summary-chat.png",
+    "D:\\RAG-Philosophy\\e2e-artifacts\\20260520-060511\\after-follow-up-chat.png"
+  ],
+  "console_errors": [
+    {
+      "text": "Failed to load resource: net::ERR_INCOMPLETE_CHUNKED_ENCODING",
+      "location": {
+        "url": "http://localhost/api/chat/stream",
+        "line": 0,
+        "column": 0,
+        "lineNumber": 0,
+        "columnNumber": 0
+      }
+    },
+    {
+      "text": "[API.chatStream] Error: TypeError: network error",
+      "location": {
+        "url": "http://localhost/src/api/rag.js",
+        "line": 76,
+        "column": 16,
+        "lineNumber": 76,
+        "columnNumber": 16
+      }
+    },
+    {
+      "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+      "location": {
+        "url": "http://localhost/api/chat/stream",
+        "line": 0,
+        "column": 0,
+        "lineNumber": 0,
+        "columnNumber": 0
+      }
+    },
+    {
+      "text": "[API.chatStream] Error: Error: Chat error: 502\n    at http://localhost/src/api/rag.js:46:19",
+      "location": {
+        "url": "http://localhost/src/api/rag.js",
+        "line": 76,
+        "column": 16,
+        "lineNumber": 76,
+        "columnNumber": 16
+      }
+    },
+    {
+      "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+      "location": {
+        "url": "http://localhost/api/chat/stream",
+        "line": 0,
+        "column": 0,
+        "lineNumber": 0,
+        "columnNumber": 0
+      }
+    },
+    {
+      "text": "[API.chatStream] Error: Error: Chat error: 502\n    at http://localhost/src/api/rag.js:46:19",
+      "location": {
+        "url": "http://localhost/src/api/rag.js",
+        "line": 76,
+        "column": 16,
+        "lineNumber": 76,
+        "columnNumber": 16
+      }
+    },
+    {
+      "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+      "location": {
+        "url": "http://localhost/api/chat/stream",
+        "line": 0,
+        "column": 0,
+        "lineNumber": 0,
+        "columnNumber": 0
+      }
+    },
+    {
+      "text": "[API.chatStream] Error: Error: Chat error: 502\n    at http://localhost/src/api/rag.js:46:19",
+      "location": {
+        "url": "http://localhost/src/api/rag.js",
+        "line": 76,
+        "column": 16,
+        "lineNumber": 76,
+        "columnNumber": 16
+      }
+    },
+    {
+      "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+      "location": {
+        "url": "http://localhost/api/notebooks/6",
+        "line": 0,
+        "column": 0,
+        "lineNumber": 0,
+        "columnNumber": 0
+      }
+    }
+  ],
+  "failed_requests": [
+    {
+      "method": "POST",
+      "url": "http://localhost/api/chat/stream",
+      "failure": "net::ERR_INCOMPLETE_CHUNKED_ENCODING"
+    },
+    {
+      "method": "POST",
+      "url": "http://localhost/api/chat/stream",
+      "status": 502,
+      "body": "<html>\r\n<head><title>502 Bad Gateway</title></head>\r\n<body>\r\n<center><h1>502 Bad Gateway</h1></center>\r\n<hr><center>nginx/1.27.5</center>\r\n</body>\r\n</html>\r\n<!-- a padding to disable MSIE and Chrome friendly error page -->\r\n<!-- a padding to disable MSIE and Chrome friendly error page -->\r\n<!-- a padding to disable MSIE and Chrome friendly error page -->\r\n<!-- a padding to disable MSIE and Chrome friendly error page -->\r\n<!-- a padding to disable MSIE and Chrome friendly error page -->\r\n<!-- a padding to disable MSIE and Chrome friendly error page -->\r\n"
+    },
+    {
+      "method": "POST",
+      "url": "http://localhost/api/chat/stream",
+      "status": 502,
+      "body": "<html>\r\n<head><title>502 Bad Gateway</title></head>\r\n<body>\r\n<center><h1>502 Bad Gateway</h1></center>\r\n<hr><center>nginx/1.27.5</center>\r\n</body>\r\n</html>\r\n<!-- a padding to disable MSIE and Chrome friendly error page -->\r\n<!-- a padding to disable MSIE and Chrome friendly error page -->\r\n<!-- a padding to disable MSIE and Chrome friendly error page -->\r\n<!-- a padding to disable MSIE and Chrome friendly error page -->\r\n<!-- a padding to disable MSIE and Chrome friendly error page -->\r\n<!-- a padding to disable MSIE and Chrome friendly error page -->\r\n"
+    },
+    {
+      "method": "POST",
+      "url": "http://localhost/api/chat/stream",
+      "status": 502,
+      "body": "<html>\r\n<head><title>502 Bad Gateway</title></head>\r\n<body>\r\n<center><h1>502 Bad Gateway</h1></center>\r\n<hr><center>nginx/1.27.5</center>\r\n</body>\r\n</html>\r\n<!-- a padding to disable MSIE and Chrome friendly error page -->\r\n<!-- a padding to disable MSIE and Chrome friendly error page -->\r\n<!-- a padding to disable MSIE and Chrome friendly error page -->\r\n<!-- a padding to disable MSIE and Chrome friendly error page -->\r\n<!-- a padding to disable MSIE and Chrome friendly error page -->\r\n<!-- a padding to disable MSIE and Chrome friendly error page -->\r\n"
+    }
+  ],
+  "bad_target_requests": []
+}

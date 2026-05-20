@@ -43,11 +43,7 @@ print(f"parent_docs: {artifacts.parent_docs_count}")
 
 **Symptom**: `has_sources: False`
 
-<<<<<<< HEAD
-**Fix**: Upload PDF via `/documents/upload` first
-=======
 **Fix**: Upload PDF via `/api/documents` first
->>>>>>> 9b192d1d56a53f6a50359f035495dbb7c35b64ca
 
 ### Empty Child Docs
 
@@ -65,8 +61,6 @@ print(f"parent_docs: {artifacts.parent_docs_count}")
 
 **Fix**: Check logs for Qdrant errors
 
-<<<<<<< HEAD
-=======
 ### Hybrid: rank_bm25 Missing
 
 **Symptom**: Hybrid retrieval behaves like a simple token-overlap fallback
@@ -91,7 +85,6 @@ print(f"parent_docs: {artifacts.parent_docs_count}")
 
 **Fix**: Verify step2 chunking and step3 validation logs
 
->>>>>>> 9b192d1d56a53f6a50359f035495dbb7c35b64ca
 ## Logging
 
 Enable debug logging:
@@ -103,10 +96,6 @@ logging.basicConfig(level=logging.DEBUG)
 ```
 
 Check for messages like:
-<<<<<<< HEAD
-- `[Step 3] Đang nhúng X child docs vào Qdrant`
-- `[Step 3] ✅ Đã index X child docs vào Qdrant`
-=======
 - `[Step 3] �ang nh�ng X child docs v�o Qdrant`
 - `[Step 3] ? �� index X child docs v�o Qdrant`
 
@@ -115,4 +104,3 @@ Check for messages like:
 - Run `python -m unittest rag_core.tests.test_hybrid_retriever -v`
 - Run `python rag_core/main_test.py`
 - Inspect ingest logs for BM25 tokenization and doc_id validation errors
->>>>>>> 9b192d1d56a53f6a50359f035495dbb7c35b64ca

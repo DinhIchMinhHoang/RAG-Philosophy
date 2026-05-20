@@ -31,13 +31,6 @@ from typing import List, Tuple
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-<<<<<<< HEAD
-from common.logging_utils import configure_logging, get_logger
-from config import Config
-
-configure_logging()
-logger = get_logger(__name__)
-=======
 try:
     from .common.logging_utils import configure_logging, get_logger
     from .config import Config
@@ -50,7 +43,6 @@ logger = get_logger(__name__)
 
 # ── Namespace cố định cho toàn bộ hệ thống RAG ────────────────────────────────
 NAMESPACE_RAG = uuid.uuid5(uuid.NAMESPACE_DNS, "rag.uet.edu.vn")
->>>>>>> 9b192d1d56a53f6a50359f035495dbb7c35b64ca
 
 # ── Splitter instances (khởi tạo 1 lần, tái sử dụng) ─────────────────────────
 _PARENT_SPLITTER = RecursiveCharacterTextSplitter(

@@ -11,10 +11,11 @@ from fastapi.responses import JSONResponse
 from . import models
 from .core.logging_utils import log_api_event
 from .core.security import validate_secret_key
-from .database import engine
+from .database import engine, ensure_runtime_schema
 from .routers import admin, auth, chat, documents, ingest, notebooks
 
 models.Base.metadata.create_all(bind=engine)
+ensure_runtime_schema(engine)
 
 app = FastAPI(title="Lumina RAG Backend")
 

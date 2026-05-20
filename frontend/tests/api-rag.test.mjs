@@ -7,7 +7,12 @@ globalThis.localStorage = {
 };
 
 globalThis.FormData = class {
-    append() {}
+    constructor() {
+        this.fields = [];
+    }
+    append(key, value) {
+        this.fields.push([key, value]);
+    }
 };
 
 const calls = [];
@@ -83,9 +88,15 @@ globalThis.fetch = async (url, options = {}) => {
 const { BASE_URL } = await import('../src/api/client.js');
 const { uploadDocument, listSources, getJob, chatStream } = await import('../src/api/rag.js');
 
-const uploadResult = await uploadDocument({ name: 'sample.pdf' });
+assert.equal(BASE_URL, '/api');
+
+const uploadResult = await uploadDocument({ name: 'sample.pdf' }, { notebookId: 42 });
 assert.equal(calls[0].url, `${BASE_URL}/documents`);
 assert.equal(calls[0].method, 'POST');
+assert.deepEqual(calls[0].body.fields.map(([key, value]) => [key, String(value?.name || value)]), [
+    ['file', 'sample.pdf'],
+    ['notebook_id', '42'],
+]);
 assert.equal(uploadResult.job_id, 'job-1');
 
 const sourcesResult = await listSources();
