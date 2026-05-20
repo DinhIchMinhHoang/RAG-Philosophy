@@ -15,9 +15,60 @@ function renderMessageSkeleton(thread) {
     }
 }
 
-function processRichText(container, text) {
-    let html = text.replace(/\[Trang (\d+)\]/g, (_, p1) => `<button class="citation-btn" data-page="${p1}"><span class="material-icons">find_in_page</span>Trang ${p1}</button>`);
-    html = html.replace(/- ([^,\n]+),\s*Trang\s*(\d+)/g, (_, file, page) => `<button class="citation-btn" data-file="${file.trim()}" data-page="${page}"><span class="material-icons">description</span> ${file.trim()} (P. ${page})</button>`);
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function citationLabel(citation) {
+    const id = citation?.citation_id || 'C?';
+    const source = citation?.source || 'source';
+    const page = citation?.page ? `, p. ${citation.page}` : '';
+    return `${id} ${source}${page}`;
+}
+
+function citationButtonHtml(citation, label) {
+    const citationId = citation?.citation_id || '';
+    const source = citation?.source || '';
+    const page = citation?.page || '';
+    return `<button class="citation-btn" data-citation-id="${escapeHtml(citationId)}" data-file="${escapeHtml(source)}" data-page="${escapeHtml(page)}" title="${escapeHtml(citationLabel(citation))}"><span class="material-icons">find_in_page</span>${escapeHtml(label)}</button>`;
+}
+
+function renderCitationChips(container, citations = []) {
+    if (!container) return;
+    container.innerHTML = '';
+    if (!citations.length) {
+        container.style.display = 'none';
+        return;
+    }
+
+    container.style.display = 'flex';
+    citations.forEach((citation) => {
+        const chip = document.createElement('button');
+        chip.className = 'source-chip';
+        chip.type = 'button';
+        chip.title = citationLabel(citation);
+        chip.dataset.file = citation.source || '';
+        chip.dataset.page = citation.page || '';
+        chip.innerHTML = `<span class="material-icons">description</span><span>${escapeHtml(citationLabel(citation))}</span>`;
+        chip.addEventListener('click', () => showPagePreview(citation.source, citation.page));
+        container.appendChild(chip);
+    });
+}
+
+function processRichText(container, text, citations = []) {
+    const citationMap = new Map(citations.map((citation) => [String(citation.citation_id || '').toUpperCase(), citation]));
+    let html = text.replace(/\[(C\d+)\]/gi, (match, citationId) => {
+        const normalized = citationId.toUpperCase();
+        const citation = citationMap.get(normalized);
+        return citation ? citationButtonHtml(citation, `[${normalized}]`) : match;
+    });
+    html = html.replace(/\[Trang (\d+)\]/g, (_, p1) => citationButtonHtml({ page: p1 }, `Trang ${p1}`));
+    html = html.replace(/- ([^,\n]+),\s*Trang\s*(\d+)/g, (_, file, page) => citationButtonHtml({ source: file.trim(), page }, `${file.trim()} (P. ${page})`));
     html = html.replace(/📚 \*\*Nguồn tham khảo:\*\*/g, '<div class="sources-footer-title"><span class="material-icons">auto_stories</span> Nguồn tham khảo</div>');
 
     if (window.marked) container.innerHTML = marked.parse(html);
@@ -37,19 +88,22 @@ function processRichText(container, text) {
     container.querySelectorAll('.citation-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             const file = btn.getAttribute('data-file');
+            const page = btn.getAttribute('data-page');
             const firstSource = document.querySelector('#scene-chat .source-name')?.textContent;
-            showPagePreview(file || firstSource);
+            showPagePreview(file || firstSource, page);
         });
     });
 }
 
-const viewerState = { filename: null };
+const viewerState = { filename: null, page: null };
 let activeStreamController = null;
+let activeConversationId = null;
 let setCollapsedFn = null;
 
-export function showPagePreview(filename) {
+export function showPagePreview(filename, page = null) {
     if (!filename) return;
     viewerState.filename = filename;
+    viewerState.page = page;
 
     const viewer = document.querySelector('#sourceViewer');
     const empty = viewer?.querySelector('.viewer-empty');
@@ -60,21 +114,27 @@ export function showPagePreview(filename) {
     if (empty) empty.style.display = 'none';
     if (content) content.style.display = 'flex';
     if (nameEl) nameEl.textContent = filename;
-    if (embed) embed.src = `${BASE_URL}/documents/file/${encodeURIComponent(filename)}`;
+    if (embed) {
+        const pageNumber = Number(page);
+        const pageFragment = Number.isFinite(pageNumber) && pageNumber > 0 ? `#page=${pageNumber}` : '';
+        embed.src = `${BASE_URL}/documents/file/${encodeURIComponent(filename)}${pageFragment}`;
+    }
 
     if (document.querySelector('.chat-shell')?.getAttribute('data-right-collapsed') === 'true') {
         if (setCollapsedFn) setCollapsedFn('right', false);
     }
 }
 
-function addMessage(chatThread, role, text) {
+function addMessage(chatThread, role, text, citations = []) {
     if (!chatThread) return null;
     const msg = document.createElement('div');
     msg.className = role === 'ai' ? 'ai-response' : `message ${role}`;
-    msg.innerHTML = `<div class="message-text"></div><div class="message-meta"></div>`;
+    msg.innerHTML = `<div class="message-text"></div><div class="citation-strip"></div><div class="message-meta"></div>`;
     const textEl = msg.querySelector('.message-text');
+    const citationsEl = msg.querySelector('.citation-strip');
     const metaEl = msg.querySelector('.message-meta');
-    if (textEl) { if (role === 'ai') processRichText(textEl, text); else textEl.textContent = text; }
+    if (textEl) { if (role === 'ai') processRichText(textEl, text, citations); else textEl.textContent = text; }
+    renderCitationChips(citationsEl, role === 'ai' ? citations : []);
     if (metaEl) metaEl.textContent = role === 'user' ? 'You' : 'Lumina';
     chatThread.appendChild(msg);
     chatThread.scrollTop = chatThread.scrollHeight;
@@ -155,6 +215,10 @@ async function pollUploadJob(jobId, metaEl) {
 export function initChatScene(transitionManager) {
     const chatScene = document.getElementById('scene-chat');
     if (!chatScene) return;
+
+    document.addEventListener('chat:notebookChanged', () => {
+        activeConversationId = null;
+    });
 
     const chatThread = chatScene.querySelector('.chat-thread');
     if (chatThread) {
@@ -325,9 +389,10 @@ export function initChatScene(transitionManager) {
             const aiMsg = document.createElement('div');
             aiMsg.className = 'ai-response streaming';
             aiMsg.style.display = 'none';
-            aiMsg.innerHTML = `<div class="message-text"></div><div class="message-meta">Lumina</div>`;
+            aiMsg.innerHTML = `<div class="message-text"></div><div class="citation-strip"></div><div class="message-meta">Lumina</div>`;
             chatThread.appendChild(aiMsg);
             const textEl = aiMsg.querySelector('.message-text');
+            const citationsEl = aiMsg.querySelector('.citation-strip');
             if (!textEl) return;
 
             const sendBtn = chatForm.querySelector('.send-button');
@@ -337,7 +402,10 @@ export function initChatScene(transitionManager) {
 
             let fullText = ''; let receivedFirst = false;
 
+            const notebookId = chatScene.dataset.notebookId ? Number(chatScene.dataset.notebookId) : null;
             activeStreamController = chatStream(text, {
+                conversationId: activeConversationId,
+                notebookId,
                 onToken(token) {
                     if (!receivedFirst) { receivedFirst = true; hideThinkingIndicator(); aiMsg.style.display = 'flex'; }
                     fullText += token;
@@ -345,11 +413,16 @@ export function initChatScene(transitionManager) {
                     processRichText(textEl, fullText + ' <span class="streaming-cursor"></span>');
                     chatThread.scrollTop = chatThread.scrollHeight;
                 },
-                onDone() {
+                onDone(payload) {
+                    if (payload?.conversation_id) activeConversationId = payload.conversation_id;
+                    const finalText = payload?.answer || fullText;
+                    const citations = Array.isArray(payload?.citations) ? payload.citations : [];
+                    fullText = finalText;
                     hideThinkingIndicator();
                     aiMsg.style.display = 'flex';
                     textEl.innerHTML = '';
-                    processRichText(textEl, fullText);
+                    processRichText(textEl, finalText, citations);
+                    renderCitationChips(citationsEl, citations);
                     aiMsg.classList.remove('streaming');
                     activeStreamController = null;
                     if (sendBtn) sendBtn.disabled = false;
@@ -372,6 +445,7 @@ export function initChatScene(transitionManager) {
     }
 
     clearChatBtn?.addEventListener('click', () => {
+        activeConversationId = null;
         if (chatThread) { chatThread.innerHTML = ''; addMessage(chatThread, 'ai', 'Chat cleared. How can I help next?'); }
     });
 }

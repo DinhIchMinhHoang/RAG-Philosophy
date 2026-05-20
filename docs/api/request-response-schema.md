@@ -36,15 +36,21 @@ class ChangePassword(BaseModel):
 ### ChatRequest (POST /api/chat/stream)
 ```json
 {
-    "message": "What is philosophy?"
+    "message": "What is philosophy?",
+    "conversation_id": "optional-existing-conversation-id",
+    "notebook_id": 1
 }
 ```
+
+Only `message` is required. The backend creates a conversation when `conversation_id` is omitted.
 
 ### SSE Response Format
 ```json
 {"type": "token", "token": "chunk_of_text", "done": false}
-{"type": "final", "token": "", "done": true, "answer": "...", "citations": []}
+{"type": "final", "token": "", "done": true, "answer": "... [C1]", "citations": [{"citation_id": "C1", "rank": 1, "source": "intro.pdf", "page": 12, "snippet": "...", "document_id": "uuid", "chunk_id": "uuid", "doc_id": "uuid"}], "conversation_id": "uuid", "message_id": "uuid", "rewritten_query": "..."}
 ```
+
+Final `citations` includes only citations whose marker appears in `answer`.
 
 ### Error Response Format
 ```json

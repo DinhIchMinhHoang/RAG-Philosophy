@@ -12,38 +12,21 @@ The retrieval pipeline transforms raw PDFs into searchable vectors and connects 
 
 ```
 Pass 1: Scan & Classify
-<<<<<<< HEAD
-├── For each page in PDF:
-│   ├── Check for image blocks (> 50x50px) → complex
-│   ├── Check for vector drawings (≥ 15) → complex
-│   └── Check for math symbols (> 3) → complex
-└── Output: (simple_pages[], complex_pages[])
-
-Pass 2: Execute
-├── Fast Track (simple): pymupdf4llm.to_markdown()
-└── Heavy Track (complex): Smart Crop → render → Ollama OCR (parallel)
-=======
 +-- For each page in PDF:
-�   +-- Check for image blocks (> 50x50px) ? complex
-�   +-- Check for vector drawings (= 15) ? complex
-�   +-- Check for math symbols (> 3) ? complex
+�   +-- Check for image blocks (> 50x50px) ? complex
+�   +-- Check for vector drawings (= 15) ? complex
+�   +-- Check for math symbols (> 3) ? complex
 +-- Output: (simple_pages[], complex_pages[])
 
 Pass 2: Execute
 +-- Fast Track (simple): pymupdf4llm.to_markdown()
 +-- Heavy Track (complex): Smart Crop ? render ? Ollama OCR (parallel)
->>>>>>> 9b192d1d56a53f6a50359f035495dbb7c35b64ca
 ```
 
 **Page Classification Heuristics:**
 - Images: Check `page.get_image_info()` for blocks > 50x50px
-<<<<<<< HEAD
-- Drawings: Check `page.get_drawings()` count ≥ 15
-- Math: Check for symbols (∑, ∫, ∈, ∀, ≤, ≥, etc.) > 3 occurrences
-=======
 - Drawings: Check `page.get_drawings()` count = 15
 - Math: Check for symbols (?, ?, ?, ?, =, =, etc.) > 3 occurrences
->>>>>>> 9b192d1d56a53f6a50359f035495dbb7c35b64ca
 
 **Output**: `List[Document]` with metadata `{source: str, page: int}`
 
@@ -53,91 +36,29 @@ Pass 2: Execute
 
 ```
 Page Document (from Step 1)
-<<<<<<< HEAD
-       │
-       ▼
-┌─────────────────────────────────────────────┐
-│ RecursiveCharacterTextSplitter              │
-│ (chunk_size=2000, overlap=200)              │
-└──────────────────┬──────────────────────────┘
-                   │
-                   ▼
-┌─────────────────────────────────────────────┐
-│ Parent Documents (each with doc_id=UUID)  │
-│ {source, page, doc_id}                     │
-└──────────────────┬──────────────────────────┘
-                   │
-                   ▼
-┌─────────────────────────────────────────────┐
-│ RecursiveCharacterTextSplitter             │
-│ (chunk_size=500, overlap=100)              │
-└──────────────────┬──────────────────────────┘
-                   │
-                   ▼
-┌─────────────────────────────────────────────┐
-│ Child Documents (inherit doc_id)           │
-│ {source, page, doc_id}                     │
-└─────────────────────────────────────────────┘
-```
-
-**Key Design**: doc_id links child→parent, enabling MultiVectorRetriever to retrieve parent context after child match.
-
-### Stage 3: Vector Store (step3_vector_db.py)
-
-**MultiVectorRetriever Architecture**:
-
-```
-Query ──────────────────────────────────────────▶
-                                                │
-                                                ▼
-┌────────────────────────────────────────────────────────────────────┐
-│ Qdrant (in-memory)                                                 │
-│ - Embeds child_docs with Harrier model                            │
-│ - Performs similarity search                                      │
-│ - Returns child docs with doc_id in metadata                     │
-└────────────────────────┬───────────────────────────────────────────┘
-                         │
-                         ▼ (doc_id lookup)
-┌────────────────────────────────────────────────────────────────────┐
-│ InMemoryStore                                                     │
-│ - Keyed by doc_id                                                 │
-│ - Returns full parent documents (context)                        │
-└────────────────────────┬───────────────────────────────────────────┘
-                         │
-                         ▼
-┌────────────────────────────────────────────────────────────────────┐
-│ Output: List[Document] (PARENT level, full context)              │
-└────────────────────────────────────────────────────────────────────┘
-```
-
-**Configuration**:
-- Collection: "rag_philosophy"
-- Top-k: 3 results
-- Embedding: microsoft/harrier-oss-v1-270m (CPU)
-=======
-       �
+       �
        ?
 +---------------------------------------------+
-� RecursiveCharacterTextSplitter              �
-� (chunk_size=2000, overlap=200)             �
+� RecursiveCharacterTextSplitter              �
+� (chunk_size=2000, overlap=200)             �
 +---------------------------------------------+
-                   �
+                   �
                    ?
 +---------------------------------------------+
-� Parent Documents (each with doc_id=UUID)   �
-� {source, page, doc_id}                     �
+� Parent Documents (each with doc_id=UUID)   �
+� {source, page, doc_id}                     �
 +---------------------------------------------+
-                   �
+                   �
                    ?
 +---------------------------------------------+
-� RecursiveCharacterTextSplitter              �
-� (chunk_size=500, overlap=100)              �
+� RecursiveCharacterTextSplitter              �
+� (chunk_size=500, overlap=100)              �
 +---------------------------------------------+
-                   �
+                   �
                    ?
 +---------------------------------------------+
-� Child Documents (inherit doc_id)           �
-� {source, page, doc_id}                     �
+� Child Documents (inherit doc_id)           �
+� {source, page, doc_id}                     �
 +---------------------------------------------+
 ```
 
@@ -149,25 +70,25 @@ Query ────────────────────────�
 
 ```
 Query -----------------------------------------?
-                                                �
+                                                �
                                                 ?
 +--------------------------------------------------------------------+
-� Qdrant                                                             �
-� - Embeds child_docs with Harrier model                             �
-� - Performs dense similarity search                                 �
-� - Returns child docs with doc_id in metadata                       �
+� Qdrant                                                             �
+� - Embeds child_docs with Harrier model                             �
+� - Performs dense similarity search                                 �
+� - Returns child docs with doc_id in metadata                       �
 +--------------------------------------------------------------------+
-                         �
+                         �
                          ? (doc_id lookup)
 +--------------------------------------------------------------------+
-� InMemoryStore                                                      �
-� - Keyed by doc_id                                                  �
-� - Returns full parent documents (context)                          �
+� InMemoryStore                                                      �
+� - Keyed by doc_id                                                  �
+� - Returns full parent documents (context)                          �
 +--------------------------------------------------------------------+
-                         �
+                         �
                          ?
 +--------------------------------------------------------------------+
-� Output: List[Document] (PARENT level, full context)                �
+� Output: List[Document] (PARENT level, full context)                �
 +--------------------------------------------------------------------+
 ```
 
@@ -194,7 +115,6 @@ When `Config.HYBRID_ENABLED` is `True`, step3 builds a `HybridParentRetriever` i
 - `Config.HYBRID_DENSE_WEIGHT`
 - `Config.HYBRID_SPARSE_WEIGHT`
 - `Config.SPARSE_MIN_TOKEN_LEN`
->>>>>>> 9b192d1d56a53f6a50359f035495dbb7c35b64ca
 
 ### Stage 4: Generation (step4_generator.py)
 
@@ -202,65 +122,34 @@ When `Config.HYBRID_ENABLED` is `True`, step3 builds a `HybridParentRetriever` i
 
 ```
 User Question
-<<<<<<< HEAD
-       │
-       ▼
-┌────────────────────────────────────────────────────────────────┐
-│ MultiVectorRetriever.invoke(question)                         │
-│ → Returns parent documents with context                      │
-└────────────────────────┬───────────────────────────────────────┘
-                        │
-                        ▼
-┌────────────────────────────────────────────────────────────────┐
-│ Context + Question → ChatPromptTemplate                      │
-│                                                                  │
-│ System Prompt:                                                 │
-│ "Bạn là chuyên gia AI, trợ lý học tập cho sinh viên UET..."   │
-│ "Hãy trả lời câu hỏi dựa TRỰC TIẾP trên các đoạn văn..."     │
-│                                                                  │
-│ Human: "{context}\n\n{input}"                                  │
-└────────────────────────┬───────────────────────────────────────┘
-                        │
-                        ▼
-┌────────────────────────────────────────────────────────────────┐
-│ ChatGoogleGenerativeAI (gemini-3.1-flash-lite-preview)        │
-│ temperature=0.2                                               │
-└────────────────────────┬───────────────────────────────────────┘
-                        │
-                        ▼
-┌────────────────────────────────────────────────────────────────┐
-│ Output: {answer: str, sources: [{page, source}]}             │
-└────────────────────────────────────────────────────────────────┘
-=======
-       �
+       �
        ?
 +----------------------------------------------------------------+
-� MultiVectorRetriever.invoke(question)                         �
-� ? Returns parent documents with context                      �
+� MultiVectorRetriever.invoke(question)                         �
+� ? Returns parent documents with context                      �
 +----------------------------------------------------------------+
-                         �
+                         �
                          ?
 +----------------------------------------------------------------+
-� Context + Question ? ChatPromptTemplate                      �
-�                                                                  �
-� System Prompt:                                                 �
-� "B?n l� chuy�n gia AI, tr? l� h?c t?p cho sinh vi�n UET..."   �
-� "H�y tr? l?i c�u h?i d?a TR?C TI?P tr�n c�c do?n van..."     �
-�                                                                  �
-� Human: "{context}\n\n{input}"                                  �
+� Context + Question ? ChatPromptTemplate                      �
+�                                                                  �
+� System Prompt:                                                 �
+� "B?n l� chuy�n gia AI, tr? l� h?c t?p cho sinh vi�n UET..."   �
+� "H�y tr? l?i c�u h?i d?a TR?C TI?P tr�n c�c do?n van..."     �
+�                                                                  �
+� Human: "{context}\n\n{input}"                                  �
 +----------------------------------------------------------------+
-                         �
+                         �
                          ?
 +----------------------------------------------------------------+
-� ChatGoogleGenerativeAI (gemini-3.1-flash-lite-preview)        �
-� temperature=0.2                                               �
+� ChatGoogleGenerativeAI (gemini-3.1-flash-lite-preview)        �
+� temperature=0.2                                               �
 +----------------------------------------------------------------+
-                         �
+                         �
                          ?
 +----------------------------------------------------------------+
-� Output: {answer: str, sources: [{page, source}]}             �
+� Output: {answer: str, sources: [{page, source}]}             �
 +----------------------------------------------------------------+
->>>>>>> 9b192d1d56a53f6a50359f035495dbb7c35b64ca
 ```
 
 ## Pipeline API
@@ -295,16 +184,9 @@ The key insight is that we index small child chunks (good for matching) but retr
 |--------|-------|--------|
 | Size | 500 chars | 2000 chars |
 | Use | Vector similarity search | LLM context |
-<<<<<<< HEAD
-| Indexed in | Qdrant | InMemoryStore |
-| Linked by | doc_id (foreign key) | - |
-
-When a query matches child chunks, the retriever uses the child's `doc_id` to look up the corresponding parent document in the InMemoryStore.
-=======
 | Indexed in | Qdrant / BM25ChildIndex | InMemoryStore |
 | Linked by | doc_id (foreign key) | - |
 
 `MultiVectorRetriever` remains the default. `HybridParentRetriever` is used only when `Config.HYBRID_ENABLED` is `True`.
 
 When a query matches child chunks, the retriever uses the child's `doc_id` to look up the corresponding parent document in the InMemoryStore.
->>>>>>> 9b192d1d56a53f6a50359f035495dbb7c35b64ca

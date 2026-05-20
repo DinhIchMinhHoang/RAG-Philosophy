@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 
+console.error = () => {};
+
 globalThis.localStorage = {
     getItem: (key) => (key === 'accessToken' ? 'test-token' : null),
 };
@@ -17,10 +19,24 @@ function jsonResponse(payload) {
     };
 }
 
-globalThis.fetch = async (url, options = {}) => {
-    calls.push({ url, method: options.method || 'GET' });
+function streamResponse(chunks) {
+    const encoder = new TextEncoder();
+    return {
+        ok: true,
+        body: new ReadableStream({
+            start(controller) {
+                chunks.forEach((chunk) => controller.enqueue(encoder.encode(chunk)));
+                controller.close();
+            },
+        }),
+        json: async () => ({}),
+    };
+}
 
-    if (url === '/api/documents' && options.method === 'POST') {
+globalThis.fetch = async (url, options = {}) => {
+    calls.push({ url, method: options.method || 'GET', body: options.body });
+
+    if (url === `${BASE_URL}/documents` && options.method === 'POST') {
         return jsonResponse({
             document_id: 'doc-1',
             job_id: 'job-1',
@@ -30,20 +46,31 @@ globalThis.fetch = async (url, options = {}) => {
         });
     }
 
-    if (url === '/api/documents' && (!options.method || options.method === 'GET')) {
+    if (url === `${BASE_URL}/documents` && (!options.method || options.method === 'GET')) {
         return jsonResponse([
             { document_id: 'doc-1', filename: 'sample.pdf' },
             { document_id: 'doc-2', filename: 'notes.pdf' },
         ]);
     }
 
-    if (url === '/api/jobs/job-1' && (!options.method || options.method === 'GET')) {
+    if (url === `${BASE_URL}/jobs/job-1` && (!options.method || options.method === 'GET')) {
         return jsonResponse({
             job_id: 'job-1',
             status: 'succeeded',
             stage: 'persisting_metadata',
             progress_pct: 100,
         });
+    }
+
+    if (url === `${BASE_URL}/chat/stream` && options.method === 'POST') {
+        const payload = JSON.parse(options.body);
+        if (payload.message === 'stream error') {
+            return streamResponse(['data: {"type":"error","token":"","done":true,"error":"boom","citations":[]}\n\n']);
+        }
+        return streamResponse([
+            'data: {"type":"token","token":"Hello","done":false}\n\n',
+            'data: {"type":"final","token":"","done":true,"answer":"Hello [C1]","citations":[{"citation_id":"C1","source":"sample.pdf","page":3}],"conversation_id":"conv-1","message_id":"msg-1","rewritten_query":"test"}\n\n',
+        ]);
     }
 
     return {
@@ -53,15 +80,16 @@ globalThis.fetch = async (url, options = {}) => {
     };
 };
 
-const { uploadDocument, listSources, getJob } = await import('../src/api/rag.js');
+const { BASE_URL } = await import('../src/api/client.js');
+const { uploadDocument, listSources, getJob, chatStream } = await import('../src/api/rag.js');
 
 const uploadResult = await uploadDocument({ name: 'sample.pdf' });
-assert.equal(calls[0].url, '/api/documents');
+assert.equal(calls[0].url, `${BASE_URL}/documents`);
 assert.equal(calls[0].method, 'POST');
 assert.equal(uploadResult.job_id, 'job-1');
 
 const sourcesResult = await listSources();
-assert.equal(calls[1].url, '/api/documents');
+assert.equal(calls[1].url, `${BASE_URL}/documents`);
 assert.equal(calls[1].method, 'GET');
 assert.deepEqual(sourcesResult.sources, ['sample.pdf', 'notes.pdf']);
 assert.equal(sourcesResult.count, 2);
@@ -69,6 +97,36 @@ assert.equal(sourcesResult.has_sources, true);
 assert.equal(sourcesResult.documents.length, 2);
 
 const jobResult = await getJob('job-1');
-assert.equal(calls[2].url, '/api/jobs/job-1');
+assert.equal(calls[2].url, `${BASE_URL}/jobs/job-1`);
 assert.equal(calls[2].method, 'GET');
 assert.equal(jobResult.status, 'succeeded');
+
+const streamFinal = await new Promise((resolve, reject) => {
+    chatStream('test', {
+        onToken(token) {
+            assert.equal(token, 'Hello');
+        },
+        onDone(payload) {
+            resolve(payload);
+        },
+        onError(error) {
+            reject(error);
+        },
+    });
+});
+assert.equal(streamFinal.answer, 'Hello [C1]');
+assert.equal(streamFinal.citations[0].citation_id, 'C1');
+assert.equal(streamFinal.citations[0].source, 'sample.pdf');
+assert.equal(streamFinal.citations[0].page, 3);
+
+const streamError = await new Promise((resolve) => {
+    chatStream('stream error', {
+        onDone() {
+            resolve(null);
+        },
+        onError(error) {
+            resolve(error);
+        },
+    });
+});
+assert.equal(streamError.message, 'boom');

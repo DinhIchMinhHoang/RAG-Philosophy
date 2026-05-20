@@ -29,11 +29,6 @@ import sys
 import logging
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
-<<<<<<< HEAD
-from common.logging_utils import configure_logging, get_logger
-from pipeline import build_pipeline, query
-
-=======
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 if hasattr(sys.stderr, "reconfigure"):
@@ -42,7 +37,6 @@ if hasattr(sys.stderr, "reconfigure"):
 from common.logging_utils import configure_logging, get_logger
 from pipeline import build_pipeline, query
 
->>>>>>> 9b192d1d56a53f6a50359f035495dbb7c35b64ca
 configure_logging()
 logger = get_logger(__name__)
 
@@ -102,11 +96,6 @@ def main():
         python rag_core/main_test.py --reranker --hybrid      # bật cả hai
         python rag_core/main_test.py --ragas                  # chạy RAGAS sau chat
     """
-<<<<<<< HEAD
-    target_pdf: str | None = None
-    if len(sys.argv) >= 2:
-        target_pdf = sys.argv[1].strip('"').strip("'")
-=======
     parser = argparse.ArgumentParser(
         description="RAG Philosophy — CLI test runner",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -143,7 +132,6 @@ def main():
         print(f"ℹ️  Retrieval mode: {mode} (từ .env)")
 
     target_pdf = args.pdf.strip('"').strip("'") if args.pdf else None
->>>>>>> 9b192d1d56a53f6a50359f035495dbb7c35b64ca
 
     print("\n🚀 Đang khởi tạo RAG Pipeline...")
     print("   (Lần đầu tải model có thể mất vài phút)\n")
@@ -151,11 +139,7 @@ def main():
     try:
         artifacts, rag_chain = build_pipeline(target_pdf=target_pdf)
         if rag_chain:
-<<<<<<< HEAD
-            print(f"Pipeline ready: {artifacts.parent_docs_count} parent docs, {artifacts.child_docs_count} child docs")
-=======
             print(f"✅ Pipeline ready: {artifacts.parent_docs_count} parent docs, {artifacts.child_docs_count} child docs")
->>>>>>> 9b192d1d56a53f6a50359f035495dbb7c35b64ca
             chat_loop(rag_chain)
 
         # ── RAGAS evaluation (tuỳ chọn) ───────────────────────────────

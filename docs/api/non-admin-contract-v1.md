@@ -33,21 +33,33 @@ Protected endpoints require:
 Request:
 
 ```json
-{ "message": "What is the key argument?" }
+{
+  "message": "What is the key argument?",
+  "conversation_id": "optional-existing-conversation-id",
+  "notebook_id": 1
+}
 ```
+
+Only `message` is required. If `conversation_id` is omitted, the backend creates a new conversation for the authenticated user.
 
 Response:
 
 ```json
 {
   "answer": "...",
+  "conversation_id": "uuid",
+  "message_id": "uuid",
+  "rewritten_query": "standalone retrieval query",
   "citations": [
     {
+      "citation_id": "C1",
+      "rank": 1,
       "source": "intro.pdf",
       "page": 12,
       "snippet": "...",
       "document_id": "uuid",
       "chunk_id": "uuid",
+      "doc_id": "uuid",
       "score": 0.81
     }
   ]
@@ -57,7 +69,9 @@ Response:
 Citation fields:
 
 - required: `source`, `page`, `snippet`
-- optional: `document_id`, `chunk_id`, `score`
+- optional: `citation_id`, `rank`, `document_id`, `chunk_id`, `doc_id`, `score`
+
+`citations` contains only sources whose `citation_id` appears inline in `answer`, such as `[C1]`. Retrieved-but-unused sources are not returned in the user-facing citation list.
 
 When evidence is insufficient:
 
@@ -75,7 +89,7 @@ data: {"type":"token","token":"...","done":false}
 Final event:
 
 ```text
-data: {"type":"final","token":"","done":true,"answer":"...","citations":[...]}
+data: {"type":"final","token":"","done":true,"answer":"...","citations":[...],"conversation_id":"uuid","message_id":"uuid","rewritten_query":"standalone retrieval query"}
 ```
 
 Error event:

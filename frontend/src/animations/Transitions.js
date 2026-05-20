@@ -47,10 +47,16 @@ export class TransitionManager {
         });
     }
 
-    openNotebook(title) {
+    openNotebook(title, notebookId = null) {
         const safeTitle = (title || '').trim() || 'Untitled notebook';
         const titleEl = document.querySelector('.chat-title');
         if (titleEl) titleEl.textContent = safeTitle;
+        const chatScene = document.getElementById('scene-chat');
+        if (chatScene) {
+            if (notebookId) chatScene.dataset.notebookId = String(notebookId);
+            else delete chatScene.dataset.notebookId;
+        }
+        document.dispatchEvent(new CustomEvent('chat:notebookChanged'));
         this.transitionTo('chat');
         const prompt = document.getElementById('chatPrompt');
         if (prompt) setTimeout(() => prompt.focus(), 420);

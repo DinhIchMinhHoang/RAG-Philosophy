@@ -16,10 +16,7 @@ from __future__ import annotations
 
 import base64
 import io
-<<<<<<< HEAD
-=======
 import json
->>>>>>> 9b192d1d56a53f6a50359f035495dbb7c35b64ca
 import os
 import re
 import time
@@ -34,17 +31,12 @@ import fitz
 import pymupdf4llm
 from langchain_core.documents import Document
 
-<<<<<<< HEAD
-from common.logging_utils import configure_logging, get_logger
-from config import Config
-=======
 try:
     from .common.logging_utils import configure_logging, get_logger
     from .config import Config
 except ImportError:  # pragma: no cover
     from common.logging_utils import configure_logging, get_logger
     from config import Config
->>>>>>> 9b192d1d56a53f6a50359f035495dbb7c35b64ca
 
 configure_logging()
 logger = get_logger(__name__)

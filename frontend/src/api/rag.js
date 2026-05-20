@@ -17,7 +17,7 @@ export async function uploadDocument(file) {
     return await response.json();
 }
 
-export function chatStream(message, { onToken, onDone, onError }) {
+export function chatStream(message, { conversationId, notebookId, onToken, onDone, onError }) {
     const controller = new AbortController();
     const token = getToken();
     if (!token) {
@@ -26,13 +26,17 @@ export function chatStream(message, { onToken, onDone, onError }) {
         return controller;
     }
 
+    const payload = { message };
+    if (conversationId) payload.conversation_id = conversationId;
+    if (notebookId) payload.notebook_id = notebookId;
+
     fetch(`${BASE_URL}/chat/stream`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ message }),
+        body: JSON.stringify(payload),
         signal: controller.signal,
     })
     .then(async (response) => {
@@ -52,11 +56,17 @@ export function chatStream(message, { onToken, onDone, onError }) {
             for (const line of lines) {
                 const trimmed = line.trim();
                 if (!trimmed || !trimmed.startsWith('data: ')) continue;
+                let payload;
                 try {
-                    const payload = JSON.parse(trimmed.slice(6));
-                    if (payload.done) { if (onDone) onDone(); return; }
-                    if (payload.token && onToken) onToken(payload.token);
-                } catch (e) { /* skip malformed */ }
+                    payload = JSON.parse(trimmed.slice(6));
+                } catch (e) {
+                    continue;
+                }
+                if (payload.type === 'error') {
+                    throw new Error(payload.error || 'Chat stream failed');
+                }
+                if (payload.done) { if (onDone) onDone(payload); return; }
+                if (payload.token && onToken) onToken(payload.token);
             }
         }
         if (onDone) onDone();

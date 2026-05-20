@@ -16,6 +16,7 @@ class ChatRuntimeModeTests(unittest.TestCase):
             RetrievedContext(
                 document_id="doc-1",
                 chunk_id="chunk-1",
+                doc_id="doc-key-1",
                 source="s.pdf",
                 page=1,
                 score=0.8,
@@ -66,6 +67,59 @@ class ChatRuntimeModeTests(unittest.TestCase):
 
         self.assertEqual(result, self.contexts)
         hybrid_mock.assert_called_once()
+
+    def test_citations_from_context_assigns_stable_ids_and_dedupes(self) -> None:
+        duplicate = RetrievedContext(
+            document_id="doc-1",
+            chunk_id="chunk-1",
+            doc_id="doc-key-1",
+            source="s.pdf",
+            page=1,
+            score=0.7,
+            snippet="duplicate",
+            text="duplicate context",
+        )
+        second = RetrievedContext(
+            document_id="doc-2",
+            chunk_id="chunk-2",
+            doc_id="doc-key-2",
+            source="other.pdf",
+            page=4,
+            score=None,
+            snippet="other",
+            text="other context",
+        )
+
+        citations = self.service.citations_from_context([self.contexts[0], duplicate, second])
+
+        self.assertEqual([item["citation_id"] for item in citations], ["C1", "C2"])
+        self.assertEqual([item["rank"] for item in citations], [1, 2])
+        self.assertEqual(citations[0]["source"], "s.pdf")
+        self.assertEqual(citations[0]["page"], 1)
+        self.assertEqual(citations[0]["doc_id"], "doc-key-1")
+        self.assertEqual(citations[0]["chunk_id"], "chunk-1")
+
+    def test_build_context_uses_citation_ids(self) -> None:
+        context_text = self.service._build_context(self.contexts)
+
+        self.assertIn("[C1] source=s.pdf page=1 doc_id=doc-key-1 chunk_id=chunk-1", context_text)
+        self.assertNotIn("[Doc 1", context_text)
+
+    def test_filter_citations_for_answer_keeps_only_used_markers(self) -> None:
+        citations = [
+            {"citation_id": "C1", "source": "one.pdf"},
+            {"citation_id": "C2", "source": "two.pdf"},
+            {"citation_id": "C3", "source": "three.pdf"},
+        ]
+
+        filtered = self.service.filter_citations_for_answer("Có ý A [C1]. Có ý C [C3].", citations)
+
+        self.assertEqual([item["citation_id"] for item in filtered], ["C1", "C3"])
+
+    def test_filter_citations_for_answer_does_not_guess_when_answer_has_no_markers(self) -> None:
+        citations = [{"citation_id": "C1", "source": "one.pdf"}]
+
+        self.assertEqual(self.service.filter_citations_for_answer("Không có marker.", citations), [])
 
 
 if __name__ == "__main__":

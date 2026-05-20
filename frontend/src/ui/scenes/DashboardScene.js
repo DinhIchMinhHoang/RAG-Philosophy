@@ -224,7 +224,7 @@ export function initDashboardScene(transitionManager) {
             e.preventDefault();
             try {
                 const nb = await createNotebook({ title: 'Untitled notebook', is_community: false });
-                transitionManager.openNotebook(nb.title);
+                transitionManager.openNotebook(nb.title, nb.id);
             } catch (err) {
                 console.error('[Dashboard] Failed to create notebook', err);
             }
@@ -305,7 +305,7 @@ export function initDashboardScene(transitionManager) {
             if (!item) return;
             if (ev.target.closest('.more-btn') || ev.target.closest('.more-menu') || ev.target.closest('#imageModal')) return;
             const title = item.getAttribute('data-title') || item.querySelector('.item-title')?.textContent || 'Untitled notebook';
-            transitionManager.openNotebook(title);
+            transitionManager.openNotebook(title, item.dataset.notebookId || null);
         });
 
         const showAllScene = document.getElementById('scene-showall');

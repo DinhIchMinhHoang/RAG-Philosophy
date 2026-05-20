@@ -132,6 +132,7 @@ class NonAdminApiContractTests(unittest.TestCase):
             RetrievedContext(
                 document_id="doc-1",
                 chunk_id="chunk-1",
+                doc_id="doc-key-1",
                 source="intro.pdf",
                 page=3,
                 score=0.91,
@@ -141,40 +142,71 @@ class NonAdminApiContractTests(unittest.TestCase):
         ]
 
         async def _fake_stream_answer(*args, **kwargs):
-            for token_value in ["Hello", " world"]:
+            for token_value in ["Hello", " world", " [C1]"]:
                 yield token_value
 
-        with patch.object(chat.chat_runtime_service, "retrieve", return_value=contexts), patch.object(
+        with patch.object(chat.chat_runtime_service, "rewrite_question", new=AsyncMock(return_value="rewritten test")), patch.object(
+            chat.chat_runtime_service, "retrieve", return_value=contexts
+        ) as retrieve_mock, patch.object(
             chat.chat_runtime_service,
             "citations_from_context",
             return_value=[
                 {
+                    "citation_id": "C1",
+                    "rank": 1,
                     "source": "intro.pdf",
                     "page": 3,
                     "snippet": "Snippet text",
                     "document_id": "doc-1",
                     "chunk_id": "chunk-1",
+                    "doc_id": "doc-key-1",
                     "score": 0.91,
                 }
             ],
-        ), patch.object(chat.chat_runtime_service, "answer", new=AsyncMock(return_value=("Hello world", "gemini"))), patch.object(
+        ), patch.object(chat.chat_runtime_service, "answer", new=AsyncMock(return_value=("Hello world [C1]", "gemini"))), patch.object(
             chat.chat_runtime_service, "stream_answer", side_effect=_fake_stream_answer
         ):
             chat_response = self.client.post("/api/chat", headers=headers, json={"message": "test"})
             self.assertEqual(chat_response.status_code, 200)
             payload = chat_response.json()
-            self.assertEqual(payload["answer"], "Hello world")
+            self.assertEqual(payload["answer"], "Hello world [C1]")
             self.assertEqual(payload["citations"][0]["source"], "intro.pdf")
+            self.assertEqual(payload["citations"][0]["citation_id"], "C1")
+            self.assertIn("conversation_id", payload)
+            self.assertIn("message_id", payload)
+            self.assertEqual(payload["rewritten_query"], "rewritten test")
 
-            sse_response = self.client.post("/api/chat/stream", headers=headers, json={"message": "test"})
+            sse_response = self.client.post(
+                "/api/chat/stream",
+                headers=headers,
+                json={"message": "test", "conversation_id": payload["conversation_id"]},
+            )
             self.assertEqual(sse_response.status_code, 200)
             lines = [line for line in sse_response.text.splitlines() if line.startswith("data: ")]
             self.assertGreaterEqual(len(lines), 2)
             final_payload = json.loads(lines[-1].replace("data: ", ""))
             self.assertTrue(final_payload["done"])
             self.assertEqual(final_payload["type"], "final")
+            self.assertEqual(final_payload["answer"], "Hello world [C1]")
             self.assertIn("citations", final_payload)
             self.assertEqual(final_payload["citations"][0]["source"], "intro.pdf")
+            self.assertEqual(final_payload["citations"][0]["citation_id"], "C1")
+            self.assertEqual(final_payload["conversation_id"], payload["conversation_id"])
+            self.assertEqual(final_payload["rewritten_query"], "rewritten test")
+
+        self.assertEqual(retrieve_mock.call_args_list[0].args[1], "rewritten test")
+        self.assertEqual(retrieve_mock.call_args_list[1].args[1], "rewritten test")
+
+        db = self.SessionLocal()
+        try:
+            messages = db.query(models.ChatMessage).all()
+            self.assertEqual(sum(1 for m in messages if m.role == "user"), 2)
+            self.assertEqual(sum(1 for m in messages if m.role == "assistant"), 2)
+            self.assertTrue(all(m.rewritten_query == "rewritten test" for m in messages if m.role == "user"))
+            assistant_messages = [m for m in messages if m.role == "assistant"]
+            self.assertTrue(all(m.sources_used[0]["doc_id"] == "doc-key-1" for m in assistant_messages))
+        finally:
+            db.close()
 
 
 if __name__ == "__main__":

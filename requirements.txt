@@ -20,29 +20,6 @@ qdrant-client==1.14.2
 
 # === 4. Evaluation ===
 ragas==0.1.19
-<<<<<<< HEAD
-pandas==2.2.2
-
-# === 5. Machine Learning & Embedding (CPU/GPU) ===
-transformers==4.57.6
-tree-sitter==0.25.2
-tree-sitter-c==0.24.2
-tree-sitter-javascript==0.25.0
-tree-sitter-python==0.25.0
-tree-sitter-typescript==0.23.2
-typer==0.21.2
-typing-inspect==0.9.0
-typing-inspection==0.4.2
-typing_extensions==4.15.0
-tzdata==2026.2
-urllib3==2.6.3
-uuid_utils==0.14.1
-websockets==16.0
-xlsxwriter==3.2.9
-yarl==1.23.0
-zstandard==0.23.0
-=======
->>>>>>> 9b192d1d56a53f6a50359f035495dbb7c35b64ca
 
 # === 5. ML & Embeddings ===
 numpy>=1.24,<2.0
@@ -69,8 +46,6 @@ passlib[bcrypt]
 python-jose[cryptography]
 python-multipart
 python-dotenv
-<<<<<<< HEAD
-=======
 celery[redis]>=5.4,<6
 redis>=5,<6
 psycopg2-binary>=2.9,<3
@@ -85,4 +60,3 @@ yarl>=1.9,<2.0
 zstandard>=0.21
 xlsxwriter>=3.0
 websockets>=12.0
->>>>>>> 9b192d1d56a53f6a50359f035495dbb7c35b64ca

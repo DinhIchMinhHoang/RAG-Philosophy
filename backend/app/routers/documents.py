@@ -15,11 +15,14 @@ from fastapi.responses import FileResponse
 from rag_core.config import Config
 # Import rag_service lazily inside endpoints to avoid heavy rag_core imports at module import time.
 
-router = APIRouter(prefix="/documents", tags=["Documents"])
+router = APIRouter(tags=["Documents"])
 
 
-@router.get("/page-image/{filename}/{page_number}")
+@router.get("/documents/page-image/{filename}/{page_number}")
+@router.get("/api/documents/page-image/{filename}/{page_number}")
 async def get_page_image(filename: str, page_number: int):
+    from ..services.rag_service import rag_service
+
     img_bytes = rag_service.get_page_image(filename, page_number)
     if not img_bytes:
         raise HTTPException(
@@ -29,7 +32,8 @@ async def get_page_image(filename: str, page_number: int):
     return Response(content=img_bytes, media_type="image/png")
 
 
-@router.get("/file/{filename}")
+@router.get("/documents/file/{filename}")
+@router.get("/api/documents/file/{filename}")
 async def get_pdf_file(filename: str):
     file_path = Path(Config.RAW_DIR) / filename
     if not file_path.exists():
