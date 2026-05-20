@@ -35,6 +35,7 @@ TABLE_PREFIX: Final[str] = "etbl"
 TABLE_NAME_MAX_LEN: Final[int] = 56
 SQL_MAX_ROWS: Final[int] = 200
 SQL_MAX_RETRIES: Final[int] = 3
+DOCX_WORDS_PER_VIRTUAL_PAGE: Final[int] = 700
 
 
 def stage_progress(stage: str, ratio: float) -> int:

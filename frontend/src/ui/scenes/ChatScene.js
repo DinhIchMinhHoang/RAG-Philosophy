@@ -249,11 +249,11 @@ export function initChatScene(transitionManager) {
     const sourceAddButtons = chatScene.querySelectorAll('.source-add-button');
     const sourceNoteButton = chatScene.querySelector('.source-note-button');
 
-    const SUPPORTED_EXTENSIONS = ['.pdf', '.xlsx', '.xls', '.csv'];
+    const SUPPORTED_EXTENSIONS = ['.pdf', '.xlsx', '.xls', '.csv', '.docx', '.html', '.htm', '.md'];
 
     function getFileIcon(filename) {
         const ext = filename.toLowerCase().split('.').pop();
-        const icons = { pdf: 'picture_as_pdf', xlsx: 'table_chart', xls: 'table_chart', csv: 'grid_on' };
+        const icons = { pdf: 'picture_as_pdf', xlsx: 'table_chart', xls: 'table_chart', csv: 'grid_on', docx: 'description', html: 'language', htm: 'language', md: 'article' };
         return icons[ext] || 'description';
     }
 

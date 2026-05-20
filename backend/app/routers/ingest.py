@@ -19,7 +19,7 @@ from ..models import DocumentRecord, IngestJob, JobStage, JobStatus, User
 
 router = APIRouter(prefix="/api", tags=["Ingest"])
 
-ALLOWED_EXTENSIONS = {'.pdf', '.xlsx', '.xls', '.csv'}
+ALLOWED_EXTENSIONS = {'.pdf', '.xlsx', '.xls', '.csv', '.docx', '.html', '.htm', '.md'}
 MAX_UPLOAD_SIZE_MB = int(os.getenv("MAX_UPLOAD_SIZE_MB", "20"))
 
 MIME_TYPES = {
@@ -27,6 +27,10 @@ MIME_TYPES = {
     '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     '.xls': 'application/vnd.ms-excel',
     '.csv': 'text/csv',
+    '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    '.html': 'text/html',
+    '.htm': 'text/html',
+    '.md': 'text/markdown',
 }
 
 
