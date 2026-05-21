@@ -1,0 +1,11 @@
+{
+  "name": "lumina-frontend",
+  "version": "1.0.0",
+  "description": "Lumina RAG Notebook Frontend",
+  "type": "module",
+  "scripts": {
+    "test": "node tests/api-rag.test.mjs && node tests/dashboard-auth.test.mjs && node tests/source-viewer.test.mjs && node tests/notebook-conversation.test.mjs && node tests/store-state.test.mjs",
+    "dev": "npx serve .",
+    "serve": "npx serve . -l 5500"
+  }
+}

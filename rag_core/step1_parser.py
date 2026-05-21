@@ -16,29 +16,30 @@ from __future__ import annotations
 
 import base64
 import io
-import logging
+import json
 import os
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor, TimeoutError, as_completed
 from typing import List, Optional
+from urllib import error as urllib_error
+from urllib import request as urllib_request
 
 from PIL import Image
 
-import fitz                              # PyMuPDF
+import fitz
 import pymupdf4llm
-from langchain_community.chat_models import ChatOllama
 from langchain_core.documents import Document
-from langchain_core.messages import HumanMessage, SystemMessage
 
-from config import Config
+try:
+    from .common.logging_utils import configure_logging, get_logger
+    from .config import Config
+except ImportError:  # pragma: no cover
+    from common.logging_utils import configure_logging, get_logger
+    from config import Config
 
-# ── Logging ──────────────────────────────────────────────────────────
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-)
-logger = logging.getLogger(__name__)
+configure_logging()
+logger = get_logger(__name__)
 
 
 # =====================================================================
@@ -177,70 +178,154 @@ class OllamaOCREngine:
     )
 
     def __init__(self) -> None:
-        self._llm: Optional[ChatOllama] = None
+        # _llm removed: replaced by direct urllib HTTP calls with real socket timeout
+        self._ocr_disabled_reason: Optional[str] = None
+        self._ocr_disabled_logged: bool = False
+        self._model_checked: bool = False
 
-    def _get_llm(self) -> ChatOllama:
-        """Lazy-init ChatOllama client."""
-        if self._llm is None:
-            logger.info(
-                f"[OllamaOCR] Kết nối tới {Config.OLLAMA_BASE_URL} "
-                f"model={Config.OLLAMA_MODEL_NAME}"
+    def _normalize_ollama_model_names(self) -> set[str]:
+        model_name = (Config.OLLAMA_MODEL_NAME or "").strip()
+        if not model_name:
+            return set()
+        names = {model_name}
+        if ":" not in model_name:
+            names.add(f"{model_name}:latest")
+        return names
+
+    def _check_model_available(self) -> None:
+        if self._model_checked:
+            return
+        self._model_checked = True
+
+        expected_names = self._normalize_ollama_model_names()
+        if not expected_names:
+            self._ocr_disabled_reason = "OLLAMA_MODEL_NAME is empty"
+            return
+
+        tags_url = f"{Config.OLLAMA_BASE_URL.rstrip('/')}/api/tags"
+        try:
+            req = urllib_request.Request(tags_url, method="GET")
+            with urllib_request.urlopen(req, timeout=5) as resp:
+                payload = json.loads(resp.read().decode("utf-8"))
+            available = {
+                str(item.get("name", "")).strip()
+                for item in payload.get("models", [])
+                if isinstance(item, dict)
+            }
+            if not any(name in available for name in expected_names):
+                self._ocr_disabled_reason = (
+                    f"Ollama model '{Config.OLLAMA_MODEL_NAME}' not found at {Config.OLLAMA_BASE_URL}. "
+                    f"Pull model first: ollama pull {Config.OLLAMA_MODEL_NAME}"
+                )
+        except Exception as exc:
+            self._ocr_disabled_reason = (
+                f"Ollama /api/tags unavailable at {Config.OLLAMA_BASE_URL}: {exc}"
             )
-            self._llm = ChatOllama(
-                base_url=Config.OLLAMA_BASE_URL,
-                model=Config.OLLAMA_MODEL_NAME,
-                temperature=0.0,
-            )
-        return self._llm
 
     def ocr_page_image(self, image_b64: str) -> str:
         """
         Gửi ảnh base64 tới Ollama và trả về Markdown.
 
-        Uses the LangChain-community ChatOllama multimodal format:
-        image_url dict with data-URI string → the converter splits on
-        the comma and passes the raw base64 into Ollama's 'images' field.
+        Dùng urllib.request (stdlib) với socket-level timeout thực để đảm bảo
+        thread không bị block vô thời hạn khi Ollama treo hoặc crash.
+        Timeout = Config.VLM_TIMEOUT_SECONDS (OS socket level, không phải ThreadPool level).
 
         Args:
             image_b64: Chuỗi base64-encoded PNG của trang PDF.
 
         Returns:
-            Markdown text trích xuất được, hoặc chuỗi rỗng nếu lỗi.
+            Markdown text trích xuất được, hoặc chuỗi rỗng nếu lỗi/timeout.
         """
-        llm = self._get_llm()
-        # LangChain-community ChatOllama multimodal payload:
-        #   image_url.url = "data:<mime>;base64,<data>" — the internal
-        #   converter splits on ',' and feeds component[1] to Ollama.
-        messages = [
-            SystemMessage(content=self._SYSTEM_PROMPT),
-            HumanMessage(
-                content=[
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:image/png;base64,{image_b64}",
+        if self._ocr_disabled_reason:
+            if not self._ocr_disabled_logged:
+                logger.warning("[OllamaOCR] disabled: %s", self._ocr_disabled_reason)
+                self._ocr_disabled_logged = True
+            return ""
+
+        # Lazy check model availability (chỉ chạy 1 lần)
+        self._check_model_available()
+        if self._ocr_disabled_reason:
+            if not self._ocr_disabled_logged:
+                logger.warning("[OllamaOCR] disabled: %s", self._ocr_disabled_reason)
+                self._ocr_disabled_logged = True
+            return ""
+
+        payload = json.dumps({
+            "model": Config.OLLAMA_MODEL_NAME,
+            "stream": False,
+            "options": {"temperature": 0.0},
+            "messages": [
+                {
+                    "role": "system",
+                    "content": self._SYSTEM_PROMPT.strip(),
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/png;base64,{image_b64}",
+                            },
                         },
-                    },
-                    {
-                        "type": "text",
-                        "text": (
-                            '''
-                            Hãy thực hiện OCR cho ảnh tài liệu này:
-                            1. Trích xuất toàn bộ văn bản, bảng biểu và công thức toán học.
-                            2. Đảm bảo các ký hiệu toán học phức tạp được chuyển sang LaTeX chính xác.
-                            3. Nếu có bảng, hãy tái cấu trúc đúng định dạng bảng Markdown.
-                            4. Đầu ra: Chỉ trả về nội dung Markdown.
-                            '''
-                        ),
-                    },
-                ],
-            ),
-        ]
+                        {
+                            "type": "text",
+                            "text": (
+                                "Hãy thực hiện OCR cho ảnh tài liệu này:\n"
+                                "1. Trích xuất toàn bộ văn bản, bảng biểu và công thức toán học.\n"
+                                "2. Đảm bảo các ký hiệu toán học phức tạp được chuyển sang LaTeX chính xác.\n"
+                                "3. Nếu có bảng, hãy tái cấu trúc đúng định dạng bảng Markdown.\n"
+                                "4. Đầu ra: Chỉ trả về nội dung Markdown."
+                            ),
+                        },
+                    ],
+                },
+            ],
+        }).encode("utf-8")
+
+        url = f"{Config.OLLAMA_BASE_URL.rstrip('/')}/api/chat"
+        req = urllib_request.Request(
+            url,
+            data=payload,
+            method="POST",
+            headers={"Content-Type": "application/json"},
+        )
+
         try:
-            response = llm.invoke(messages)
-            return (response.content or "").strip()
+            # urlopen timeout = OS socket-level timeout → thread thực sự được giải phóng
+            with urllib_request.urlopen(req, timeout=Config.VLM_TIMEOUT_SECONDS) as resp:
+                body = json.loads(resp.read().decode("utf-8"))
+                content = (
+                    body.get("message", {}).get("content", "")
+                    or body.get("response", "")
+                ).strip()
+                if content:
+                    logger.info("[OllamaOCR] OK — %d chars", len(content))
+                return content
+
+        except urllib_error.HTTPError as exc:
+            if exc.code == 404:
+                self._ocr_disabled_reason = (
+                    f"Ollama model '{Config.OLLAMA_MODEL_NAME}' not found. "
+                    f"Pull model first: ollama pull {Config.OLLAMA_MODEL_NAME}"
+                )
+                if not self._ocr_disabled_logged:
+                    logger.warning("[OllamaOCR] disabled: %s", self._ocr_disabled_reason)
+                    self._ocr_disabled_logged = True
+            else:
+                logger.error("[OllamaOCR] HTTP %s: %s", exc.code, exc)
+            return ""
+
+        except TimeoutError:
+            # OS socket timeout — thread thực sự được giải phóng, không bị leak
+            logger.warning(
+                "[OllamaOCR] Socket timeout after %ss — thread released",
+                Config.VLM_TIMEOUT_SECONDS,
+            )
+            return ""
+
         except Exception as exc:
-            logger.error(f"[OllamaOCR] LLM call failed: {exc}")
+            logger.error("[OllamaOCR] Request failed: %s", exc)
             return ""
 
 

@@ -1,23 +1,52 @@
-from sqlalchemy import create_engine
+from __future__ import annotations
+
+from sqlalchemy import create_engine, inspect, text
+from sqlalchemy.engine import Engine
 from sqlalchemy.orm import declarative_base, sessionmaker
-import os
 
-# Lấy đường dẫn tuyệt đối đến thư mục chứa file database.py (thư mục app)
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-# Lùi lại 1 cấp để ra thư mục backend và đặt file DB ở đó
-DB_PATH = os.path.join(BASE_DIR, "..", "rag_system.db")
+from .core.settings import settings
 
-SQLALCHEMY_DATABASE_URL = f"sqlite:///{DB_PATH}"
 
-# Dùng SQLite cho dễ ở giai đoạn phát triển
-SQLALCHEMY_DATABASE_URL = "sqlite:///./rag_system.db"
+def _build_engine():
+    connect_args = {}
+    if settings.database_url.startswith("sqlite"):
+        connect_args["check_same_thread"] = False
+    return create_engine(settings.database_url, connect_args=connect_args)
 
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
-)
+
+engine = _build_engine()
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()
+
+
+def ensure_runtime_schema(engine: Engine) -> None:
+    """Apply small additive schema updates for local deployments without Alembic."""
+    inspector = inspect(engine)
+    table_names = set(inspector.get_table_names())
+    required_columns = {
+        "documents": {
+            "owner_id": "INTEGER",
+            "notebook_id": "INTEGER",
+        },
+        "document_chunks": {
+            "owner_id": "INTEGER",
+            "notebook_id": "INTEGER",
+        },
+        "conversations": {
+            "archived_at": "TIMESTAMP",
+        },
+    }
+
+    with engine.begin() as connection:
+        for table_name, columns in required_columns.items():
+            if table_name not in table_names:
+                continue
+            existing = {column["name"] for column in inspector.get_columns(table_name)}
+            for column_name, column_type in columns.items():
+                if column_name not in existing:
+                    connection.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}"))
+
 
 def get_db():
     db = SessionLocal()

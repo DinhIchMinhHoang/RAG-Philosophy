@@ -7,6 +7,7 @@ build/
 *.egg
 
 # ===== Virtual Environment =====
+RAG_env/
 venv/
 .venv/
 env/
@@ -28,8 +29,18 @@ Thumbs.db
 data/*.pdf
 output/*
 converted/*
+*.db
 # ===== HuggingFace Model Cache =====
 .cache/
 
 # ===== Test files =====
 test_step1_step2.py
+
+# ===== Worktrees =====
+.worktrees/
+
+.opencode/
+.context/
+e2e-artifacts/
+todo_backlog.md
+TODO.md
