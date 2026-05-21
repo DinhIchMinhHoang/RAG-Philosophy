@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import os
 import uuid
 from datetime import datetime, timezone
@@ -13,6 +14,7 @@ from ..core.dependencies import get_current_user
 from ..core.settings import settings
 from ..database import SessionLocal, get_db
 from ..ingest.logging_utils import log_event
+from ..ingest.processor import run_ingest_job
 from ..ingest.qdrant_store import build_qdrant_client, delete_vectors_for_document
 from ..ingest.storage import storage_client
 from ..models import DocumentRecord, IngestJob, JobStage, JobStatus, User
@@ -34,6 +36,42 @@ MIME_TYPES = {
 }
 
 
+
+
+def _is_queue_idle() -> bool:
+    """Check if Celery workers are alive and have no active/reserved tasks.
+
+    Returns True if it's safe to process synchronously:
+    - No workers respond (dead/not running) → nothing is processing
+    - Workers respond but have 0 active and 0 reserved tasks
+
+    Returns False if any worker has active or reserved tasks (queue is busy).
+    """
+    try:
+        from ..worker.celery_app import celery_app
+
+        inspector = celery_app.control.inspect(timeout=1.0)
+
+        # Celery returns None if no worker responds (dead or not running).
+        # Treat this as "nothing is processing right now" → safe for sync.
+        active = inspector.active()
+        reserved = inspector.reserved()
+
+        if active is None and reserved is None:
+            return True
+
+        active_count = sum(len(v) for v in (active or {}).values())
+        reserved_count = sum(len(v) for v in (reserved or {}).values())
+
+        return active_count == 0 and reserved_count == 0
+    except Exception:
+        # Celery unreachable (Redis down, import error, etc.)
+        # Fall back to sync processing rather than failing the upload
+        return True
+
+
+class UrlIngestRequest(BaseModel):
+    url: str
 
 
 class ReindexRequest(BaseModel):
@@ -105,6 +143,25 @@ def _enqueue_ingest(job_id: str, document_id: str, object_key: str, pipeline_ver
     )
 
 
+def _enqueue_url_ingest(job_id: str, document_id: str, url: str, pipeline_version: str, user_id: str) -> None:
+    try:
+        from ..worker.celery_app import celery_app
+    except ModuleNotFoundError as exc:
+        raise RuntimeError("Celery is not installed. Run `pip install -r requirements.txt`.") from exc
+
+    celery_app.send_task(
+        "backend.app.worker.tasks.process_url_ingest_job",
+        kwargs={
+            "job_id": job_id,
+            "document_id": document_id,
+            "url": url,
+            "pipeline_version": pipeline_version,
+            "user_id": user_id,
+        },
+        queue=settings.celery_ingest_queue,
+    )
+
+
 def _create_job(db: Session, document_id: str, pipeline_version: str) -> IngestJob:
     job = IngestJob(
         id=str(uuid.uuid4()),
@@ -169,15 +226,51 @@ async def _create_document_impl(file: UploadFile, pipeline_version: str | None =
         db.refresh(document)
 
         job = _create_job(db, document_id=document.id, pipeline_version=version)
-        _enqueue_ingest(job.id, document.id, document.object_key, version, user_id)
 
-        return {
-            "document_id": document.id,
-            "job_id": job.id,
-            "status": job.status,
-            "pipeline_version": version,
-            "object_key": document.object_key,
-        }
+        # === HYBRID PATH: Sync if queue idle, async (Celery) if busy ===
+        is_idle = await asyncio.to_thread(_is_queue_idle)
+
+        if is_idle:
+            # Queue is idle → process synchronously: no Celery delay,
+            # frontend gets pages/chunks immediately.
+            result = await asyncio.to_thread(
+                run_ingest_job,
+                db,
+                job_id=job.id,
+                document_id=document.id,
+                object_key=document.object_key,
+                pipeline_version=version,
+                user_id=user_id,
+            )
+            if "tables" in result:
+                return {
+                    "document_id": document.id,
+                    "job_id": job.id,
+                    "status": "completed",
+                    "pipeline_version": version,
+                    "object_key": document.object_key,
+                    "tables": result["tables"],
+                    "rows": result["rows"],
+                }
+            return {
+                "document_id": document.id,
+                "job_id": job.id,
+                "status": "completed",
+                "pipeline_version": version,
+                "object_key": document.object_key,
+                "pages": result["pages"],
+                "chunks": result["child_chunks"],
+            }
+        else:
+            # Queue is busy → delegate to Celery (existing behavior)
+            _enqueue_ingest(job.id, document.id, document.object_key, version, user_id)
+            return {
+                "document_id": document.id,
+                "job_id": job.id,
+                "status": job.status,
+                "pipeline_version": version,
+                "object_key": document.object_key,
+            }
     except HTTPException:
         raise
     except Exception as exc:
@@ -281,11 +374,14 @@ def _delete_document_impl(db: Session, document_id: str) -> DeleteDocumentRespon
 
     object_key = document.object_key
 
-    try:
-        storage_client.delete(object_key)
+    if object_key.startswith("url://"):
         cleanup["object_deleted"] = True
-    except Exception as exc:
-        cleanup_errors.append(f"object_storage: {exc}")
+    else:
+        try:
+            storage_client.delete(object_key)
+            cleanup["object_deleted"] = True
+        except Exception as exc:
+            cleanup_errors.append(f"object_storage: {exc}")
 
     try:
         client = build_qdrant_client()
@@ -324,7 +420,7 @@ def _delete_document_impl(db: Session, document_id: str) -> DeleteDocumentRespon
     )
 
 
-def _reindex_document_impl(document_id: str, request: ReindexRequest) -> dict:
+def _reindex_document_impl(document_id: str, request: ReindexRequest, user_id: str = "system") -> dict:
     db = SessionLocal()
     try:
         document = db.query(DocumentRecord).filter(DocumentRecord.id == document_id).first()
@@ -336,15 +432,26 @@ def _reindex_document_impl(document_id: str, request: ReindexRequest) -> dict:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="pipeline_version is required")
 
         job = _create_job(db, document_id=document.id, pipeline_version=version)
-        _enqueue_ingest(job.id, document.id, document.object_key, version)
 
-        return {
-            "document_id": document.id,
-            "job_id": job.id,
-            "status": job.status,
-            "pipeline_version": version,
-            "object_key": document.object_key,
-        }
+        if document.object_key.startswith("url://"):
+            url = document.object_key[6:]
+            _enqueue_url_ingest(job.id, document.id, url, version, user_id)
+            return {
+                "document_id": document.id,
+                "job_id": job.id,
+                "status": job.status,
+                "pipeline_version": version,
+                "url": url,
+            }
+        else:
+            _enqueue_ingest(job.id, document.id, document.object_key, version, user_id)
+            return {
+                "document_id": document.id,
+                "job_id": job.id,
+                "status": job.status,
+                "pipeline_version": version,
+                "object_key": document.object_key,
+            }
     except HTTPException:
         raise
     except Exception as exc:
@@ -356,6 +463,67 @@ def _reindex_document_impl(document_id: str, request: ReindexRequest) -> dict:
             error_message=str(exc),
         )
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to enqueue reindex: {exc}")
+    finally:
+        db.close()
+
+
+@router.post("/ingest/url", status_code=status.HTTP_202_ACCEPTED)
+async def ingest_url(
+    body: UrlIngestRequest,
+    pipeline_version: str | None = None,
+    current_user: User = Depends(get_current_user),
+):
+    if not body.url.startswith(("http://", "https://")):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid URL. Must start with http:// or https://"
+        )
+
+    version = (pipeline_version or settings.pipeline_version).strip()
+    if not version:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="pipeline_version is required")
+
+    document_id = str(uuid.uuid4())
+    user_id = current_user.username if current_user else "system"
+
+    db = SessionLocal()
+    try:
+        document = DocumentRecord(
+            id=document_id,
+            filename=body.url,
+            object_key=f"url://{body.url}",
+            mime_type="text/html",
+            size_bytes=0,
+        )
+        db.add(document)
+        db.commit()
+        db.refresh(document)
+
+        job = _create_job(db, document_id=document.id, pipeline_version=version)
+        _enqueue_url_ingest(job.id, document.id, body.url, version, user_id)
+
+        return {
+            "document_id": document.id,
+            "job_id": job.id,
+            "status": job.status,
+            "pipeline_version": version,
+            "url": body.url,
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        log_event(
+            "error",
+            "url_ingest_failed",
+            document_id=document_id,
+            pipeline_version=version,
+            stage="enqueue",
+            error_message=str(exc),
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to enqueue URL ingest: {exc}"
+        )
     finally:
         db.close()
 
@@ -398,7 +566,7 @@ def get_job(
 def reindex_document(
     document_id: str,
     request: ReindexRequest,
-    _current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
-    return _reindex_document_impl(document_id=document_id, request=request)
+    return _reindex_document_impl(document_id=document_id, request=request, user_id=current_user.username)
 

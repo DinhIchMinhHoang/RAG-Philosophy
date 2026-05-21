@@ -41,10 +41,14 @@ def _sanitize_and_split(
     source: str,
     document_id: str,
     pipeline_version: str,
+    namespace: uuid.UUID = NAMESPACE_MD,
 ) -> List[Document]:
     """
     Sanitize Markdown → Split by headings → List[Document].
     KHÔNG pre-chunk — để chunk_documents() xử lý parent/child splitting.
+
+    Args:
+        namespace: UUID namespace deterministic (NAMESPACE_MD/HTML/DOCX)
 
     UUIDv5 deterministic với {document_id}_{pipeline_version} → idempotent reindex.
     """
@@ -53,12 +57,14 @@ def _sanitize_and_split(
     if not clean_md:
         raise ValueError(f"No extractable content from Markdown file: {source}")
 
-    # Step 2: Split by headings
+    # Step 2: Split by headings (6 cấp)
     headers_to_split_on = [
         ("#", "Header-1"),
         ("##", "Header-2"),
         ("###", "Header-3"),
         ("####", "Header-4"),
+        ("#####", "Header-5"),
+        ("######", "Header-6"),
     ]
 
     md_splitter = MarkdownHeaderTextSplitter(
@@ -68,7 +74,6 @@ def _sanitize_and_split(
 
     try:
         md_splits = md_splitter.split_text(clean_md)
-        # Convert split results to Document objects
         from langchain_core.documents import Document as LCDoc
         md_docs = [LCDoc(page_content=chunk.page_content, metadata=chunk.metadata) for chunk in md_splits]
     except Exception as exc:
@@ -83,7 +88,7 @@ def _sanitize_and_split(
             continue
 
         doc_id = str(uuid.uuid5(
-            NAMESPACE_MD,
+            namespace,
             f"{document_id}_{pipeline_version}_{chunk_idx}"
         ))
         documents.append(
@@ -93,6 +98,7 @@ def _sanitize_and_split(
                     "source": source,
                     "page": chunk_idx + 1,
                     "doc_id": doc_id,
+                    **doc.metadata,
                 }
             )
         )
@@ -100,7 +106,7 @@ def _sanitize_and_split(
     # Fallback: nếu không có document nào được tạo
     if not documents:
         doc_id = str(uuid.uuid5(
-            NAMESPACE_MD,
+            namespace,
             f"{document_id}_{pipeline_version}_0"
         ))
         documents.append(

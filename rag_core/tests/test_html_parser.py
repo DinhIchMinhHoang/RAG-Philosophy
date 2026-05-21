@@ -4,27 +4,51 @@ rag_core/tests/test_html_parser.py — Unit tests for HTML Parser.
 Test cases:
   1. Valid HTML file → returns List[Document]
   2. Invalid file (not HTML) → raises ValueError
-  3. HTML with tables → tables converted to Markdown
+  3. HTML with tables → table data preserved
   4. HTML with navigation/ads → noise removed
   5. Empty HTML → raises ValueError
-  6. Large HTML (>700 words/block) → split by RecursiveCharacterTextSplitter
-  7. Idempotency test → same file parse 2x → same doc_id
-  8. Fallback trigger → mock Trafilatura failure → BSoup fallback works
+  6. Large HTML → split by headings, chunker handles further splitting
+  7. Idempotency → same file parse 2x → same doc_id
+  8. Fallback trigger → mock Trafilatura failure → last resort works
   9. Performance → parse < 1s for 500KB file
+  10. _validate_html_content với bytes hợp lệ
+  11. _validate_html_content với bytes không hợp lệ
+  12. parse_html_bytes với string HTML hợp lệ
+  13. parse_html_bytes với nội dung rỗng
+  14. parse_html_from_url với mock download thành công
+  15. parse_html_from_url với lỗi network
+  16. Heading chain trong metadata
 """
 
+import io
+import json
 import os
 import tempfile
 import time
 import unittest
 from unittest import mock
+from urllib import error as urllib_error
 
 from langchain_core.documents import Document
 
 try:
-    from rag_core.html_parser import parse_html, _magic_check
+    from rag_core.html_parser import (
+        NAMESPACE_HTML,
+        parse_html,
+        parse_html_bytes,
+        parse_html_from_url,
+        _extract_with_trafilatura,
+        _validate_html_content,
+    )
 except ImportError:
-    from html_parser import parse_html, _magic_check
+    from html_parser import (
+        NAMESPACE_HTML,
+        parse_html,
+        parse_html_bytes,
+        parse_html_from_url,
+        _extract_with_trafilatura,
+        _validate_html_content,
+    )
 
 
 # =====================================================================
@@ -68,7 +92,8 @@ HTML_WITH_NOISE = """<!DOCTYPE html>
 <header>Site header with logo</header>
 <main>
 <h1>Main Content</h1>
-<p>This is the actual content we want to extract.</p>
+<p>This is the actual content we want to extract from the HTML document. It contains important information that should be preserved after the noise removal process in our pipeline system.</p>
+<p>Additional paragraph with more content to ensure the total exceeds the minimum threshold of one hundred characters for extraction.</p>
 </main>
 <footer>Copyright 2024. All rights reserved.</footer>
 <aside>Sidebar ads and related links</aside>
@@ -138,20 +163,21 @@ class TestHtmlParser(unittest.TestCase):
         path = self._write_bytes(NOT_HTML, suffix=".bin")
         try:
             with self.assertRaises(ValueError):
-                _magic_check(path)
+                parse_html(path, self.DOCUMENT_ID, self.PIPELINE_VERSION)
         finally:
             os.unlink(path)
 
-    # ── Test 3: HTML with tables → tables converted to Markdown ──
+    # ── Test 3: HTML with tables → table data preserved ──
     def test_html_with_tables_converted_to_markdown(self):
         path = self._write_html(HTML_WITH_TABLE)
         try:
             docs = parse_html(path, self.DOCUMENT_ID, self.PIPELINE_VERSION)
             self.assertGreater(len(docs), 0)
-            # Check that at least one document contains Markdown table syntax
+            # Table data should be preserved (Trafilatura extracts text, not Markdown syntax)
             all_content = "\n".join(doc.page_content for doc in docs)
-            self.assertIn("|", all_content)
-            self.assertIn("---", all_content)
+            self.assertIn("Name", all_content)
+            self.assertIn("Alice", all_content)
+            self.assertIn("Hanoi", all_content)
         finally:
             os.unlink(path)
 
@@ -238,6 +264,76 @@ class TestHtmlParser(unittest.TestCase):
             self.assertLess(elapsed, 1.0, f"Parse took {elapsed:.2f}s, expected < 1s")
         finally:
             os.unlink(path)
+
+    # ── Test 10: _validate_html_content với bytes hợp lệ ──
+    def test_validate_html_content_valid(self):
+        _validate_html_content(VALID_HTML.encode('utf-8'))  # không raise
+
+    # ── Test 11: _validate_html_content với bytes không hợp lệ ──
+    def test_validate_html_content_invalid(self):
+        with self.assertRaises(ValueError):
+            _validate_html_content(b"%PDF-1.4 fake")
+
+    # ── Test 12: parse_html_bytes với string HTML hợp lệ ──
+    def test_parse_html_bytes_valid(self):
+        docs = parse_html_bytes(VALID_HTML, "test.html", self.DOCUMENT_ID, self.PIPELINE_VERSION)
+        self.assertGreater(len(docs), 0)
+        for doc in docs:
+            self.assertIsInstance(doc, Document)
+            self.assertIn("source", doc.metadata)
+            self.assertIn("page", doc.metadata)
+            self.assertIn("doc_id", doc.metadata)
+            self.assertEqual(doc.metadata["source"], "test.html")
+
+    # ── Test 13: parse_html_bytes với HTML rỗng → raise ──
+    def test_parse_html_bytes_empty(self):
+        with self.assertRaises(ValueError):
+            parse_html_bytes("<html></html>", "empty.html", self.DOCUMENT_ID, self.PIPELINE_VERSION)
+
+    # ── Test 14: parse_html_from_url với mock download thành công ──
+    def test_parse_html_from_url_success(self):
+        mock_response = mock.MagicMock()
+        mock_response.headers = {"Content-Type": "text/html; charset=utf-8"}
+        mock_response.read.return_value = VALID_HTML.encode('utf-8')
+        mock_response.__enter__.return_value = mock_response
+
+        with mock.patch("urllib.request.urlopen", return_value=mock_response) as mock_urlopen:
+            docs = parse_html_from_url(
+                "https://example.com/doc.html",
+                self.DOCUMENT_ID,
+                self.PIPELINE_VERSION,
+            )
+            self.assertGreater(len(docs), 0)
+            mock_urlopen.assert_called_once()
+            # source = URL
+            self.assertEqual(docs[0].metadata["source"], "https://example.com/doc.html")
+
+    # ── Test 15: parse_html_from_url với lỗi network ──
+    def test_parse_html_from_url_network_error(self):
+        with mock.patch("urllib.request.urlopen", side_effect=urllib_error.URLError("timeout")):
+            with self.assertRaises(urllib_error.URLError):
+                parse_html_from_url(
+                    "https://example.com/doc.html",
+                    self.DOCUMENT_ID,
+                    self.PIPELINE_VERSION,
+                )
+
+    # ── Test 16: Heading chain trong metadata ──
+    def test_heading_chain_preserved_in_metadata(self):
+        """Mock Trafilatura trả về Markdown có heading → heading chain trong metadata."""
+        markdown_with_headings = "# Chương 1\n\nNội dung chương 1\n\n## 1.1 Giới thiệu\n\nChi tiết giới thiệu\n\n## 1.2 Phương pháp\n\nChi tiết phương pháp"
+        with mock.patch("rag_core.html_parser._extract_with_trafilatura", return_value=markdown_with_headings):
+            docs = parse_html_bytes(
+                "<html><body>dummy</body></html>",
+                "test.html",
+                self.DOCUMENT_ID,
+                self.PIPELINE_VERSION,
+            )
+            self.assertGreater(len(docs), 1)
+            has_heading_chain = any(
+                k.startswith("Header-") for doc in docs for k in doc.metadata
+            )
+            self.assertTrue(has_heading_chain)
 
 
 if __name__ == "__main__":

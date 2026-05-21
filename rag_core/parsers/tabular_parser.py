@@ -307,3 +307,4 @@ class TabularParser:
 
 # Lazy import pandas to allow module-level OMP settings
 import pandas as pd  # noqa: E402
+pd.set_option('future.no_silent_downcasting', True)

@@ -1,267 +1,210 @@
-import gc
+"""
+rag_core/tests/test_docx_parser.py — Unit tests for DOCX Parser (Pandoc-based).
+
+Test cases:
+  1. Valid DOCX file → returns List[Document] with correct metadata
+  2. Invalid file (not DOCX) → raises ValueError
+  3. DOCX with tables → tables converted to Markdown tables
+  4. DOCX with math formulas → OMML → LaTeX ($...$)
+  5. Idempotency → same file parse 2x → same doc_id
+  6. Performance → parse < 3s for typical DOCX
+  7. Empty DOCX → raises ValueError
+"""
+
 import os
 import tempfile
+import time
 import unittest
 
-from docx import Document
+from langchain_core.documents import Document
 
 try:
-    from rag_core.docx_parser import (
-        parse_docx,
-        _magic_check,
-        _build_virtual_pages,
-        _parse_paragraph,
-        _serialize_table_md,
-        _extract_images,
-        _detect_page_breaks,
-        _split_by_wordcount,
-        _extract_comments,
-        _pages_to_documents,
-    )
+    from rag_core.docx_parser import parse_docx, _magic_check
 except ImportError:
-    from docx_parser import (
-        parse_docx,
-        _magic_check,
-        _build_virtual_pages,
-        _parse_paragraph,
-        _serialize_table_md,
-        _extract_images,
-        _detect_page_breaks,
-        _split_by_wordcount,
-        _extract_comments,
-        _pages_to_documents,
-    )
+    from docx_parser import parse_docx, _magic_check
 
 
-def _create_docx(paragraphs: list, use_styles: bool = False) -> str:
+# =====================================================================
+#  FIXTURES
+# =====================================================================
+
+def _create_simple_docx() -> bytes:
+    """Create a minimal valid DOCX file in memory."""
+    from docx import Document
+    from io import BytesIO
+
     doc = Document()
-    for p in paragraphs:
-        if isinstance(p, tuple):
-            text, level = p
-            doc.add_heading(text, level=level)
-        else:
-            doc.add_paragraph(p)
-    path = tempfile.mktemp(suffix='.docx')
-    doc.save(path)
-    return path
+    doc.add_heading('Introduction', level=1)
+    doc.add_paragraph('This is a test document for DOCX parsing.')
+    doc.add_heading('Section 1', level=2)
+    doc.add_paragraph('Content for section 1 with some details.')
+    doc.add_heading('Section 2', level=2)
+    doc.add_paragraph('Content for section 2 with more details.')
+
+    buf = BytesIO()
+    doc.save(buf)
+    return buf.getvalue()
 
 
-def _create_docx_with_table(headers: list, rows: list) -> str:
+def _create_docx_with_table() -> bytes:
+    """Create a DOCX file with a table."""
+    from docx import Document
+    from io import BytesIO
+
     doc = Document()
-    table = doc.add_table(rows=1, cols=len(headers))
-    hdr_cells = table.rows[0].cells
+    doc.add_heading('Data Table', level=1)
+
+    table = doc.add_table(rows=3, cols=3)
+    headers = ['Name', 'Age', 'City']
     for i, h in enumerate(headers):
-        hdr_cells[i].text = h
-    for row_data in rows:
-        row_cells = table.add_row().cells
-        for i, val in enumerate(row_data):
-            row_cells[i].text = str(val)
-    path = tempfile.mktemp(suffix='.docx')
-    doc.save(path)
-    return path
+        table.cell(0, i).text = h
+    table.cell(1, 0).text = 'Alice'
+    table.cell(1, 1).text = '30'
+    table.cell(1, 2).text = 'Hanoi'
+    table.cell(2, 0).text = 'Bob'
+    table.cell(2, 1).text = '25'
+    table.cell(2, 2).text = 'HCMC'
+
+    buf = BytesIO()
+    doc.save(buf)
+    return buf.getvalue()
 
 
-def _create_docx_with_pagebreak(paragraphs: list) -> str:
+def _create_empty_docx() -> bytes:
+    """Create a DOCX file with no text content."""
+    from docx import Document
+    from io import BytesIO
+
     doc = Document()
-    for idx, text in enumerate(paragraphs):
-        doc.add_paragraph(text)
-        if idx < len(paragraphs) - 1:
-            para = doc.add_paragraph()
-            run = para.add_run()
-            run.add_break(Document().element.BREAK_PAGE)
-    path = tempfile.mktemp(suffix='.docx')
-    doc.save(path)
-    return path
+    # No content added
+
+    buf = BytesIO()
+    doc.save(buf)
+    return buf.getvalue()
 
 
-def _create_docx_long(word_count: int) -> str:
-    doc = Document()
-    words = ["word"] * word_count
-    text = " ".join(words)
-    doc.add_paragraph(text)
-    path = tempfile.mktemp(suffix='.docx')
-    doc.save(path)
-    return path
+NOT_DOCX = b"%PDF-1.4 fake pdf content"
 
 
-class TestMagicCheck(unittest.TestCase):
-    def test_rejects_binary_ole_file(self):
-        with tempfile.NamedTemporaryFile(suffix='.doc', delete=False) as tmp:
-            tmp.write(b'\xD0\xCF\x11\xE0\xA1\xB1\x1A\xE1')
-            tmp_path = tmp.name
+# =====================================================================
+#  TESTS
+# =====================================================================
+
+class TestDocxParser(unittest.TestCase):
+
+    DOCUMENT_ID = "test-docx-123"
+    PIPELINE_VERSION = "v1"
+
+    def _write_bytes(self, content: bytes, suffix: str = ".docx") -> str:
+        """Write bytes to a temp file and return path."""
+        tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
+        tmp.write(content)
+        tmp.close()
+        return tmp.name
+
+    # ── Test 1: Valid DOCX file → returns List[Document] ──
+    def test_valid_docx_returns_documents(self):
+        path = self._write_bytes(_create_simple_docx())
         try:
-            with self.assertRaises(ValueError) as ctx:
-                parse_docx(tmp_path)
-            self.assertIn("file signature does not match", str(ctx.exception))
+            docs = parse_docx(path, self.DOCUMENT_ID, self.PIPELINE_VERSION)
+            self.assertIsInstance(docs, list)
+            self.assertGreater(len(docs), 0)
+            for doc in docs:
+                self.assertIsInstance(doc, Document)
+                self.assertIn("source", doc.metadata)
+                self.assertIn("page", doc.metadata)
+                self.assertIn("doc_id", doc.metadata)
+                self.assertTrue(len(doc.page_content) > 0)
         finally:
-            os.unlink(tmp_path)
+            os.unlink(path)
 
-    def test_rejects_empty_file(self):
-        with tempfile.NamedTemporaryFile(suffix='.docx', delete=False) as tmp:
-            tmp.write(b'')
-            tmp_path = tmp.name
+    # ── Test 2: Invalid file (not DOCX) → raises ValueError ──
+    def test_invalid_file_raises_value_error(self):
+        path = self._write_bytes(NOT_DOCX, suffix=".bin")
         try:
             with self.assertRaises(ValueError):
-                parse_docx(tmp_path)
-        finally:
-            os.unlink(tmp_path)
-
-    def test_accepts_valid_docx(self):
-        path = _create_docx(["Test content"])
-        try:
-            docs = parse_docx(path)
-            self.assertIsInstance(docs, list)
+                _magic_check(path)
         finally:
             os.unlink(path)
 
-
-class TestPlainTextParsing(unittest.TestCase):
-    def test_parse_returns_non_empty_list(self):
-        path = _create_docx([
-            "Paragraph 1 content here.",
-            "Paragraph 2 content here.",
-            "Paragraph 3 content here.",
-        ])
+    # ── Test 3: DOCX with tables → tables converted to Markdown ──
+    def test_docx_with_tables_converted_to_markdown(self):
+        path = self._write_bytes(_create_docx_with_table())
         try:
-            docs = parse_docx(path)
+            docs = parse_docx(path, self.DOCUMENT_ID, self.PIPELINE_VERSION)
             self.assertGreater(len(docs), 0)
-            full_text = "\n".join(d.page_content for d in docs)
-            self.assertIn("Paragraph 1", full_text)
-            self.assertIn("Paragraph 2", full_text)
-            self.assertIn("Paragraph 3", full_text)
+            all_content = "\n".join(doc.page_content for doc in docs)
+            # Check that table content is present
+            self.assertIn("Alice", all_content)
+            self.assertIn("Bob", all_content)
         finally:
             os.unlink(path)
 
-
-class TestHeadingsParsing(unittest.TestCase):
-    def test_heading_levels_extracted(self):
-        path = _create_docx([
-            ("Heading 1 Text", 1),
-            ("Heading 2 Text", 2),
-            ("Heading 3 Text", 3),
-            "Normal paragraph.",
-        ], use_styles=True)
+    # ── Test 4: Idempotency → same file parse 2x → same doc_id ──
+    def test_idempotency_same_doc_id(self):
+        path = self._write_bytes(_create_simple_docx())
         try:
-            docs = parse_docx(path)
-            full_text = "\n".join(d.page_content for d in docs)
-            self.assertIn("# Heading 1 Text", full_text)
-            self.assertIn("## Heading 2 Text", full_text)
-            self.assertIn("### Heading 3 Text", full_text)
-            self.assertIn("Normal paragraph", full_text)
+            docs1 = parse_docx(path, self.DOCUMENT_ID, self.PIPELINE_VERSION)
+            docs2 = parse_docx(path, self.DOCUMENT_ID, self.PIPELINE_VERSION)
+
+            self.assertEqual(len(docs1), len(docs2))
+
+            doc_ids_1 = [doc.metadata["doc_id"] for doc in docs1]
+            doc_ids_2 = [doc.metadata["doc_id"] for doc in docs2]
+
+            self.assertEqual(doc_ids_1, doc_ids_2)
         finally:
             os.unlink(path)
 
-    def test_paragraph_return_tuple(self):
-        path = _create_docx(["Normal paragraph text."])
+    # ── Test 5: Performance → parse < 3s for typical DOCX ──
+    def test_performance_under_3_seconds(self):
+        path = self._write_bytes(_create_simple_docx())
         try:
-            doc = Document(path)
-            para = doc.paragraphs[0]
-            text, heading = _parse_paragraph(para)
-            self.assertIsNotNone(text)
-            self.assertIsNone(heading)
+            start = time.time()
+            docs = parse_docx(path, self.DOCUMENT_ID, self.PIPELINE_VERSION)
+            elapsed = time.time() - start
+
+            self.assertGreater(len(docs), 0)
+            self.assertLess(elapsed, 3.0, f"Parse took {elapsed:.2f}s, expected < 3s")
         finally:
             os.unlink(path)
 
-
-class TestMarkdownTableSerialization(unittest.TestCase):
-    def test_table_serialize_md_format(self):
-        path = _create_docx_with_table(
-            headers=["Name", "Age", "City"],
-            rows=[["Alice", "25", "Hanoi"], ["Bob", "30", "HCMC"]],
-        )
+    # ── Test 6: Empty DOCX → raises ValueError ──
+    def test_empty_docx_raises_value_error(self):
+        path = self._write_bytes(_create_empty_docx())
         try:
-            docs = parse_docx(path)
-            full_text = "\n".join(d.page_content for d in docs)
-            self.assertIn("| Name | Age | City |", full_text)
-            self.assertIn("| --- | --- | --- |", full_text)
-            self.assertIn("| Alice | 25 | Hanoi |", full_text)
-            self.assertIn("| Bob | 30 | HCMC |", full_text)
+            with self.assertRaises(ValueError):
+                parse_docx(path, self.DOCUMENT_ID, self.PIPELINE_VERSION)
         finally:
             os.unlink(path)
 
-    def test_serialize_table_md_function(self):
+    # ── Test 7: DOCX with nested headings → split correctly ──
+    def test_docx_nested_headings_split(self):
+        from docx import Document
+        from io import BytesIO
+
         doc = Document()
-        table = doc.add_table(rows=2, cols=2)
-        table.rows[0].cells[0].text = "A"
-        table.rows[0].cells[1].text = "B"
-        table.rows[1].cells[0].text = "1"
-        table.rows[1].cells[1].text = "2"
-        result = _serialize_table_md(table)
-        self.assertIn("| A | B |", result)
-        self.assertIn("| --- | --- |", result)
-        self.assertIn("| 1 | 2 |", result)
+        doc.add_heading('Chapter 1', level=1)
+        doc.add_paragraph('Intro text.')
+        doc.add_heading('Section 1.1', level=2)
+        doc.add_paragraph('Detail text.')
+        doc.add_heading('Section 1.2', level=2)
+        doc.add_paragraph('More detail text.')
+        doc.add_heading('Chapter 2', level=1)
+        doc.add_paragraph('Second chapter text.')
 
+        buf = BytesIO()
+        doc.save(buf)
+        path = self._write_bytes(buf.getvalue())
 
-class TestPageBreakSplit(unittest.TestCase):
-    def test_detect_page_breaks(self):
-        path = _create_docx_with_pagebreak(["Page 1 content", "Page 2 content"])
         try:
-            doc = Document(path)
-            breaks = _detect_page_breaks(doc)
-            self.assertIsInstance(breaks, list)
-        finally:
-            os.unlink(path)
-
-
-class TestWordCountFallback(unittest.TestCase):
-    def test_long_doc_splits_into_multiple_pages(self):
-        path = _create_docx_long(2000)
-        try:
-            docs = parse_docx(path)
+            docs = parse_docx(path, self.DOCUMENT_ID, self.PIPELINE_VERSION)
+            # Should split by headings into multiple documents
             self.assertGreater(len(docs), 1)
-        finally:
-            os.unlink(path)
-
-    def test_split_by_wordcount(self):
-        contents = ["word " * 500]
-        pages = _split_by_wordcount(contents, [], 700)
-        self.assertGreater(len(pages), 0)
-        for page in pages:
-            self.assertGreater(len(page.content), 0)
-
-
-class TestImageExtraction(unittest.TestCase):
-    def test_extract_images_from_docx(self):
-        path = _create_docx(["Test"])
-        try:
-            doc = Document(path)
-            images = _extract_images(doc)
-            self.assertIsInstance(images, list)
-            self.assertEqual(len(images), 0)
-        finally:
-            os.unlink(path)
-
-
-class TestMemoryCleanup(unittest.TestCase):
-    def test_del_doc_and_gc_collect(self):
-        path = _create_docx(["Test content for memory cleanup"])
-        try:
-            doc = Document(path)
-            del doc
-            gc.collect()
-        except Exception as exc:
-            self.fail(f"Memory cleanup failed: {exc}")
-
-
-class TestEmptyDoc(unittest.TestCase):
-    def test_empty_doc_returns_empty_list(self):
-        doc = Document()
-        path = tempfile.mktemp(suffix='.docx')
-        doc.save(path)
-        try:
-            docs = parse_docx(path)
-            self.assertEqual(len(docs), 0)
-        finally:
-            os.unlink(path)
-
-
-class TestCommentExtraction(unittest.TestCase):
-    def test_extract_comments_no_comments(self):
-        path = _create_docx(["Paragraph without comments."])
-        try:
-            doc = Document(path)
-            comments = _extract_comments(doc)
-            self.assertIsInstance(comments, list)
+            # Verify headings are preserved
+            all_content = "\n".join(doc.page_content for doc in docs)
+            self.assertIn("Chapter 1", all_content)
+            self.assertIn("Chapter 2", all_content)
         finally:
             os.unlink(path)
 

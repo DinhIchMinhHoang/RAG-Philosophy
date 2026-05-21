@@ -117,9 +117,13 @@ def _run_pdf_parse(tmp_path: str) -> list[Document]:
     return parser.parse_pdf(tmp_path)
 
 
-def _run_docx_parse(tmp_path: str) -> list[Document]:
+def _run_docx_parse(
+    tmp_path: str,
+    document_id: str,
+    pipeline_version: str,
+) -> list[Document]:
     from rag_core.docx_parser import parse_docx
-    return parse_docx(tmp_path)
+    return parse_docx(tmp_path, document_id, pipeline_version)
 
 
 def _run_html_parse(
@@ -140,134 +144,18 @@ def _run_md_parse(
     return parse_md(tmp_path, document_id, pipeline_version)
 
 
-def run_ingest_job(
+def _process_parsed_documents(
     db: Session,
     *,
     job_id: str,
     document_id: str,
-    object_key: str,
     pipeline_version: str,
-    user_id: str = "system",
+    parsed_pages: list[Document],
+    updater: JobUpdater,
+    total_started: float,
 ) -> dict[str, int]:
-    updater = JobUpdater(db)
-    total_started = time.perf_counter()
-
     def _mark_stage(stage: str, ratio: float, detail: str) -> None:
         updater.advance_stage(job_id, stage, ratio=ratio, stage_detail=detail)
-
-    updater.set_state(
-        job_id,
-        status="running",
-        stage="fetching_object",
-        progress_pct=0,
-        pipeline_version=pipeline_version,
-        stage_detail="starting",
-        error_message=None,
-    )
-
-    stage_started = time.perf_counter()
-    _mark_stage("fetching_object", 0.1, "fetch_started")
-    file_bytes = storage_client.get_bytes(object_key)
-    file_ext = validate_file_bytes(object_key, file_bytes)
-    _mark_stage("fetching_object", 1.0, f"fetched_bytes={len(file_bytes)}, format={file_ext}")
-    fetch_duration_ms = int((time.perf_counter() - stage_started) * 1000)
-    log_event(
-        "info",
-        "stage_complete",
-        job_id=job_id,
-        document_id=document_id,
-        pipeline_version=pipeline_version,
-        stage="fetching_object",
-        duration_ms=fetch_duration_ms,
-    )
-
-    stage_started = time.perf_counter()
-    parsed_pages: list[Document] | None = None
-    is_excel = False
-    excel_result: dict | None = None
-
-    with tempfile.NamedTemporaryFile(suffix=file_ext, delete=False) as tmp:
-        tmp.write(file_bytes)
-        tmp_path = tmp.name
-
-    try:
-        if file_ext == '.pdf':
-            _mark_stage("parsing", 0.1, "parse_started")
-            parsed_pages = _run_pdf_parse(tmp_path)
-
-        elif file_ext == '.docx':
-            _mark_stage("parsing", 0.1, "parse_started")
-            parsed_pages = _run_docx_parse(tmp_path)
-
-        elif file_ext in ('.html', '.htm'):
-            _mark_stage("parsing", 0.1, "parse_started")
-            parsed_pages = _run_html_parse(tmp_path, document_id, pipeline_version)
-
-        elif file_ext == '.md':
-            _mark_stage("parsing", 0.1, "parse_started")
-            parsed_pages = _run_md_parse(tmp_path, document_id, pipeline_version)
-
-        elif file_ext in ['.xlsx', '.xls', '.csv']:
-            is_excel = True
-            _mark_stage("loading_sql", 0.1, "excel_ingest_started")
-            from .excel_ingestor import ingest_excel_to_sql
-            table_records = ingest_excel_to_sql(
-                db=db,
-                file_bytes=file_bytes,
-                file_ext=file_ext,
-                document_id=document_id,
-                job_id=job_id,
-                user_id=user_id,
-            )
-            _mark_stage("loading_sql", 1.0, f"tables={len(table_records)}")
-            sql_duration_ms = int((time.perf_counter() - stage_started) * 1000)
-            total_duration_ms = int((time.perf_counter() - total_started) * 1000)
-            log_event(
-                "info",
-                "job_succeeded",
-                job_id=job_id,
-                document_id=document_id,
-                pipeline_version=pipeline_version,
-                stage="loading_sql",
-                duration_ms=total_duration_ms,
-            )
-            updater.set_state(
-                job_id,
-                status="succeeded",
-                progress_pct=100,
-                stage="loading_sql",
-                stage_detail="completed",
-            )
-            excel_result = {
-                "tables": len(table_records),
-                "rows": sum(t.row_count for t in table_records),
-                "sql_duration_ms": sql_duration_ms,
-            }
-
-        else:
-            raise ValueError(f"Unsupported format: {file_ext}")
-
-    finally:
-        if tmp_path:
-            Path(tmp_path).unlink(missing_ok=True)
-
-    if is_excel:
-        return excel_result
-
-    if not parsed_pages:
-        raise ValueError(f"No pages parsed from {file_ext} file")
-
-    _mark_stage("parsing", 1.0, f"parsed_pages={len(parsed_pages)}")
-    parse_duration_ms = int((time.perf_counter() - stage_started) * 1000)
-    log_event(
-        "info",
-        "stage_complete",
-        job_id=job_id,
-        document_id=document_id,
-        pipeline_version=pipeline_version,
-        stage="parsing",
-        duration_ms=parse_duration_ms,
-    )
 
     stage_started = time.perf_counter()
     _mark_stage("chunking", 0.1, "chunking_started")
@@ -374,3 +262,212 @@ def run_ingest_job(
         "indexing_duration_ms": indexing_duration_ms,
         "metadata_duration_ms": metadata_duration_ms,
     }
+
+
+def run_ingest_job(
+    db: Session,
+    *,
+    job_id: str,
+    document_id: str,
+    object_key: str,
+    pipeline_version: str,
+    user_id: str = "system",
+) -> dict[str, int]:
+    updater = JobUpdater(db)
+    total_started = time.perf_counter()
+
+    def _mark_stage(stage: str, ratio: float, detail: str) -> None:
+        updater.advance_stage(job_id, stage, ratio=ratio, stage_detail=detail)
+
+    updater.set_state(
+        job_id,
+        status="running",
+        stage="fetching_object",
+        progress_pct=0,
+        pipeline_version=pipeline_version,
+        stage_detail="starting",
+        error_message=None,
+    )
+
+    stage_started = time.perf_counter()
+    _mark_stage("fetching_object", 0.1, "fetch_started")
+    file_bytes = storage_client.get_bytes(object_key)
+    file_ext = validate_file_bytes(object_key, file_bytes)
+    _mark_stage("fetching_object", 1.0, f"fetched_bytes={len(file_bytes)}, format={file_ext}")
+    fetch_duration_ms = int((time.perf_counter() - stage_started) * 1000)
+    log_event(
+        "info",
+        "stage_complete",
+        job_id=job_id,
+        document_id=document_id,
+        pipeline_version=pipeline_version,
+        stage="fetching_object",
+        duration_ms=fetch_duration_ms,
+    )
+
+    stage_started = time.perf_counter()
+    parsed_pages: list[Document] | None = None
+    is_excel = False
+    excel_result: dict | None = None
+
+    with tempfile.NamedTemporaryFile(suffix=file_ext, delete=False) as tmp:
+        tmp.write(file_bytes)
+        tmp_path = tmp.name
+
+    try:
+        if file_ext == '.pdf':
+            _mark_stage("parsing", 0.1, "parse_started")
+            parsed_pages = _run_pdf_parse(tmp_path)
+
+        elif file_ext == '.docx':
+            _mark_stage("parsing", 0.1, "parse_started")
+            parsed_pages = _run_docx_parse(tmp_path, document_id, pipeline_version)
+
+        elif file_ext in ('.html', '.htm'):
+            _mark_stage("parsing", 0.1, "parse_started")
+            parsed_pages = _run_html_parse(tmp_path, document_id, pipeline_version)
+
+        elif file_ext == '.md':
+            _mark_stage("parsing", 0.1, "parse_started")
+            parsed_pages = _run_md_parse(tmp_path, document_id, pipeline_version)
+
+        elif file_ext in ['.xlsx', '.xls', '.csv']:
+            is_excel = True
+            _mark_stage("loading_sql", 0.1, "excel_ingest_started")
+            from .excel_ingestor import ingest_excel_to_sql
+            table_records = ingest_excel_to_sql(
+                db=db,
+                file_bytes=file_bytes,
+                file_ext=file_ext,
+                document_id=document_id,
+                job_id=job_id,
+                user_id=user_id,
+            )
+            _mark_stage("loading_sql", 1.0, f"tables={len(table_records)}")
+            sql_duration_ms = int((time.perf_counter() - stage_started) * 1000)
+            total_duration_ms = int((time.perf_counter() - total_started) * 1000)
+            log_event(
+                "info",
+                "job_succeeded",
+                job_id=job_id,
+                document_id=document_id,
+                pipeline_version=pipeline_version,
+                stage="loading_sql",
+                duration_ms=total_duration_ms,
+            )
+            updater.set_state(
+                job_id,
+                status="succeeded",
+                progress_pct=100,
+                stage="loading_sql",
+                stage_detail="completed",
+            )
+            excel_result = {
+                "tables": len(table_records),
+                "rows": sum(t.row_count for t in table_records),
+                "sql_duration_ms": sql_duration_ms,
+            }
+
+        else:
+            raise ValueError(f"Unsupported format: {file_ext}")
+
+    finally:
+        if tmp_path:
+            Path(tmp_path).unlink(missing_ok=True)
+
+    if is_excel:
+        return excel_result
+
+    if not parsed_pages:
+        raise ValueError(f"No pages parsed from {file_ext} file")
+
+    _mark_stage("parsing", 1.0, f"parsed_pages={len(parsed_pages)}")
+    parse_duration_ms = int((time.perf_counter() - stage_started) * 1000)
+    log_event(
+        "info",
+        "stage_complete",
+        job_id=job_id,
+        document_id=document_id,
+        pipeline_version=pipeline_version,
+        stage="parsing",
+        duration_ms=parse_duration_ms,
+    )
+
+    return _process_parsed_documents(
+        db,
+        job_id=job_id,
+        document_id=document_id,
+        pipeline_version=pipeline_version,
+        parsed_pages=parsed_pages,
+        updater=updater,
+        total_started=total_started,
+    )
+
+
+def run_url_ingest_job(
+    db: Session,
+    *,
+    job_id: str,
+    document_id: str,
+    url: str,
+    pipeline_version: str,
+    user_id: str = "system",
+) -> dict[str, int]:
+    updater = JobUpdater(db)
+    total_started = time.perf_counter()
+
+    def _mark_stage(stage: str, ratio: float, detail: str) -> None:
+        updater.advance_stage(job_id, stage, ratio=ratio, stage_detail=detail)
+
+    updater.set_state(
+        job_id,
+        status="running",
+        stage="fetching_object",
+        progress_pct=0,
+        pipeline_version=pipeline_version,
+        stage_detail="starting",
+        error_message=None,
+    )
+
+    stage_started = time.perf_counter()
+    _mark_stage("fetching_object", 0.1, "url_fetch_started")
+    from rag_core.html_parser import parse_html_from_url
+
+    parsed_pages = parse_html_from_url(url, document_id, pipeline_version)
+    _mark_stage("fetching_object", 1.0, f"fetched_and_parsed_pages={len(parsed_pages)}")
+    fetch_duration_ms = int((time.perf_counter() - stage_started) * 1000)
+    log_event(
+        "info",
+        "stage_complete",
+        job_id=job_id,
+        document_id=document_id,
+        pipeline_version=pipeline_version,
+        stage="fetching_object",
+        duration_ms=fetch_duration_ms,
+    )
+
+    if not parsed_pages:
+        raise ValueError(f"No pages parsed from URL: {url}")
+
+    stage_started = time.perf_counter()
+    _mark_stage("parsing", 1.0, f"parsed_pages={len(parsed_pages)}")
+    parse_duration_ms = int((time.perf_counter() - stage_started) * 1000)
+    log_event(
+        "info",
+        "stage_complete",
+        job_id=job_id,
+        document_id=document_id,
+        pipeline_version=pipeline_version,
+        stage="parsing",
+        duration_ms=parse_duration_ms,
+    )
+
+    return _process_parsed_documents(
+        db,
+        job_id=job_id,
+        document_id=document_id,
+        pipeline_version=pipeline_version,
+        parsed_pages=parsed_pages,
+        updater=updater,
+        total_started=total_started,
+    )

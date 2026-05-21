@@ -40,7 +40,10 @@ _SYSTEM_PROMPT = (
     "   - Nếu hỏi kiến thức, hãy từ chối lịch sự vì chưa có tài liệu để tra cứu.\n"
     "2. Nếu phần 'Context' CÓ dữ liệu:\n"
     "   - Chỉ trả lời dựa DUY NHẤT vào Context. Không bịa đặt thông tin.\n"
-    "   - Nếu Context không có đáp án, hãy nói rõ là tài liệu không đề cập.\n\n"
+    "   - Nếu Context không có đáp án, hãy nói rõ là tài liệu không đề cập.\n"
+    "   - Bắt buộc đính kèm trích dẫn nguồn ở cuối mỗi ý quan trọng sử dụng thông tin từ tài liệu đó theo đúng định dạng sau:\n"
+    "     `- tên_file, Trang X` (ví dụ: `- giao_trinh_triet_hoc.pdf, Trang 12` hoặc `- mac_lenin.pdf, Trang 5`)\n"
+    "     Trong đó `tên_file` và `X` lấy chính xác từ trường `source` và `page` được cung cấp trong Context.\n\n"
     "Context:\n{context}"
 )
 

@@ -73,6 +73,9 @@ def _split_page_into_parents(page: Document) -> List[Document]:
     Mỗi Parent kế thừa metadata gốc {'source', 'page'} của page,
     đồng thời được gán thêm một 'doc_id' UUIDv5 cố định (deterministic).
 
+    Nếu page đã có doc_id trong metadata (từ HTML/MD/DOCX parser),
+    giữ nguyên doc_id đó để đảm bảo idempotent reindex.
+
     Args:
         page: Một Document đại diện cho một trang PDF (từ Step 1).
 
@@ -101,6 +104,23 @@ def _split_page_into_parents(page: Document) -> List[Document]:
             )
         ]
     # =======================================================
+
+    # === PRESERVE EXISTING doc_id FROM PARSER ===
+    # HTML/MD/DOCX parsers already create deterministic doc_id with
+    # {document_id}_{pipeline_version}_{chunk_idx}. Preserve it.
+    existing_doc_id = page.metadata.get("doc_id")
+    if existing_doc_id:
+        return [
+            Document(
+                page_content=page.page_content,
+                metadata={
+                    "source": source,
+                    "page": page_num,
+                    "doc_id": existing_doc_id,
+                }
+            )
+        ]
+    # ============================================
 
     raw_parents = _PARENT_SPLITTER.create_documents(
         texts=[page.page_content],

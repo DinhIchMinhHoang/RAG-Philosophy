@@ -35,7 +35,7 @@ class TestLLMFactory(unittest.TestCase):
             result = llm.build_chat_llm()
 
         self.assertEqual(result, "gemini-client")
-        self.assertEqual(client.call_args.kwargs["model"], "gemini-3.1-flash-lite-preview")
+        self.assertEqual(client.call_args.kwargs["model"], llm.DEFAULT_LLM_MODEL)
 
     def test_builds_gemini_client_for_gemini_model(self) -> None:
         Config.LLM_PROVIDER = "auto"

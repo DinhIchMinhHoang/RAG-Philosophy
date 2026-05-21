@@ -69,7 +69,7 @@ class TestHybridRetriever(unittest.TestCase):
         mock_init.return_value = MagicMock()
         child_docs = [Document(page_content="child", metadata={"doc_id": "x", "source": "s", "page": 1})]
 
-        step3_vector_db._build_qdrant_store(child_docs, mock_init.return_value)
+        step3_vector_db._build_qdrant_store(child_docs, mock_init.return_value, ids=["test-id"])
 
         _, kwargs = mock_from_documents.call_args
         self.assertEqual(kwargs["location"], Config.QDRANT_LOCATION)
@@ -89,7 +89,7 @@ class TestHybridRetriever(unittest.TestCase):
         mock_build_qdrant.return_value = MagicMock()
         mock_build_store.return_value = InMemoryStore()
 
-        child_docs = [Document(page_content="child", metadata={"doc_id": "x", "source": "s", "page": 1})]
+        child_docs = [Document(page_content="child", metadata={"doc_id": "x", "source": "s", "page": 1, "_child_point_id": "point-1"})]
         parent_docs = [Document(page_content="parent", metadata={"doc_id": "x", "source": "s", "page": 1})]
 
         with patch.object(Config, "HYBRID_ENABLED", True):

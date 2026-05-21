@@ -8,7 +8,7 @@ from ..core.settings import settings
 from ..database import SessionLocal
 from ..ingest.job_updater import JobUpdater
 from ..ingest.logging_utils import log_event
-from ..ingest.processor import run_ingest_job
+from ..ingest.processor import run_ingest_job, run_url_ingest_job
 from .celery_app import celery_app
 
 
@@ -136,6 +136,68 @@ def process_ingest_job(
             job_id=job_id,
             document_id=document_id,
             object_key=object_key,
+            pipeline_version=pipeline_version,
+            user_id=user_id,
+        )
+        log_event(
+            "info",
+            "job_completed",
+            job_id=job_id,
+            document_id=document_id,
+            pipeline_version=pipeline_version,
+            stage="persisting_metadata",
+        )
+        return result
+    except Exception as exc:
+        if _is_retryable(exc):
+            raise RetryableIngestError(str(exc)) from exc
+
+        updater = JobUpdater(db)
+        updater.fail(job_id, _safe_error_message(exc))
+        raise
+    finally:
+        db.close()
+
+
+@celery_app.task(
+    bind=True,
+    base=IngestTaskBase,
+    name="backend.app.worker.tasks.process_url_ingest_job",
+)
+def process_url_ingest_job(
+    self,
+    *,
+    job_id: str,
+    document_id: str,
+    url: str,
+    pipeline_version: str,
+    user_id: str = "system",
+) -> dict[str, int]:
+    for field_name, value in {
+        "job_id": job_id,
+        "document_id": document_id,
+        "url": url,
+        "pipeline_version": pipeline_version,
+    }.items():
+        if not value:
+            raise ValueError(f"Missing required field: {field_name}")
+
+    log_event(
+        "info",
+        "job_started",
+        job_id=job_id,
+        document_id=document_id,
+        pipeline_version=pipeline_version,
+        stage="fetching_object",
+    )
+
+    db = SessionLocal()
+    try:
+        result = run_url_ingest_job(
+            db,
+            job_id=job_id,
+            document_id=document_id,
+            url=url,
             pipeline_version=pipeline_version,
             user_id=user_id,
         )
