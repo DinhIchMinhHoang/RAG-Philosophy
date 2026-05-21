@@ -6,6 +6,7 @@ import {
     getLatestNotebookConversation,
     getToken,
     listSources,
+    updateNotebook,
     uploadDocument,
 } from '../../api/index.js';
 
@@ -536,6 +537,27 @@ export function initChatScene(transitionManager) {
     let sourceLoadToken = 0;
     let conversationLoadToken = 0;
 
+    const shareButton = chatScene.querySelector('.chat-top-actions .panel-icon-button[title="Share"]');
+    if (shareButton) {
+        shareButton.addEventListener('click', async () => {
+            const notebookId = currentNotebookId(chatScene);
+            if (!notebookId) return;
+            const title = document.querySelector('#scene-chat .chat-title')?.textContent?.trim() || '';
+            if (!title || title.toLowerCase() === 'untitled notebook') {
+                alert('Please name the notebook before sharing.');
+                return;
+            }
+            const isShared = shareButton.classList.contains('active');
+            try {
+                await updateNotebook(notebookId, { is_community: !isShared });
+                shareButton.classList.toggle('active', !isShared);
+                document.dispatchEvent(new CustomEvent('notebooks:refresh'));
+            } catch (err) {
+                alert(err.message || 'Failed to update share status. You can only share your own notebooks.');
+            }
+        });
+    }
+
     const renderPersistedSources = (documents = []) => {
         if (!sourceList) return;
         sourceList.innerHTML = '';
@@ -604,6 +626,9 @@ export function initChatScene(transitionManager) {
     };
 
     document.addEventListener('chat:notebookChanged', () => {
+        if (shareButton) {
+            shareButton.classList.remove('active');
+        }
         if (activeStreamController) {
             activeStreamController.abort();
             activeStreamController = null;

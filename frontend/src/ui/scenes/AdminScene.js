@@ -1,15 +1,15 @@
 import { store } from '../../state/store.js';
-import { getAdminUsers, createAdminUser, deleteAdminUser, getAdminDocuments, reindexDocument, getAdminJobs } from '../../api/admin.js';
+import { getAdminUsers, createAdminUser, deleteAdminUser, getAdminLibrary, reindexAdminDocument, deleteAdminNotebook, deleteAdminDocument, getAdminJobs } from '../../api/admin.js';
 
 const emptyStateMessages = {
     users: 'No users found. Create the first user.',
-    documents: 'No documents found. Upload a document to begin.',
+    library: 'No library data yet.',
     jobs: 'No jobs running yet. Ingest a document to see jobs.'
 };
 
 let cachedUsers = [];
-let cachedDocuments = [];
 let cachedJobs = [];
+let cachedLibrary = [];
 
 function debounce(fn, delay = 180) {
     let timer;
@@ -28,14 +28,21 @@ function filterUsers(users, query) {
     );
 }
 
-function filterDocuments(documents, query) {
-    if (!query) return documents;
+function filterLibrary(users, query) {
+    if (!query) return users;
     const q = query.toLowerCase();
-    return documents.filter(d =>
-        (d.filename || '').toLowerCase().includes(q) ||
-        (d.document_id || '').toLowerCase().includes(q) ||
-        (d.id || '').toLowerCase().includes(q)
-    );
+    return users.filter(user => {
+        const userMatch = (user.username || '').toLowerCase().includes(q) || (user.email || '').toLowerCase().includes(q);
+        if (userMatch) return true;
+        return (user.notebooks || []).some(nb => {
+            const nbMatch = (nb.title || '').toLowerCase().includes(q);
+            if (nbMatch) return true;
+            return (nb.documents || []).some(doc =>
+                (doc.filename || '').toLowerCase().includes(q) ||
+                (doc.document_id || '').toLowerCase().includes(q)
+            );
+        });
+    });
 }
 
 function filterJobs(jobs, query) {
@@ -161,49 +168,65 @@ function renderUsers(list, users) {
     });
 }
 
-function renderDocuments(list, documents) {
+function renderLibrary(list, users) {
     if (!list) return;
     list.querySelectorAll('.list-item').forEach(el => el.remove());
-    const items = Array.isArray(documents) ? documents : [];
-    updateEmptyState(list, 'documents', items.length > 0);
+    const items = Array.isArray(users) ? users : [];
+    updateEmptyState(list, 'library', items.length > 0);
 
-    items.forEach(doc => {
-        const item = document.createElement('div');
-        item.className = 'list-item';
+    items.forEach(user => {
+        const userRow = document.createElement('div');
+        userRow.className = 'list-item';
+        userRow.innerHTML = `
+            <div class="list-identity">
+                <div class="list-title">${user.username || user.email || 'User'}</div>
+                <div class="list-subtitle">${user.email || ''}</div>
+            </div>
+            <div class="list-meta-grid">
+                ${createMetaLine('User ID', user.id ? String(user.id) : '—').outerHTML}
+                ${createMetaLine('Notebooks', String((user.notebooks || []).length)).outerHTML}
+            </div>
+            <div class="list-actions">
+                <button class="auth-button is-ghost danger" data-action="delete-user" data-user-id="${user.id}">Delete</button>
+            </div>`;
+        list.appendChild(userRow);
 
-        const identity = document.createElement('div');
-        identity.className = 'list-identity';
+        (user.notebooks || []).forEach(nb => {
+            const nbRow = document.createElement('div');
+            nbRow.className = 'list-item';
+            nbRow.innerHTML = `
+                <div class="list-identity">
+                    <div class="list-title">${nb.title || 'Untitled notebook'}</div>
+                    <div class="list-subtitle">Notebook #${nb.id}</div>
+                </div>
+                <div class="list-meta-grid">
+                    ${createMetaLine('Community', nb.is_community ? 'Yes' : 'No').outerHTML}
+                    ${createMetaLine('Documents', String((nb.documents || []).length)).outerHTML}
+                </div>
+                <div class="list-actions">
+                    ${nb.is_virtual ? '' : `<button class="auth-button is-ghost danger" data-action="delete-notebook" data-notebook-id="${nb.id}">Delete</button>`}
+                </div>`;
+            list.appendChild(nbRow);
 
-        const name = document.createElement('div');
-        name.className = 'list-title';
-        name.textContent = doc.filename || doc.name || 'Untitled document';
-
-        const subtitle = document.createElement('div');
-        subtitle.className = 'list-subtitle';
-        subtitle.textContent = doc.document_id || doc.id || '—';
-
-        identity.appendChild(name);
-        identity.appendChild(subtitle);
-
-        const meta = document.createElement('div');
-        meta.className = 'list-meta-grid';
-        meta.appendChild(createMetaLine('Status', doc.latest_job?.status || '—'));
-        meta.appendChild(createMetaLine('Updated', formatDate(doc.updated_at || doc.updatedAt)));
-
-        const actions = document.createElement('div');
-        actions.className = 'list-actions';
-        const reindexButton = document.createElement('button');
-        reindexButton.className = 'auth-button is-ghost';
-        reindexButton.type = 'button';
-        reindexButton.textContent = 'Reindex';
-        reindexButton.dataset.action = 'reindex-doc';
-        reindexButton.dataset.documentId = doc.document_id || doc.id;
-        actions.appendChild(reindexButton);
-
-        item.appendChild(identity);
-        item.appendChild(meta);
-        item.appendChild(actions);
-        list.appendChild(item);
+            (nb.documents || []).forEach(doc => {
+                const docRow = document.createElement('div');
+                docRow.className = 'list-item';
+                docRow.innerHTML = `
+                    <div class="list-identity">
+                        <div class="list-title">${doc.filename || 'Untitled document'}</div>
+                        <div class="list-subtitle">${doc.document_id || ''}</div>
+                    </div>
+                    <div class="list-meta-grid">
+                        ${createMetaLine('Status', doc.latest_job?.status || '—').outerHTML}
+                        ${createMetaLine('Updated', formatDate(doc.updated_at || doc.updatedAt)).outerHTML}
+                    </div>
+                    <div class="list-actions">
+                        <button class="auth-button is-ghost" data-action="reindex-admin-doc" data-document-id="${doc.document_id}">Reindex</button>
+                        <button class="auth-button is-ghost danger" data-action="delete-admin-doc" data-document-id="${doc.document_id}">Delete</button>
+                    </div>`;
+                list.appendChild(docRow);
+            });
+        });
     });
 }
 
@@ -251,8 +274,8 @@ function renderJobs(list, jobs) {
 }
 
 let currentUserQuery = '';
-let currentDocQuery = '';
 let currentJobQuery = '';
+let currentLibraryQuery = '';
 
 async function refreshUsers(list, feedback, preserveQuery = true) {
     try {
@@ -268,17 +291,17 @@ async function refreshUsers(list, feedback, preserveQuery = true) {
     }
 }
 
-async function refreshDocuments(list, feedback, preserveQuery = true) {
+async function refreshLibrary(list, feedback, preserveQuery = true) {
     try {
         renderSkeletonRows(list, 'documents', 5);
-        const documents = await getAdminDocuments();
+        const library = await getAdminLibrary();
         clearSkeletonRows(list);
-        cachedDocuments = Array.isArray(documents) ? documents : (documents.documents || []);
-        const filtered = filterDocuments(cachedDocuments, preserveQuery ? currentDocQuery : '');
-        renderDocuments(list, filtered);
+        cachedLibrary = Array.isArray(library?.users) ? library.users : [];
+        const filtered = filterLibrary(cachedLibrary, preserveQuery ? currentLibraryQuery : '');
+        renderLibrary(list, filtered);
     } catch (err) {
         clearSkeletonRows(list);
-        setFeedback(feedback, err.message || 'Failed to load documents', 'error');
+        setFeedback(feedback, err.message || 'Failed to load library', 'error');
     }
 }
 
@@ -328,19 +351,13 @@ export function initAdminScene(transitionManager) {
     const feedback = adminScene.querySelector('[data-feedback="create-user"]');
 
     const userSearchInput = adminScene.querySelector('[data-search="users"]');
-    const docSearchInput = adminScene.querySelector('[data-search="documents"]');
     const jobSearchInput = adminScene.querySelector('[data-search="jobs"]');
+    const librarySearchInput = adminScene.querySelector('[data-search="library"]');
 
     const handleUserSearch = debounce((query) => {
         currentUserQuery = query;
         const filtered = filterUsers(cachedUsers, query);
         renderUsers(userList, filtered);
-    }, 180);
-
-    const handleDocSearch = debounce((query) => {
-        currentDocQuery = query;
-        const filtered = filterDocuments(cachedDocuments, query);
-        renderDocuments(docList, filtered);
     }, 180);
 
     const handleJobSearch = debounce((query) => {
@@ -349,27 +366,32 @@ export function initAdminScene(transitionManager) {
         renderJobs(jobList, filtered);
     }, 180);
 
+    const handleLibrarySearch = debounce((query) => {
+        currentLibraryQuery = query;
+        const filtered = filterLibrary(cachedLibrary, query);
+        renderLibrary(docList, filtered);
+    }, 180);
+
     if (userSearchInput) {
         userSearchInput.addEventListener('input', (e) => handleUserSearch(e.target.value));
-    }
-    if (docSearchInput) {
-        docSearchInput.addEventListener('input', (e) => handleDocSearch(e.target.value));
     }
     if (jobSearchInput) {
         jobSearchInput.addEventListener('input', (e) => handleJobSearch(e.target.value));
     }
+    if (librarySearchInput) {
+        librarySearchInput.addEventListener('input', (e) => handleLibrarySearch(e.target.value));
+    }
 
     const syncSearchInputs = () => {
         if (userSearchInput) userSearchInput.value = currentUserQuery;
-        if (docSearchInput) docSearchInput.value = currentDocQuery;
-        if (jobSearchInput) jobSearchInput.value = currentJobQuery;
+        if (librarySearchInput) librarySearchInput.value = currentLibraryQuery;
     };
 
     adminScene.querySelectorAll('.admin-refresh').forEach(btn => {
         btn.addEventListener('click', async () => {
             const action = btn.dataset.action;
             if (action === 'refresh-users') await refreshUsers(userList, feedback, true);
-            if (action === 'refresh-documents') await refreshDocuments(docList, feedback, true);
+            if (action === 'refresh-library') await refreshLibrary(docList, feedback, true);
             if (action === 'refresh-jobs') await refreshJobs(jobList, feedback, true);
         });
     });
@@ -382,23 +404,48 @@ export function initAdminScene(transitionManager) {
             ev.preventDefault();
             const userId = target.dataset.userId;
             if (!userId) return;
-            if (!confirm('Delete this user?')) return;
+            if (!confirm('Delete this user and all related data?')) return;
             try {
                 await deleteAdminUser(userId);
                 await refreshUsers(userList, feedback);
+                await refreshLibrary(docList, feedback);
             } catch (err) {
                 setFeedback(feedback, err.message || 'Failed to delete user', 'error');
             }
         }
-        if (action === 'reindex-doc') {
+        if (action === 'reindex-admin-doc') {
             ev.preventDefault();
             const documentId = target.dataset.documentId;
             if (!documentId) return;
             try {
-                await reindexDocument(documentId);
+                await reindexAdminDocument(documentId);
                 setFeedback(feedback, 'Reindex job created.', 'success');
             } catch (err) {
                 setFeedback(feedback, err.message || 'Failed to reindex document', 'error');
+            }
+        }
+        if (action === 'delete-notebook') {
+            ev.preventDefault();
+            const notebookId = target.dataset.notebookId;
+            if (!notebookId) return;
+            if (!confirm('Delete this notebook and all related data?')) return;
+            try {
+                await deleteAdminNotebook(notebookId);
+                await refreshLibrary(docList, feedback);
+            } catch (err) {
+                setFeedback(feedback, err.message || 'Failed to delete notebook', 'error');
+            }
+        }
+        if (action === 'delete-admin-doc') {
+            ev.preventDefault();
+            const documentId = target.dataset.documentId;
+            if (!documentId) return;
+            if (!confirm('Delete this document and vectors?')) return;
+            try {
+                await deleteAdminDocument(documentId);
+                await refreshLibrary(docList, feedback);
+            } catch (err) {
+                setFeedback(feedback, err.message || 'Failed to delete document', 'error');
             }
         }
     });
@@ -432,7 +479,7 @@ export function initAdminScene(transitionManager) {
     const refreshAll = () => {
         if (!store.getIsAdmin()) return;
         refreshUsers(userList, feedback);
-        refreshDocuments(docList, feedback);
+        refreshLibrary(docList, feedback);
         refreshJobs(jobList, feedback);
     };
 

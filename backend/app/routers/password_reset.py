@@ -16,7 +16,7 @@ router = APIRouter(tags=["Authentication"])
 PASSWORD_CODE_TTL_MINUTES = 15
 
 
-def _generate_code(length: int = 6) -> str:
+def _generate_code(length: int = 4) -> str:
     digits = string.digits
     return ''.join(secrets.choice(digits) for _ in range(length))
 
@@ -29,7 +29,7 @@ def request_password_reset(req: schemas.PasswordForgotRequest, db: Session = Dep
         # do not reveal existence
         return {"message": "If an account exists for this email, a verification code has been sent."}
 
-    code = _generate_code(6)
+    code = _generate_code(4)
     expires_at = datetime.now(timezone.utc) + timedelta(minutes=PASSWORD_CODE_TTL_MINUTES)
 
     pr = models.PasswordResetCode(email=req.email, verification_code=code, expires_at=expires_at)

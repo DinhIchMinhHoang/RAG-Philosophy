@@ -24,3 +24,24 @@ export async function changePassword(currentPassword, newPassword) {
         body: JSON.stringify({ current_password: currentPassword, new_password: newPassword })
     });
 }
+
+export async function forgotPassword(email) {
+    return await request('/password/forgot', {
+        method: 'POST',
+        body: JSON.stringify({ email })
+    });
+}
+
+export async function verifyPasswordCode(email, code) {
+    return await request('/password/verify', {
+        method: 'POST',
+        body: JSON.stringify({ email, code })
+    });
+}
+
+export async function resetPassword(email, code, newPassword) {
+    return await request('/password/reset', {
+        method: 'POST',
+        body: JSON.stringify({ email, code, new_password: newPassword })
+    });
+}

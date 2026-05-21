@@ -229,6 +229,10 @@
     gap: 12px;
 }
 
+.admin-list .list-item {
+    grid-template-columns: minmax(180px, 1.4fr) minmax(180px, 1fr) auto;
+}
+
 .list-empty {
     display: flex;
     align-items: center;
@@ -252,6 +256,10 @@
     background: rgba(2, 6, 23, 0.45);
     border: 1px solid rgba(255, 255, 255, 0.12);
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.list-item + .list-item {
+    margin-top: 8px;
 }
 
 .list-identity {

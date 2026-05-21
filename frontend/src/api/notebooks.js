@@ -18,6 +18,10 @@ export async function updateNotebook(id, payload) {
     });
 }
 
+export async function copyNotebook(id) {
+    return await request(`/notebooks/${encodeURIComponent(id)}/copy`, { method: 'POST' });
+}
+
 export async function deleteNotebook(id) {
     return await request(`/notebooks/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }

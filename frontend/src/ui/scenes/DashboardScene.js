@@ -1,6 +1,6 @@
 import { hideImageModal, showImageModal } from '../components/Modal.js';
 import { isAuthenticated } from '../../api/client.js';
-import { getNotebooks, createNotebook, updateNotebook, deleteNotebook } from '../../api/notebooks.js';
+import { getNotebooks, createNotebook, updateNotebook, deleteNotebook, copyNotebook } from '../../api/notebooks.js';
 
 export function shouldLoadNotebooks() {
     return isAuthenticated();
@@ -21,6 +21,7 @@ function buildNotebookItem(nb) {
     item.className = 'notebook-item';
     item.dataset.notebookId = nb.id;
     item.dataset.title = nb.title;
+    item.dataset.ownerId = nb.owner_id;
     if (nb.cover_url) item.dataset.cover = nb.cover_url;
     if (nb.cover_mode) item.dataset.coverMode = nb.cover_mode;
     if (nb.cover_color) item.dataset.coverColor = nb.cover_color;
@@ -46,6 +47,8 @@ function buildNotebookItem(nb) {
     btn.setAttribute('aria-label', 'More');
     btn.innerHTML = '<span class="material-icons">more_vert</span>';
     item.appendChild(btn);
+
+    if (nb.is_community) item.dataset.isCommunity = 'true';
 
     return item;
 }
@@ -95,7 +98,7 @@ function setupThumbSwitch(switchEl, container) {
 function setupMoreMenu(transitionManager) {
     const moreMenu = document.createElement('div');
     moreMenu.className = 'more-menu';
-    moreMenu.innerHTML = `<button class="menu-item rename">Rename</button><button class="menu-item change-image">Change image</button><button class="menu-item delete">Delete</button>`;
+    moreMenu.innerHTML = `<button class="menu-item rename">Rename</button><button class="menu-item change-image">Change image</button><button class="menu-item share">Share</button><button class="menu-item copy">Copy to my notebooks</button><button class="menu-item delete">Delete</button>`;
     document.body.appendChild(moreMenu);
 
     let currentTarget = null;
@@ -164,6 +167,15 @@ function setupMoreMenu(transitionManager) {
                     const color = colorPreview?.dataset?.color || colorPicker?.value || '#000000';
                     coverEl.style.backgroundImage = ''; coverEl.style.backgroundColor = color; currentTarget.setAttribute('data-cover-color', color); currentTarget.removeAttribute('data-cover'); currentTarget.removeAttribute('data-cover-mode');
                 }
+                const nbId = currentTarget.dataset.notebookId;
+                if (nbId) {
+                    updateNotebook(nbId, {
+                        title: currentTarget.dataset.title || currentTarget.querySelector('.item-title')?.textContent || 'Untitled notebook',
+                        cover_url: currentTarget.dataset.cover || null,
+                        cover_mode: currentTarget.dataset.coverMode || null,
+                        cover_color: currentTarget.dataset.coverColor || null,
+                    }).catch(err => console.error('[Dashboard] Cover update failed', err));
+                }
                 hideImageModal();
                 hideMenu();
             });
@@ -175,7 +187,7 @@ function setupMoreMenu(transitionManager) {
         ev.stopPropagation();
         const actionEl = ev.target.closest('.menu-item');
         if (!actionEl || !currentTarget) return;
-        const action = actionEl.classList.contains('rename') ? 'rename' : (actionEl.classList.contains('change-image') ? 'change-image' : 'delete');
+        const action = actionEl.classList.contains('rename') ? 'rename' : (actionEl.classList.contains('change-image') ? 'change-image' : (actionEl.classList.contains('share') ? 'share' : (actionEl.classList.contains('copy') ? 'copy' : 'delete')));
         if (action === 'rename') {
             const newTitle = prompt('Rename notebook', currentTarget.querySelector('.item-title')?.textContent || currentTarget.getAttribute('data-title') || '');
             if (newTitle !== null) {
@@ -199,12 +211,33 @@ function setupMoreMenu(transitionManager) {
         } else if (action === 'change-image') {
             showImageModal(currentTarget);
             return;
+        } else if (action === 'share') {
+            const nbId = currentTarget.dataset.notebookId;
+            const title = (currentTarget.getAttribute('data-title') || currentTarget.querySelector('.item-title')?.textContent || '').trim();
+            if (!title || title.toLowerCase() === 'untitled notebook') {
+                alert('Please name the notebook before sharing.');
+            } else if (nbId) {
+                const isShared = currentTarget.dataset.isCommunity === 'true';
+                updateNotebook(nbId, { is_community: !isShared })
+                    .then(() => {
+                        currentTarget.dataset.isCommunity = (!isShared).toString();
+                        document.dispatchEvent(new CustomEvent('notebooks:refresh'));
+                    })
+                    .catch(err => console.error('[Dashboard] Share failed', err));
+            }
         } else if (action === 'delete') {
             if (confirm('Delete this notebook?')) {
                 const nbId = currentTarget.dataset.notebookId;
                 if (nbId) deleteNotebook(nbId).catch(err => console.error('[Dashboard] Delete failed', err));
                 const parent = currentTarget.parentElement;
                 if (parent) parent.removeChild(currentTarget);
+            }
+        } else if (action === 'copy') {
+            const nbId = currentTarget.dataset.notebookId;
+            if (nbId) {
+                copyNotebook(nbId)
+                    .then(() => document.dispatchEvent(new CustomEvent('notebooks:refresh')))
+                    .catch(err => console.error('[Dashboard] Copy failed', err));
             }
         }
         hideMenu();
@@ -312,6 +345,9 @@ export function initDashboardScene(transitionManager) {
         document.addEventListener('auth:changed', () => {
             if (shouldLoadNotebooks()) loadNotebooks();
         });
+        document.addEventListener('notebooks:refresh', () => {
+            if (shouldLoadNotebooks()) loadNotebooks();
+        });
         if (shouldLoadNotebooks()) loadNotebooks();
 
         document.addEventListener('click', (ev) => {
@@ -319,7 +355,7 @@ export function initDashboardScene(transitionManager) {
             if (!item) return;
             if (ev.target.closest('.more-btn') || ev.target.closest('.more-menu') || ev.target.closest('#imageModal')) return;
             const title = item.getAttribute('data-title') || item.querySelector('.item-title')?.textContent || 'Untitled notebook';
-            transitionManager.openNotebook(title, item.dataset.notebookId || null);
+            transitionManager.openNotebook(title, item.dataset.notebookId || null, item.dataset.ownerId || null);
         });
 
         const showAllScene = document.getElementById('scene-showall');
