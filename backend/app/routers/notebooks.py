@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import uuid
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel
@@ -8,6 +11,8 @@ from sqlalchemy.orm import Query, Session
 
 from .. import database, models
 from ..core.dependencies import get_current_user
+from ..core.settings import settings
+from ..ingest.storage import storage_client
 
 router = APIRouter(prefix="/api/notebooks", tags=["Notebooks"])
 
@@ -19,6 +24,7 @@ class NotebookCreate(BaseModel):
 
 class NotebookUpdate(BaseModel):
     title: str | None = None
+    is_community: bool | None = None
     cover_url: str | None = None
     cover_mode: str | None = None
     cover_color: str | None = None
@@ -57,6 +63,12 @@ class LatestConversationResponse(BaseModel):
     messages: list[ConversationMessageResponse]
     has_conversation: bool
     limit: int
+
+
+class NotebookCopyResponse(BaseModel):
+    notebook: NotebookResponse
+    documents_copied: int
+    jobs_enqueued: int
 
 
 class SavedNotebookItemCreate(BaseModel):
@@ -128,6 +140,50 @@ def _saved_item_response(item: models.SavedNotebookItem) -> SavedNotebookItemRes
     )
 
 
+def _is_share_title_valid(title: str | None) -> bool:
+    if not title:
+        return False
+    trimmed = title.strip()
+    if not trimmed:
+        return False
+    return trimmed.lower() != "untitled notebook"
+
+
+def _enqueue_ingest(job_id: str, document_id: str, object_key: str, pipeline_version: str) -> None:
+    try:
+        from ..worker.celery_app import celery_app
+    except ModuleNotFoundError as exc:
+        raise RuntimeError("Celery is not installed. Run `pip install -r requirements.txt`.") from exc
+
+    celery_app.send_task(
+        "backend.app.worker.tasks.process_ingest_job",
+        kwargs={
+            "job_id": job_id,
+            "document_id": document_id,
+            "object_key": object_key,
+            "pipeline_version": pipeline_version,
+        },
+        queue=settings.celery_ingest_queue,
+    )
+
+
+def _create_job(db: Session, document_id: str, pipeline_version: str) -> models.IngestJob:
+    job = models.IngestJob(
+        id=str(uuid.uuid4()),
+        document_id=document_id,
+        status=models.JobStatus.QUEUED.value,
+        stage=models.JobStage.FETCHING_OBJECT.value,
+        progress_pct=0,
+        stage_detail="queued",
+        pipeline_version=pipeline_version,
+        queued_at=datetime.now(timezone.utc),
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+    return job
+
+
 def _visible_notebooks_query(db: Session, user_id: int) -> Query[models.Notebook]:
     return db.query(models.Notebook).filter(
         (models.Notebook.owner_id == user_id) | (models.Notebook.is_community == 1)
@@ -156,6 +212,8 @@ def create_notebook(
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(database.get_db),
 ):
+    if payload.is_community and not _is_share_title_valid(payload.title):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Notebook title required before sharing")
     nb = models.Notebook(
         title=payload.title,
         owner_id=current_user.id,
@@ -273,7 +331,14 @@ def update_notebook(
     if nb.owner_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not owner")
     if payload.title is not None:
+        if nb.is_community and not _is_share_title_valid(payload.title):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Notebook title required before sharing")
         nb.title = payload.title
+    if payload.is_community is not None:
+        next_title = payload.title if payload.title is not None else nb.title
+        if payload.is_community and not _is_share_title_valid(next_title):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Notebook title required before sharing")
+        nb.is_community = 1 if payload.is_community else 0
     if payload.cover_url is not None:
         nb.cover_url = payload.cover_url
     if payload.cover_mode is not None:
@@ -283,6 +348,71 @@ def update_notebook(
     db.commit()
     db.refresh(nb)
     return _notebook_response(nb)
+
+
+@router.post("/{notebook_id}/copy", status_code=status.HTTP_201_CREATED, response_model=NotebookCopyResponse)
+def copy_notebook(
+    notebook_id: int,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(database.get_db),
+):
+    source = _get_visible_notebook(db, notebook_id, current_user.id)
+    title = (source.title or "").strip() or "Untitled notebook"
+    new_notebook = models.Notebook(
+        title=title,
+        owner_id=current_user.id,
+        is_community=0,
+        cover_url=source.cover_url,
+        cover_mode=source.cover_mode,
+        cover_color=source.cover_color,
+    )
+    db.add(new_notebook)
+    db.commit()
+    db.refresh(new_notebook)
+
+    documents = db.query(models.DocumentRecord).filter(models.DocumentRecord.notebook_id == source.id).all()
+    pipeline_version = settings.pipeline_version
+    documents_copied = 0
+    jobs_enqueued = 0
+    for doc in documents:
+        try:
+            payload = storage_client.get_bytes(doc.object_key)
+        except Exception as exc:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to read source object: {exc}")
+        new_document_id = str(uuid.uuid4())
+        filename = Path(doc.object_key).name or doc.filename
+        new_object_key = f"{new_document_id}/{filename}"
+        try:
+            storage_client.put_bytes(new_object_key, payload, doc.mime_type)
+        except Exception as exc:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to write copied object: {exc}")
+
+        copied = models.DocumentRecord(
+            id=new_document_id,
+            owner_id=current_user.id,
+            notebook_id=new_notebook.id,
+            filename=doc.filename,
+            object_key=new_object_key,
+            mime_type=doc.mime_type,
+            size_bytes=doc.size_bytes,
+        )
+        db.add(copied)
+        db.commit()
+        db.refresh(copied)
+        documents_copied += 1
+
+        try:
+            job = _create_job(db, document_id=copied.id, pipeline_version=pipeline_version)
+            _enqueue_ingest(job.id, copied.id, copied.object_key, pipeline_version)
+            jobs_enqueued += 1
+        except Exception as exc:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to enqueue ingest for copied document: {exc}")
+
+    return NotebookCopyResponse(
+        notebook=_notebook_response(new_notebook),
+        documents_copied=documents_copied,
+        jobs_enqueued=jobs_enqueued,
+    )
 
 
 @router.delete("/{notebook_id}")
@@ -296,6 +426,42 @@ def delete_notebook(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Notebook not found")
     if nb.owner_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not owner")
-    db.delete(nb)
-    db.commit()
+    try:
+        doc_ids = [row.id for row in db.query(models.DocumentRecord.id).filter(models.DocumentRecord.notebook_id == nb.id).all()]
+        documents = db.query(models.DocumentRecord).filter(models.DocumentRecord.id.in_(doc_ids)).all() if doc_ids else []
+
+        qdrant_client = None
+        try:
+            from ..ingest.qdrant_store import build_qdrant_client, delete_vectors_for_document
+            qdrant_client = build_qdrant_client()
+        except Exception:
+            pass
+
+        for doc in documents:
+            try:
+                storage_client.delete(doc.object_key)
+            except Exception:
+                pass
+            if qdrant_client is not None:
+                try:
+                    delete_vectors_for_document(qdrant_client, doc.id)
+                except Exception:
+                    pass
+
+        if doc_ids:
+            db.query(models.IngestJob).filter(models.IngestJob.document_id.in_(doc_ids)).delete(synchronize_session=False)
+            db.query(models.DocumentChunk).filter(models.DocumentChunk.document_id.in_(doc_ids)).delete(synchronize_session=False)
+            db.query(models.DocumentRecord).filter(models.DocumentRecord.id.in_(doc_ids)).delete(synchronize_session=False)
+
+        conv_ids = [row.id for row in db.query(models.Conversation.id).filter(models.Conversation.notebook_id == nb.id).all()]
+        if conv_ids:
+            db.query(models.ChatMessage).filter(models.ChatMessage.conversation_id.in_(conv_ids)).delete(synchronize_session=False)
+            db.query(models.Conversation).filter(models.Conversation.id.in_(conv_ids)).delete(synchronize_session=False)
+
+        db.query(models.SavedNotebookItem).filter(models.SavedNotebookItem.notebook_id == nb.id).delete(synchronize_session=False)
+        db.delete(nb)
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to delete notebook: {exc}")
     return {"deleted": True}

@@ -33,6 +33,12 @@
 
 .chat-top-actions { display: flex; gap: 8px; align-items: center; }
 
+.chat-top-actions .panel-icon-button.active {
+    background: linear-gradient(135deg, rgba(6, 182, 212, 0.25) 0%, rgba(124, 58, 237, 0.18) 100%);
+    border-color: rgba(6, 182, 212, 0.45);
+    box-shadow: 0 10px 24px rgba(6, 182, 212, 0.25), inset 0 0 14px rgba(2, 6, 23, 0.5);
+}
+
 .chat-layout {
     flex: 1 1 auto; min-height: 0;
     display: grid;

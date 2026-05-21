@@ -1,6 +1,6 @@
 const STORAGE_KEY = 'currentUser';
 
-const defaultUser = { username: '', email: '', displayName: '', bio: '', isAdmin: false };
+const defaultUser = { id: null, username: '', email: '', displayName: '', bio: '', isAdmin: false };
 
 function loadUser() {
     try {

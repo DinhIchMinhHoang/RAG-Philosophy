@@ -1,3 +1,4 @@
+import { store } from '../../state/store.js';
 import {
     BASE_URL,
     chatStream,
@@ -6,6 +7,7 @@ import {
     getLatestNotebookConversation,
     getToken,
     listSources,
+    updateNotebook,
     uploadDocument,
 } from '../../api/index.js';
 
@@ -536,6 +538,27 @@ export function initChatScene(transitionManager) {
     let sourceLoadToken = 0;
     let conversationLoadToken = 0;
 
+    const shareButton = chatScene.querySelector('.chat-top-actions .panel-icon-button[title="Share"]');
+    if (shareButton) {
+        shareButton.addEventListener('click', async () => {
+            const notebookId = currentNotebookId(chatScene);
+            if (!notebookId) return;
+            const title = document.querySelector('#scene-chat .chat-title')?.textContent?.trim() || '';
+            if (!title || title.toLowerCase() === 'untitled notebook') {
+                alert('Please name the notebook before sharing.');
+                return;
+            }
+            const isShared = shareButton.classList.contains('active');
+            try {
+                await updateNotebook(notebookId, { is_community: !isShared });
+                shareButton.classList.toggle('active', !isShared);
+                document.dispatchEvent(new CustomEvent('notebooks:refresh'));
+            } catch (err) {
+                alert(err.message || 'Failed to update share status. You can only share your own notebooks.');
+            }
+        });
+    }
+
     const renderPersistedSources = (documents = []) => {
         if (!sourceList) return;
         sourceList.innerHTML = '';
@@ -604,6 +627,31 @@ export function initChatScene(transitionManager) {
     };
 
     document.addEventListener('chat:notebookChanged', () => {
+        if (shareButton) {
+            shareButton.classList.remove('active');
+            shareButton.style.pointerEvents = '';
+            shareButton.style.opacity = '';
+            shareButton.title = 'Share';
+
+            const isShared = chatScene.dataset.isCommunity === 'true';
+            if (isShared) shareButton.classList.add('active');
+
+            const ownerId = chatScene.dataset.notebookOwnerId;
+            if (ownerId && String(store.user?.id) !== ownerId) {
+                shareButton.style.pointerEvents = 'none';
+                shareButton.style.opacity = '0.35';
+                shareButton.title = 'Only the owner can share this notebook';
+            }
+        }
+        const settingsBtn = chatScene.querySelector('.panel-icon-button[title="Notebook settings"]');
+        if (settingsBtn) {
+            const ownerId = chatScene.dataset.notebookOwnerId;
+            if (ownerId && String(store.user?.id) !== ownerId) {
+                settingsBtn.style.display = 'none';
+            } else {
+                settingsBtn.style.display = '';
+            }
+        }
         if (activeStreamController) {
             activeStreamController.abort();
             activeStreamController = null;
