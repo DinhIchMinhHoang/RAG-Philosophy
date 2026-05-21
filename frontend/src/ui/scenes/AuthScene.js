@@ -1,6 +1,5 @@
-import { login, signup, changePassword, forgotPassword, verifyPasswordCode, resetPassword, isAuthenticated, clearToken } from '../../api/index.js';
+import { login, signup, changePassword, forgotPassword, verifyPasswordCode, resetPassword, getMe, isAuthenticated, clearToken } from '../../api/index.js';
 import { store } from '../../state/store.js';
-import { isAdminEmail } from '../../utils/helpers.js';
 
 const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
@@ -96,8 +95,9 @@ export function initAuthScene(transitionManager) {
 
             try {
                 await login(email, password);
+                const me = await getMe();
                 const usernameGuess = email.split('@')[0] || 'user';
-                store.setUser({ username: usernameGuess, email, displayName: usernameGuess, bio: '', isAdmin: isAdminEmail(email) });
+                store.setUser({ id: me.id, username: me.username || usernameGuess, email, displayName: me.username || usernameGuess, bio: '', isAdmin: me.is_admin });
                 transitionManager.updateAuthUI();
                 document.dispatchEvent(new CustomEvent('auth:changed'));
                 signInForm.reset();
@@ -128,7 +128,8 @@ export function initAuthScene(transitionManager) {
 
             try {
                 await signup(username, email, password);
-                store.setUser({ username, email, displayName: username, bio: '', isAdmin: isAdminEmail(email) });
+                const me = await getMe();
+                store.setUser({ id: me.id, username, email, displayName: username, bio: '', isAdmin: me.is_admin });
                 transitionManager.updateAuthUI();
                 document.dispatchEvent(new CustomEvent('auth:changed'));
                 signUpForm.reset();

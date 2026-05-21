@@ -1,3 +1,4 @@
+import { store } from '../../state/store.js';
 import {
     BASE_URL,
     chatStream,
@@ -628,6 +629,28 @@ export function initChatScene(transitionManager) {
     document.addEventListener('chat:notebookChanged', () => {
         if (shareButton) {
             shareButton.classList.remove('active');
+            shareButton.style.pointerEvents = '';
+            shareButton.style.opacity = '';
+            shareButton.title = 'Share';
+
+            const isShared = chatScene.dataset.isCommunity === 'true';
+            if (isShared) shareButton.classList.add('active');
+
+            const ownerId = chatScene.dataset.notebookOwnerId;
+            if (ownerId && String(store.user?.id) !== ownerId) {
+                shareButton.style.pointerEvents = 'none';
+                shareButton.style.opacity = '0.35';
+                shareButton.title = 'Only the owner can share this notebook';
+            }
+        }
+        const settingsBtn = chatScene.querySelector('.panel-icon-button[title="Notebook settings"]');
+        if (settingsBtn) {
+            const ownerId = chatScene.dataset.notebookOwnerId;
+            if (ownerId && String(store.user?.id) !== ownerId) {
+                settingsBtn.style.display = 'none';
+            } else {
+                settingsBtn.style.display = '';
+            }
         }
         if (activeStreamController) {
             activeStreamController.abort();

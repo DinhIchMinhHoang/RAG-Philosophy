@@ -47,7 +47,7 @@ export class TransitionManager {
         });
     }
 
-    openNotebook(title, notebookId = null, ownerId = null) {
+    openNotebook(title, notebookId = null, ownerId = null, isCommunity = 'false') {
         const safeTitle = (title || '').trim() || 'Untitled notebook';
         const titleEl = document.querySelector('.chat-title');
         if (titleEl) titleEl.textContent = safeTitle;
@@ -57,6 +57,7 @@ export class TransitionManager {
             else delete chatScene.dataset.notebookId;
             if (ownerId) chatScene.dataset.notebookOwnerId = String(ownerId);
             else delete chatScene.dataset.notebookOwnerId;
+            chatScene.dataset.isCommunity = isCommunity;
         }
         document.dispatchEvent(new CustomEvent('chat:notebookChanged'));
         this.transitionTo('chat');

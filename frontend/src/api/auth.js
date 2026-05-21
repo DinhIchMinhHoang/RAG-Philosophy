@@ -25,6 +25,10 @@ export async function changePassword(currentPassword, newPassword) {
     });
 }
 
+export async function getMe() {
+    return await request('/auth/me', { method: 'GET' });
+}
+
 export async function forgotPassword(email) {
     return await request('/password/forgot', {
         method: 'POST',

@@ -48,7 +48,7 @@ function buildNotebookItem(nb) {
     btn.innerHTML = '<span class="material-icons">more_vert</span>';
     item.appendChild(btn);
 
-    if (nb.is_community) item.dataset.isCommunity = 'true';
+    item.dataset.isCommunity = nb.is_community ? 'true' : 'false';
 
     return item;
 }
@@ -98,7 +98,7 @@ function setupThumbSwitch(switchEl, container) {
 function setupMoreMenu(transitionManager) {
     const moreMenu = document.createElement('div');
     moreMenu.className = 'more-menu';
-    moreMenu.innerHTML = `<button class="menu-item rename">Rename</button><button class="menu-item change-image">Change image</button><button class="menu-item share">Share</button><button class="menu-item copy">Copy to my notebooks</button><button class="menu-item delete">Delete</button>`;
+    moreMenu.innerHTML = `<button class="menu-item rename">Rename</button><button class="menu-item change-image">Change image</button><button class="menu-item copy">Copy to my notebooks</button><button class="menu-item delete">Delete</button>`;
     document.body.appendChild(moreMenu);
 
     let currentTarget = null;
@@ -211,20 +211,6 @@ function setupMoreMenu(transitionManager) {
         } else if (action === 'change-image') {
             showImageModal(currentTarget);
             return;
-        } else if (action === 'share') {
-            const nbId = currentTarget.dataset.notebookId;
-            const title = (currentTarget.getAttribute('data-title') || currentTarget.querySelector('.item-title')?.textContent || '').trim();
-            if (!title || title.toLowerCase() === 'untitled notebook') {
-                alert('Please name the notebook before sharing.');
-            } else if (nbId) {
-                const isShared = currentTarget.dataset.isCommunity === 'true';
-                updateNotebook(nbId, { is_community: !isShared })
-                    .then(() => {
-                        currentTarget.dataset.isCommunity = (!isShared).toString();
-                        document.dispatchEvent(new CustomEvent('notebooks:refresh'));
-                    })
-                    .catch(err => console.error('[Dashboard] Share failed', err));
-            }
         } else if (action === 'delete') {
             if (confirm('Delete this notebook?')) {
                 const nbId = currentTarget.dataset.notebookId;
@@ -268,7 +254,7 @@ export function initDashboardScene(transitionManager) {
             e.preventDefault();
             try {
                 const nb = await createNotebook({ title: 'Untitled notebook', is_community: false });
-                transitionManager.openNotebook(nb.title, nb.id);
+                transitionManager.openNotebook(nb.title, nb.id, null, 'false');
             } catch (err) {
                 console.error('[Dashboard] Failed to create notebook', err);
             }
@@ -355,7 +341,7 @@ export function initDashboardScene(transitionManager) {
             if (!item) return;
             if (ev.target.closest('.more-btn') || ev.target.closest('.more-menu') || ev.target.closest('#imageModal')) return;
             const title = item.getAttribute('data-title') || item.querySelector('.item-title')?.textContent || 'Untitled notebook';
-            transitionManager.openNotebook(title, item.dataset.notebookId || null, item.dataset.ownerId || null);
+            transitionManager.openNotebook(title, item.dataset.notebookId || null, item.dataset.ownerId || null, item.dataset.isCommunity || 'false');
         });
 
         const showAllScene = document.getElementById('scene-showall');
