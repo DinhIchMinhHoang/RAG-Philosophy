@@ -45,7 +45,7 @@ class Config:
 
     # Cohere reranking (fail-open): rerank child chunks then map to parent docs.
     # When enabled, retrieval always uses dense+BM25 candidate merge.
-    RERANK_ENABLED: bool = False
+    RERANK_ENABLED: bool = True
     RERANK_MODEL: str = os.getenv("RERANK_MODEL", "rerank-v4.0-fast")
     RERANK_CANDIDATE_K: int = int(os.getenv("RERANK_CANDIDATE_K", "8"))
     RERANK_TIMEOUT_SECONDS: float = float(os.getenv("RERANK_TIMEOUT_SECONDS", "2.0"))
