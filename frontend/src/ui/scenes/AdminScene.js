@@ -1,14 +1,14 @@
 import { store } from '../../state/store.js';
-import { getAdminUsers, createAdminUser, deleteAdminUser, getAdminLibrary, reindexAdminDocument, deleteAdminNotebook, deleteAdminDocument, getAdminJobs } from '../../api/admin.js';
+import { getAdminUsers, createAdminUser, deleteAdminUser, getAdminLibrary, reindexAdminDocument, deleteAdminNotebook, deleteAdminDocument, getApiConfig } from '../../api/admin.js';
 
 const emptyStateMessages = {
     users: 'No users found. Create the first user.',
     library: 'No library data yet.',
-    jobs: 'No jobs running yet. Ingest a document to see jobs.'
+    api: 'No configuration found.'
 };
 
 let cachedUsers = [];
-let cachedJobs = [];
+let cachedApiConfig = [];
 let cachedLibrary = [];
 
 function debounce(fn, delay = 180) {
@@ -45,15 +45,10 @@ function filterLibrary(users, query) {
     });
 }
 
-function filterJobs(jobs, query) {
-    if (!query) return jobs;
+function filterApiConfig(entries, query) {
+    if (!query) return entries;
     const q = query.toLowerCase();
-    return jobs.filter(j =>
-        (j.job_id || '').toLowerCase().includes(q) ||
-        (j.id || '').toLowerCase().includes(q) ||
-        (j.document_id || '').toLowerCase().includes(q) ||
-        (j.status || '').toLowerCase().includes(q)
-    );
+    return entries.filter(e => (e.key || '').toLowerCase().includes(q));
 }
 
 function renderSkeletonRows(list, type = 'users', count = 5) {
@@ -230,13 +225,13 @@ function renderLibrary(list, users) {
     });
 }
 
-function renderJobs(list, jobs) {
+function renderApiConfig(list, entries) {
     if (!list) return;
     list.querySelectorAll('.list-item').forEach(el => el.remove());
-    const items = Array.isArray(jobs) ? jobs : [];
-    updateEmptyState(list, 'jobs', items.length > 0);
+    const items = Array.isArray(entries) ? entries : [];
+    updateEmptyState(list, 'api', items.length > 0);
 
-    items.forEach(job => {
+    items.forEach(entry => {
         const item = document.createElement('div');
         item.className = 'list-item';
 
@@ -245,36 +240,30 @@ function renderJobs(list, jobs) {
 
         const name = document.createElement('div');
         name.className = 'list-title';
-        name.textContent = job.job_id || job.id || 'Job';
+        name.textContent = entry.key;
 
         const subtitle = document.createElement('div');
         subtitle.className = 'list-subtitle';
-        subtitle.textContent = job.document_id || '—';
+        const code = document.createElement('code');
+        code.textContent = entry.value;
+        subtitle.appendChild(code);
+        if (entry.sensitive) {
+            const badge = document.createElement('span');
+            badge.className = 'sensitive-badge';
+            badge.textContent = 'sensitive';
+            subtitle.appendChild(badge);
+        }
 
         identity.appendChild(name);
         identity.appendChild(subtitle);
 
-        const meta = document.createElement('div');
-        meta.className = 'list-meta-grid';
-        meta.appendChild(createMetaLine('Status', job.status || '—'));
-        meta.appendChild(createMetaLine('Stage', job.stage || '—'));
-        meta.appendChild(createMetaLine('Progress', job.progress_pct != null ? `${job.progress_pct}%` : '—'));
-
-        if (job.error_message) {
-            const err = document.createElement('div');
-            err.className = 'list-error';
-            err.textContent = job.error_message;
-            meta.appendChild(err);
-        }
-
         item.appendChild(identity);
-        item.appendChild(meta);
         list.appendChild(item);
     });
 }
 
 let currentUserQuery = '';
-let currentJobQuery = '';
+let currentApiQuery = '';
 let currentLibraryQuery = '';
 
 async function refreshUsers(list, feedback, preserveQuery = true) {
@@ -305,17 +294,17 @@ async function refreshLibrary(list, feedback, preserveQuery = true) {
     }
 }
 
-async function refreshJobs(list, feedback, preserveQuery = true) {
+async function refreshApiConfig(list) {
     try {
-        renderSkeletonRows(list, 'jobs', 5);
-        const jobs = await getAdminJobs();
+        renderSkeletonRows(list, 'users', 5);
+        const data = await getApiConfig();
         clearSkeletonRows(list);
-        cachedJobs = Array.isArray(jobs) ? jobs : (jobs.jobs || []);
-        const filtered = filterJobs(cachedJobs, preserveQuery ? currentJobQuery : '');
-        renderJobs(list, filtered);
+        cachedApiConfig = Array.isArray(data?.entries) ? data.entries : [];
+        const filtered = filterApiConfig(cachedApiConfig, currentApiQuery);
+        renderApiConfig(list, filtered);
     } catch (err) {
         clearSkeletonRows(list);
-        setFeedback(feedback, err.message || 'Failed to load jobs', 'error');
+        console.error('[Admin] Failed to load API config', err);
     }
 }
 
@@ -347,11 +336,11 @@ export function initAdminScene(transitionManager) {
 
     const userList = adminScene.querySelector('[data-list="users"]');
     const docList = adminScene.querySelector('[data-list="documents"]');
-    const jobList = adminScene.querySelector('[data-list="jobs"]');
+    const apiList = adminScene.querySelector('[data-list="api"]');
     const feedback = adminScene.querySelector('[data-feedback="create-user"]');
 
     const userSearchInput = adminScene.querySelector('[data-search="users"]');
-    const jobSearchInput = adminScene.querySelector('[data-search="jobs"]');
+    const apiSearchInput = adminScene.querySelector('[data-search="api"]');
     const librarySearchInput = adminScene.querySelector('[data-search="library"]');
 
     const handleUserSearch = debounce((query) => {
@@ -360,10 +349,10 @@ export function initAdminScene(transitionManager) {
         renderUsers(userList, filtered);
     }, 180);
 
-    const handleJobSearch = debounce((query) => {
-        currentJobQuery = query;
-        const filtered = filterJobs(cachedJobs, query);
-        renderJobs(jobList, filtered);
+    const handleApiSearch = debounce((query) => {
+        currentApiQuery = query;
+        const filtered = filterApiConfig(cachedApiConfig, query);
+        renderApiConfig(apiList, filtered);
     }, 180);
 
     const handleLibrarySearch = debounce((query) => {
@@ -375,8 +364,8 @@ export function initAdminScene(transitionManager) {
     if (userSearchInput) {
         userSearchInput.addEventListener('input', (e) => handleUserSearch(e.target.value));
     }
-    if (jobSearchInput) {
-        jobSearchInput.addEventListener('input', (e) => handleJobSearch(e.target.value));
+    if (apiSearchInput) {
+        apiSearchInput.addEventListener('input', (e) => handleApiSearch(e.target.value));
     }
     if (librarySearchInput) {
         librarySearchInput.addEventListener('input', (e) => handleLibrarySearch(e.target.value));
@@ -384,6 +373,7 @@ export function initAdminScene(transitionManager) {
 
     const syncSearchInputs = () => {
         if (userSearchInput) userSearchInput.value = currentUserQuery;
+        if (apiSearchInput) apiSearchInput.value = currentApiQuery;
         if (librarySearchInput) librarySearchInput.value = currentLibraryQuery;
     };
 
@@ -392,7 +382,7 @@ export function initAdminScene(transitionManager) {
             const action = btn.dataset.action;
             if (action === 'refresh-users') await refreshUsers(userList, feedback, true);
             if (action === 'refresh-library') await refreshLibrary(docList, feedback, true);
-            if (action === 'refresh-jobs') await refreshJobs(jobList, feedback, true);
+            if (action === 'refresh-api') await refreshApiConfig(apiList);
         });
     });
 
@@ -480,7 +470,7 @@ export function initAdminScene(transitionManager) {
         if (!store.getIsAdmin()) return;
         refreshUsers(userList, feedback);
         refreshLibrary(docList, feedback);
-        refreshJobs(jobList, feedback);
+        refreshApiConfig(apiList);
     };
 
     document.addEventListener('admin:show', () => {

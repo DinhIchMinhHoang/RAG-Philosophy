@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from pathlib import Path
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -40,18 +41,14 @@ class AdminDocumentResponse(BaseModel):
     latest_job: dict | None
 
 
-class AdminJobResponse(BaseModel):
-    job_id: str
-    document_id: str
-    status: str
-    stage: str
-    progress_pct: int
-    stage_detail: str | None
-    error_message: str | None
-    pipeline_version: str
-    queued_at: str | None
-    started_at: str | None
-    finished_at: str | None
+class AdminApiConfigEntry(BaseModel):
+    key: str
+    value: str
+    sensitive: bool
+
+
+class AdminApiConfigResponse(BaseModel):
+    entries: list[AdminApiConfigEntry]
 
 
 class AdminNotebookNode(BaseModel):
@@ -415,28 +412,44 @@ def list_documents(
     return output
 
 
-@router.get("/jobs", response_model=list[AdminJobResponse])
-def list_jobs(
+_SENSITIVE_PATTERNS = ["API_KEY", "SECRET", "PASSWORD", "TOKEN", "ACCESS_KEY"]
+
+
+def _is_sensitive_key(key: str) -> bool:
+    return any(p in key.upper() for p in _SENSITIVE_PATTERNS)
+
+
+def _mask_value(value: str) -> str:
+    if len(value) <= 8:
+        return "***"
+    return value[:6] + "***"
+
+
+def _parse_env_file() -> list[AdminApiConfigEntry]:
+    env_path = Path(__file__).resolve().parents[3] / ".env"
+    if not env_path.exists():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=".env file not found")
+    entries: list[AdminApiConfigEntry] = []
+    for line in env_path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if "=" not in stripped:
+            continue
+        key, _, raw_value = stripped.partition("=")
+        key = key.strip()
+        value = raw_value.strip().strip("\"'")
+        sensitive = _is_sensitive_key(key)
+        display = _mask_value(value) if sensitive else value
+        entries.append(AdminApiConfigEntry(key=key, value=display, sensitive=sensitive))
+    return entries
+
+
+@router.get("/api-config", response_model=AdminApiConfigResponse)
+def get_api_config(
     _admin_user: models.User = Depends(require_admin_user),
-    db: Session = Depends(database.get_db),
 ):
-    jobs = db.query(models.IngestJob).order_by(models.IngestJob.created_at.desc()).all()
-    return [
-        AdminJobResponse(
-            job_id=job.id,
-            document_id=job.document_id,
-            status=job.status,
-            stage=job.stage,
-            progress_pct=job.progress_pct,
-            stage_detail=job.stage_detail,
-            error_message=job.error_message,
-            pipeline_version=job.pipeline_version,
-            queued_at=job.queued_at.isoformat() if job.queued_at else None,
-            started_at=job.started_at.isoformat() if job.started_at else None,
-            finished_at=job.finished_at.isoformat() if job.finished_at else None,
-        )
-        for job in jobs
-    ]
+    return AdminApiConfigResponse(entries=_parse_env_file())
 
 
 @router.post("/documents/{document_id}/reindex", status_code=status.HTTP_202_ACCEPTED, response_model=AdminReindexResponse)

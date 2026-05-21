@@ -417,7 +417,7 @@
             <div class="admin-tabs" role="tablist" aria-label="Admin sections">
                 <button class="admin-tab active" data-tab="users">Users</button>
                 <button class="admin-tab" data-tab="documents">Documents</button>
-                <button class="admin-tab" data-tab="jobs">Jobs</button>
+                <button class="admin-tab" data-tab="api">API</button>
             </div>
 
             <div class="admin-content">
@@ -478,20 +478,24 @@
                     </div>
                 </section>
 
-                <section class="admin-panel" data-panel="jobs">
+                <section class="admin-panel" data-panel="api">
                     <header class="admin-panel-header">
-                        <div class="panel-title">Jobs</div>
+                        <div class="panel-title">API Configuration</div>
                         <div class="panel-actions">
-                            <button class="auth-button admin-refresh" data-action="refresh-jobs"><span class="material-icons">refresh</span> Refresh</button>
+                            <button class="auth-button admin-refresh" data-action="refresh-api"><span class="material-icons">refresh</span> Refresh</button>
                         </div>
                     </header>
                     <div class="admin-search-bar">
                         <span class="material-icons">search</span>
-                        <input type="text" class="admin-search-input" data-search="jobs" placeholder="Search jobs by ID, document or status...">
+                        <input type="text" class="admin-search-input" data-search="api" placeholder="Search keys...">
                     </div>
                     <div class="admin-panel-body">
-                        <div class="admin-list" data-list="jobs">
-                            <div class="list-empty" data-empty="jobs">No jobs running yet. Ingest a document to see jobs.</div>
+                        <div class="admin-list" data-list="api">
+                            <div class="list-empty" data-empty="api">No configuration found.</div>
+                        </div>
+                        <div class="admin-note">
+                            <span class="material-icons">info</span>
+                            <span>Edit <code>.env</code> at the project root and restart services for changes to take effect.</span>
                         </div>
                     </div>
                 </section>

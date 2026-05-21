@@ -23,8 +23,8 @@ export async function getAdminLibrary() {
     return await request('/admin/library', { method: 'GET' });
 }
 
-export async function getAdminJobs() {
-    return await request('/admin/jobs', { method: 'GET' });
+export async function getApiConfig() {
+    return await request('/admin/api-config', { method: 'GET' });
 }
 
 export async function reindexDocument(documentId) {
