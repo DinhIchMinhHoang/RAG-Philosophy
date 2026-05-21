@@ -7,6 +7,8 @@ import {
     getLatestNotebookConversation,
     getToken,
     listSources,
+    renameSource,
+    deleteSource,
     updateNotebook,
     uploadDocument,
 } from '../../api/index.js';
@@ -567,8 +569,99 @@ export function initChatScene(transitionManager) {
             item.className = 'source-item';
             item.style.cursor = 'pointer';
             item.dataset.documentId = doc.document_id || '';
-            item.innerHTML = `<div class="source-icon"><span class="material-icons">picture_as_pdf</span></div><div class="source-meta"><div class="source-name">${escapeHtml(doc.filename || 'Untitled document')}</div><div class="source-type">${escapeHtml(formatDocumentStatus(doc))}</div></div>`;
-            item.addEventListener('click', () => showPagePreview(doc.filename, null, doc.document_id || null));
+
+            // build menu button and dropdown
+            const menuBtnHtml = `<button class="source-menu-btn" title="More" type="button"><span class="material-icons">more_vert</span></button>`;
+            const menuHtml = `<div class="source-menu"><button class="source-menu-item" data-action="rename"><span class=\"material-icons\">edit</span> Đổi tên</button><button class="source-menu-item" data-action="delete"><span class=\"material-icons\">delete</span> Xóa</button></div>`;
+
+            item.innerHTML = `<div class="source-icon"><span class="material-icons">picture_as_pdf</span></div><div class="source-meta"><div class="source-name">${escapeHtml(doc.filename || 'Untitled document')}</div><div class="source-type">${escapeHtml(formatDocumentStatus(doc))}</div></div>${menuBtnHtml}${menuHtml}`;
+
+            // click on item opens preview unless clicking within menu
+            item.addEventListener('click', (ev) => {
+                if (ev.target.closest('.source-menu') || ev.target.closest('.source-menu-btn') || ev.target.closest('.source-rename-input') || ev.target.closest('.source-rename-actions')) return;
+                showPagePreview(doc.filename, null, doc.document_id || null);
+            });
+
+            // wire menu toggle
+            const menuBtn = item.querySelector('.source-menu-btn');
+            const menu = item.querySelector('.source-menu');
+            if (menuBtn && menu) {
+                menuBtn.addEventListener('click', (ev) => {
+                    ev.stopPropagation();
+                    // hide other menus
+                    document.querySelectorAll('.source-menu').forEach(m => { if (m !== menu) m.style.display = 'none'; });
+                    menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
+                });
+            }
+
+            // handle menu actions
+            const handleRename = async () => {
+                // inline edit
+                const nameEl = item.querySelector('.source-name');
+                const original = nameEl.textContent || '';
+                // extract base name without extension
+                const base = original.replace(/\.[^/.]+$/, '') || original;
+                nameEl.innerHTML = `<input class="source-rename-input" type="text" value="${escapeHtml(base)}" style="width:140px;padding:4px" /> <span class="source-rename-actions"><button class="source-rename-save" type="button">Save</button> <button class="source-rename-cancel" type="button">Cancel</button></span>`;
+                const input = nameEl.querySelector('.source-rename-input');
+                const saveBtn = nameEl.querySelector('.source-rename-save');
+                const cancelBtn = nameEl.querySelector('.source-rename-cancel');
+                menu.style.display = 'none';
+                input.focus();
+
+                const notebookId = currentNotebookId(chatScene);
+                const fileId = doc.document_id || '';
+
+                const cleanup = () => { nameEl.textContent = original; };
+
+                saveBtn.addEventListener('click', async () => {
+                    const newVal = input.value.trim();
+                    if (!newVal) { alert('Name cannot be empty'); return; }
+                    // simple client-side sanitization
+                    if (/[\\/\.\.]/.test(newVal)) { alert('Invalid characters in name'); return; }
+                    saveBtn.disabled = true;
+                    try {
+                        await renameSource({ notebookId, fileId, newName: newVal });
+                        // update visible filename (backend preserves extension)
+                        // append original extension if present
+                        const extMatch = (original.match(/(\.[^/.]+)$/) || [])[0] || '';
+                        nameEl.textContent = `${newVal}${extMatch}`;
+                    } catch (err) {
+                        console.error('[Rename] failed', err);
+                        alert(err.message || 'Rename failed');
+                        cleanup();
+                    }
+                });
+
+                cancelBtn.addEventListener('click', () => {
+                    cleanup();
+                });
+            };
+
+            const handleDelete = async () => {
+                menu.style.display = 'none';
+                if (!confirm('Are you sure you want to delete this source?')) return;
+                const notebookId = currentNotebookId(chatScene);
+                const fileId = doc.document_id || '';
+                try {
+                    await deleteSource({ notebookId, fileId });
+                    item.remove();
+                    updateSourceEmpty(sourceEmpty, sourceList);
+                } catch (err) {
+                    console.error('[Delete] failed', err);
+                    alert(err.message || 'Delete failed');
+                }
+            };
+
+            // attach menu item handlers
+            item.querySelectorAll('.source-menu-item').forEach((btn) => {
+                const action = btn.getAttribute('data-action');
+                btn.addEventListener('click', (ev) => {
+                    ev.stopPropagation();
+                    if (action === 'rename') handleRename();
+                    else if (action === 'delete') handleDelete();
+                });
+            });
+
             sourceList.appendChild(item);
         });
         updateSourceEmpty(sourceEmpty, sourceList);

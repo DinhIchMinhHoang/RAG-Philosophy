@@ -13,6 +13,7 @@ from .. import database, models
 from ..core.dependencies import get_current_user
 from ..core.settings import settings
 from ..ingest.storage import storage_client
+from ..ingest.storage import LocalStorageClient
 
 router = APIRouter(prefix="/api/notebooks", tags=["Notebooks"])
 
@@ -90,6 +91,10 @@ class SavedNotebookItemResponse(BaseModel):
     message_id: str | None
     sources_used: list[dict] | None
     created_at: str
+
+
+class FileRenameRequest(BaseModel):
+    new_file_name: str
 
 
 def _notebook_response(notebook: models.Notebook) -> NotebookResponse:
@@ -195,6 +200,27 @@ def _get_visible_notebook(db: Session, notebook_id: int, user_id: int) -> models
     if notebook is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Notebook not found")
     return notebook
+
+
+def _sanitize_filename(name: str) -> str:
+    # Basic sanitation: strip whitespace and disallow path separators or traversal
+    if not name or not name.strip():
+        raise ValueError("invalid filename")
+    candidate = name.strip()
+    if "/" in candidate or "\\" in candidate or ".." in candidate:
+        raise ValueError("invalid filename")
+    return candidate
+
+
+def _get_document_for_notebook(db: Session, notebook_id: int, file_id: str, user_id: int) -> models.DocumentRecord:
+    doc = (
+        db.query(models.DocumentRecord)
+        .filter(models.DocumentRecord.id == file_id, models.DocumentRecord.owner_id == user_id, models.DocumentRecord.notebook_id == notebook_id)
+        .first()
+    )
+    if not doc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
+    return doc
 
 
 @router.get("", response_model=list[NotebookResponse])
@@ -465,3 +491,146 @@ def delete_notebook(
         db.rollback()
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to delete notebook: {exc}")
     return {"deleted": True}
+
+
+@router.patch("/{notebook_id}/files/{file_id}/rename")
+def rename_file(
+    notebook_id: int,
+    file_id: str,
+    payload: FileRenameRequest,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(database.get_db),
+):
+    # verify notebook ownership/visibility
+    nb = db.query(models.Notebook).filter(models.Notebook.id == notebook_id).first()
+    if not nb:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Notebook not found")
+    if nb.owner_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not owner")
+
+    doc = _get_document_for_notebook(db, notebook_id, file_id, current_user.id)
+
+    try:
+        new_name_base = _sanitize_filename(payload.new_file_name)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid new_file_name")
+
+    # preserve extension
+    old_filename = Path(doc.filename)
+    suffix = old_filename.suffix or ""
+    new_filename = f"{new_name_base}{suffix}"
+
+    # compute new object_key: keep document id prefix if object_key follows pattern {doc.id}/{filename}
+    try:
+        parts = Path(doc.object_key).parts
+        if parts and parts[0] == doc.id:
+            new_object_key = f"{doc.id}/{new_filename}"
+        else:
+            # fallback: replace trailing name
+            parent = Path(doc.object_key).parent
+            new_object_key = str(parent / new_filename)
+    except Exception:
+        new_object_key = f"{doc.id}/{new_filename}"
+
+    # perform storage rename depending on client capabilities
+    try:
+        if isinstance(storage_client, LocalStorageClient):
+            root = storage_client.root
+            old_path = (root / doc.object_key).resolve()
+            new_path = (root / new_object_key).resolve()
+            if not str(old_path).startswith(str(root.resolve())) or not str(new_path).startswith(str(root.resolve())):
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid object path")
+            # ensure target directory exists
+            new_path.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                old_path.rename(new_path)
+            except FileNotFoundError:
+                # allow DB update even if file missing
+                pass
+        else:
+            # generic client: copy bytes then delete
+            try:
+                payload_bytes = storage_client.get_bytes(doc.object_key)
+                storage_client.put_bytes(new_object_key, payload_bytes, doc.mime_type)
+                try:
+                    storage_client.delete(doc.object_key)
+                except Exception:
+                    pass
+            except FileNotFoundError:
+                # missing physical file - proceed with DB update
+                pass
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Storage rename failed: {exc}")
+
+    # update DB
+    try:
+        doc.filename = new_filename
+        doc.object_key = new_object_key
+        db.commit()
+        db.refresh(doc)
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to update metadata: {exc}")
+
+    return {"file_id": doc.id, "filename": doc.filename, "object_key": doc.object_key}
+
+
+@router.delete("/{notebook_id}/files/{file_id}")
+def delete_file(
+    notebook_id: int,
+    file_id: str,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(database.get_db),
+):
+    # verify notebook & ownership
+    nb = db.query(models.Notebook).filter(models.Notebook.id == notebook_id).first()
+    if not nb:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Notebook not found")
+    if nb.owner_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not owner")
+
+    document = (
+        db.query(models.DocumentRecord)
+        .filter(models.DocumentRecord.id == file_id, models.DocumentRecord.owner_id == current_user.id, models.DocumentRecord.notebook_id == notebook_id)
+        .first()
+    )
+    if not document:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
+
+    cleanup = {"object_deleted": False, "vectors_deleted": False, "metadata_deleted": False}
+    errors: list[str] = []
+
+    # delete physical file
+    try:
+        # storage_client.delete is idempotent for missing files
+        storage_client.delete(document.object_key)
+        cleanup["object_deleted"] = True
+    except FileNotFoundError:
+        # missing on disk - proceed
+        cleanup["object_deleted"] = False
+    except Exception as exc:
+        errors.append(f"storage: {exc}")
+
+    # delete vectors if qdrant available
+    try:
+        from ..ingest.qdrant_store import build_qdrant_client, delete_vectors_for_document
+
+        client = build_qdrant_client()
+        delete_vectors_for_document(client, document.id)
+        cleanup["vectors_deleted"] = True
+    except Exception:
+        # don't fail the whole op if qdrant not configured or delete fails
+        errors.append("qdrant: failed or not configured")
+
+    # delete DB rows
+    try:
+        db.delete(document)
+        db.commit()
+        cleanup["metadata_deleted"] = True
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to delete metadata: {exc}")
+
+    return {"deleted": True, "cleanup": cleanup, "errors": errors}

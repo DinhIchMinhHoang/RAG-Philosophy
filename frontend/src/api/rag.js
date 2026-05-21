@@ -97,3 +97,18 @@ export async function listSources({ notebookId } = {}) {
 export async function getJob(jobId) {
     return await request(`/jobs/${encodeURIComponent(jobId)}`, { method: 'GET' });
 }
+
+export async function renameSource({ notebookId, fileId, newName }) {
+    if (!notebookId || !fileId || !newName) throw new Error('missing parameters');
+    return await request(`/notebooks/${encodeURIComponent(notebookId)}/files/${encodeURIComponent(fileId)}/rename`, {
+        method: 'PATCH',
+        body: JSON.stringify({ new_file_name: newName }),
+    });
+}
+
+export async function deleteSource({ notebookId, fileId }) {
+    if (!notebookId || !fileId) throw new Error('missing parameters');
+    return await request(`/notebooks/${encodeURIComponent(notebookId)}/files/${encodeURIComponent(fileId)}`, {
+        method: 'DELETE',
+    });
+}
