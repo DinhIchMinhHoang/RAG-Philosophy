@@ -561,6 +561,17 @@ export function initChatScene(transitionManager) {
         });
     }
 
+    const closeAllSourceMenus = (exceptMenu = null) => {
+        document.querySelectorAll('#scene-chat .source-menu').forEach((menu) => {
+            if (menu !== exceptMenu) menu.style.display = 'none';
+        });
+    };
+
+    document.addEventListener('click', (ev) => {
+        if (ev.target.closest('.source-menu') || ev.target.closest('.source-menu-btn')) return;
+        closeAllSourceMenus();
+    });
+
     const renderPersistedSources = (documents = []) => {
         if (!sourceList) return;
         sourceList.innerHTML = '';
@@ -572,13 +583,14 @@ export function initChatScene(transitionManager) {
 
             // build menu button and dropdown
             const menuBtnHtml = `<button class="source-menu-btn" title="More" type="button"><span class="material-icons">more_vert</span></button>`;
-            const menuHtml = `<div class="source-menu"><button class="source-menu-item" data-action="rename"><span class=\"material-icons\">edit</span> Đổi tên</button><button class="source-menu-item" data-action="delete"><span class=\"material-icons\">delete</span> Xóa</button></div>`;
+            const menuHtml = `<div class="source-menu"><button class="source-menu-item" data-action="rename"><span class=\"material-icons\">edit</span> Rename</button><button class="source-menu-item" data-action="delete"><span class=\"material-icons\">delete</span> Delete</button></div>`;
 
             item.innerHTML = `<div class="source-icon"><span class="material-icons">picture_as_pdf</span></div><div class="source-meta"><div class="source-name">${escapeHtml(doc.filename || 'Untitled document')}</div><div class="source-type">${escapeHtml(formatDocumentStatus(doc))}</div></div>${menuBtnHtml}${menuHtml}`;
 
             // click on item opens preview unless clicking within menu
             item.addEventListener('click', (ev) => {
                 if (ev.target.closest('.source-menu') || ev.target.closest('.source-menu-btn') || ev.target.closest('.source-rename-input') || ev.target.closest('.source-rename-actions')) return;
+                closeAllSourceMenus();
                 showPagePreview(doc.filename, null, doc.document_id || null);
             });
 
@@ -588,8 +600,7 @@ export function initChatScene(transitionManager) {
             if (menuBtn && menu) {
                 menuBtn.addEventListener('click', (ev) => {
                     ev.stopPropagation();
-                    // hide other menus
-                    document.querySelectorAll('.source-menu').forEach(m => { if (m !== menu) m.style.display = 'none'; });
+                    closeAllSourceMenus(menu);
                     menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
                 });
             }
@@ -601,10 +612,8 @@ export function initChatScene(transitionManager) {
                 const original = nameEl.textContent || '';
                 // extract base name without extension
                 const base = original.replace(/\.[^/.]+$/, '') || original;
-                nameEl.innerHTML = `<input class="source-rename-input" type="text" value="${escapeHtml(base)}" style="width:140px;padding:4px" /> <span class="source-rename-actions"><button class="source-rename-save" type="button">Save</button> <button class="source-rename-cancel" type="button">Cancel</button></span>`;
+                nameEl.innerHTML = `<input class="source-rename-input" type="text" value="${escapeHtml(base)}" />`;
                 const input = nameEl.querySelector('.source-rename-input');
-                const saveBtn = nameEl.querySelector('.source-rename-save');
-                const cancelBtn = nameEl.querySelector('.source-rename-cancel');
                 menu.style.display = 'none';
                 input.focus();
 
@@ -612,34 +621,48 @@ export function initChatScene(transitionManager) {
                 const fileId = doc.document_id || '';
 
                 const cleanup = () => { nameEl.textContent = original; };
+                let submitted = false;
 
-                saveBtn.addEventListener('click', async () => {
+                const submitRename = async () => {
                     const newVal = input.value.trim();
                     if (!newVal) { alert('Name cannot be empty'); return; }
+                    if (newVal === base) { cleanup(); return; }
                     // simple client-side sanitization
                     if (/[\\/\.\.]/.test(newVal)) { alert('Invalid characters in name'); return; }
-                    saveBtn.disabled = true;
+                    input.disabled = true;
                     try {
                         await renameSource({ notebookId, fileId, newName: newVal });
                         // update visible filename (backend preserves extension)
                         // append original extension if present
                         const extMatch = (original.match(/(\.[^/.]+)$/) || [])[0] || '';
                         nameEl.textContent = `${newVal}${extMatch}`;
+                        submitted = true;
                     } catch (err) {
                         console.error('[Rename] failed', err);
                         alert(err.message || 'Rename failed');
                         cleanup();
                     }
+                };
+
+                input.addEventListener('keydown', (ev) => {
+                    if (ev.key === 'Enter') {
+                        ev.preventDefault();
+                        submitRename();
+                    }
+                    if (ev.key === 'Escape') {
+                        ev.preventDefault();
+                        cleanup();
+                    }
                 });
 
-                cancelBtn.addEventListener('click', () => {
-                    cleanup();
+                input.addEventListener('blur', () => {
+                    if (!submitted) cleanup();
                 });
             };
 
             const handleDelete = async () => {
                 menu.style.display = 'none';
-                if (!confirm('Are you sure you want to delete this source?')) return;
+                if (!confirm('Delete this source?')) return;
                 const notebookId = currentNotebookId(chatScene);
                 const fileId = doc.document_id || '';
                 try {

@@ -29,18 +29,18 @@ function setupEmailValidation(formSelector) {
     emailInput.addEventListener('blur', validateEmail);
 }
 
-function showError(scene, msg) {
-    const err = scene.querySelector('.form-error');
-    if (err) { err.textContent = msg; err.style.display = 'block'; }
-}
-function clearError(scene) {
-    const err = scene.querySelector('.form-error');
-    if (err) { err.textContent = ''; err.style.display = 'none'; }
-}
-function showSuccess(scene, msg) {
-    const succ = scene.querySelector('.form-success');
-    if (succ) { succ.textContent = msg; succ.style.display = 'block'; setTimeout(() => { succ.style.display = 'none'; }, 3000); }
-}
+    function showError(scene, msg) {
+        const err = scene.querySelector('.form-error');
+        if (err) { err.textContent = msg; err.style.display = 'block'; }
+    }
+    function clearError(scene) {
+        const err = scene.querySelector('.form-error');
+        if (err) { err.textContent = ''; err.style.display = 'none'; }
+    }
+    function showSuccess(scene, msg) {
+        const succ = scene.querySelector('.form-success');
+        if (succ) { succ.textContent = msg; succ.style.display = 'block'; setTimeout(() => { succ.style.display = 'none'; }, 3000); }
+    }
 
 export function initAuthScene(transitionManager) {
     setupEmailValidation('#scene-signup .auth-form');
@@ -244,12 +244,18 @@ export function initAuthScene(transitionManager) {
         forgotForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             clearError(forgotScene);
+            const success = forgotScene.querySelector('.form-success');
+            if (success) success.style.display = 'none';
             const email = forgotForm.querySelector('.email-input')?.value.trim() || '';
             if (!email) { showError(forgotScene, 'Please enter your email'); return; }
             if (!isValidEmail(email)) { showError(forgotScene, 'Please enter a valid email address'); return; }
             try {
                 await forgotPassword(email);
                 pendingResetEmail = email;
+                pendingResetCode = '';
+                const codeBoxes = Array.from(document.querySelectorAll('#verify-form .code-box'));
+                codeBoxes.forEach((box) => { box.value = ''; });
+                showSuccess(forgotScene, 'Code sent. Check your email.');
                 transitionManager.transitionTo('verify');
             } catch (err) {
                 showError(forgotScene, err.message);
@@ -275,15 +281,20 @@ export function initAuthScene(transitionManager) {
         verifyForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             clearError(verifyScene);
+            const success = verifyScene.querySelector('.form-success');
+            if (success) success.style.display = 'none';
             const code = codeBoxes.map(b => b.value.trim()).join('');
             if (!pendingResetEmail) { showError(verifyScene, 'Missing email. Please restart.'); return; }
             if (code.length !== 4) { showError(verifyScene, 'Enter the 4-digit code'); return; }
             try {
                 await verifyPasswordCode(pendingResetEmail, code);
                 pendingResetCode = code;
+                showSuccess(verifyScene, 'Code verified.');
                 transitionManager.transitionTo('reset');
             } catch (err) {
                 showError(verifyScene, err.message);
+                codeBoxes.forEach((box) => { box.value = ''; });
+                focusBox(0);
             }
         });
     }
@@ -293,6 +304,8 @@ export function initAuthScene(transitionManager) {
         resetForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             clearError(resetScene);
+            const success = resetScene.querySelector('.form-success');
+            if (success) success.style.display = 'none';
             const inputs = resetForm.querySelectorAll('input[type="password"]');
             const newPassword = inputs[0]?.value || '';
             const confirmPassword = inputs[1]?.value || '';
@@ -303,6 +316,9 @@ export function initAuthScene(transitionManager) {
             try {
                 await resetPassword(pendingResetEmail, pendingResetCode, newPassword);
                 pendingResetCode = '';
+                pendingResetEmail = '';
+                inputs.forEach((input) => { input.value = ''; });
+                showSuccess(resetScene, 'Password updated.');
                 transitionManager.transitionTo('signin');
             } catch (err) {
                 showError(resetScene, err.message);
