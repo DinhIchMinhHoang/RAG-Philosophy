@@ -1,4 +1,5 @@
-import { chatStream, getJob, uploadDocument, BASE_URL } from '../../api/index.js';
+import { chatStream, getJob, uploadDocument, listSources, BASE_URL, getToken } from '../../api/index.js';
+import { getLatestNotebookConversation } from '../../api/notebooks.js';
 
 function renderMessageSkeleton(thread) {
     thread.innerHTML = '';
@@ -24,11 +25,17 @@ function escapeHtml(value) {
         .replace(/'/g, '&#39;');
 }
 
-function citationLabel(citation) {
+export function citationLabel(citation) {
     const id = citation?.citation_id || 'C?';
     const source = citation?.source || 'source';
     const page = citation?.page ? `, p. ${citation.page}` : '';
     return `${id} ${source}${page}`;
+}
+
+function citationDisplayLabel(citation, fallback) {
+    const page = Number(citation?.page);
+    if (Number.isFinite(page) && page > 0) return `Trang ${page}`;
+    return fallback;
 }
 
 function citationButtonHtml(citation, label) {
@@ -36,7 +43,7 @@ function citationButtonHtml(citation, label) {
     const source = citation?.source || '';
     const page = citation?.page || '';
     const documentId = citation?.document_id || '';
-    return `<button class="citation-btn" data-citation-id="${escapeHtml(citationId)}" data-document-id="${escapeHtml(documentId)}" data-file="${escapeHtml(source)}" data-page="${escapeHtml(page)}" title="${escapeHtml(citationLabel(citation))}"><span class="material-icons">find_in_page</span>${escapeHtml(label)}</button>`;
+    return `<button class="citation-btn" type="button" data-citation-id="${escapeHtml(citationId)}" data-document-id="${escapeHtml(documentId)}" data-file="${escapeHtml(source)}" data-page="${escapeHtml(page)}" title="${escapeHtml(citationLabel(citation))}">${escapeHtml(label)}</button>`;
 }
 
 function renderCitationChips(container, citations = []) {
@@ -57,17 +64,21 @@ function renderCitationChips(container, citations = []) {
         chip.dataset.file = citation.source || '';
         chip.dataset.page = citation.page || '';
         chip.innerHTML = `<span class="material-icons">description</span><span>${escapeHtml(citationLabel(citation))}</span>`;
-        chip.addEventListener('click', () => showPagePreview(citation.source, citation.page, citation.document_id));
+        chip.addEventListener('click', () => showPagePreview(citation.source, citation.page, citation.document_id, citation.mime_type));
         container.appendChild(chip);
     });
 }
 
-function processRichText(container, text, citations = []) {
+export function processRichText(container, text, citations = []) {
     const citationMap = new Map(citations.map((citation) => [String(citation.citation_id || '').toUpperCase(), citation]));
-    let html = text.replace(/\[(C\d+)\]/gi, (match, citationId) => {
-        const normalized = citationId.toUpperCase();
-        const citation = citationMap.get(normalized);
-        return citation ? citationButtonHtml(citation, `[${normalized}]`) : match;
+    let html = text.replace(/\[((?:\s*C\d+\s*(?:,\s*)?)+)\]/gi, (match, citationGroup) => {
+        const citationIds = citationGroup.match(/C\d+/gi) || [];
+        for (const citationId of citationIds) {
+            const normalized = citationId.toUpperCase();
+            const citation = citationMap.get(normalized);
+            if (citation) return citationButtonHtml(citation, citationDisplayLabel(citation, `[${normalized}]`));
+        }
+        return match;
     });
     html = html.replace(/\[Trang (\d+)\]/g, (_, p1) => citationButtonHtml({ page: p1 }, `Trang ${p1}`));
     html = html.replace(/- ([^,\n]+),\s*Trang\s*(\d+)/g, (_, file, page) => citationButtonHtml({ source: file.trim(), page }, `${file.trim()} (P. ${page})`));
@@ -98,16 +109,128 @@ function processRichText(container, text, citations = []) {
     });
 }
 
-const viewerState = { filename: null, page: null, documentId: null };
+const viewerState = { filename: null, page: null, documentId: null, mimeType: null };
 let activeStreamController = null;
 let activeConversationId = null;
 let setCollapsedFn = null;
+let notebookLoadVersion = 0;
+let viewerSrcVersion = 0;
 
-export function showPagePreview(filename, page = null, documentId = null) {
-    if (!filename) return;
-    viewerState.filename = filename;
-    viewerState.page = page;
-    viewerState.documentId = documentId || null;
+function inferMimeType(filename, mimeType) {
+    if (mimeType) return String(mimeType).toLowerCase();
+    const lower = String(filename || '').toLowerCase();
+    if (lower.endsWith('.pdf')) return 'application/pdf';
+    if (lower.endsWith('.txt')) return 'text/plain';
+    if (lower.endsWith('.md') || lower.endsWith('.markdown')) return 'text/markdown';
+    if (/\.(png|jpg|jpeg|gif|webp|bmp|svg)$/.test(lower)) return 'image/*';
+    return '';
+}
+
+function isBrowserNativeMime(mimeType) {
+    if (!mimeType) return true;
+    return mimeType === 'application/pdf'
+        || mimeType.startsWith('image/')
+        || mimeType === 'text/plain'
+        || mimeType === 'text/markdown';
+}
+
+function supportsPdfPageFragment(filename, mimeType, page, documentId) {
+    const pageNumber = Number(page);
+    if (!Number.isFinite(pageNumber) || pageNumber <= 0) return false;
+    const inferred = inferMimeType(filename, mimeType);
+    return inferred === 'application/pdf' || (!inferred && Boolean(documentId));
+}
+
+function viewerTitle(filename, documentId, page, showPageInHeader) {
+    const base = filename || documentId || 'Source';
+    const pageNumber = Number(page);
+    if (showPageInHeader && Number.isFinite(pageNumber) && pageNumber > 0) return `${base} - Trang ${pageNumber}`;
+    return base;
+}
+
+export function sourceFileUrl(filename, page = null, documentId = null, mimeType = null) {
+    if (!filename && !documentId) return '';
+    const fileKey = documentId || filename;
+    const filePath = documentId
+        ? `/documents/${encodeURIComponent(fileKey)}/file`
+        : `/documents/file/${encodeURIComponent(fileKey)}`;
+    const token = getToken();
+    const tokenParam = token ? `?token=${encodeURIComponent(token)}` : '';
+    const pageNumber = Number(page);
+    const fragment = supportsPdfPageFragment(filename, mimeType, page, documentId)
+        ? `#page=${pageNumber}`
+        : '';
+    return `${BASE_URL}${filePath}${tokenParam}${fragment}`;
+}
+
+function clearViewerFallback(viewer, embed) {
+    const fallback = viewer?.querySelector('.viewer-fallback');
+    fallback?.remove();
+    if (embed) {
+        if (!embed.style) embed.style = {};
+        embed.style.display = 'block';
+    }
+}
+
+function showUnsupportedViewer(viewer, embed, fileUrl, filename, mimeType) {
+    const wrap = viewer?.querySelector('.viewer-pdf-wrap');
+    if (!wrap) return;
+    if (embed) {
+        embed.removeAttribute('src');
+        if (!embed.style) embed.style = {};
+        embed.style.display = 'none';
+    }
+
+    const fallback = document.createElement('div');
+    fallback.className = 'viewer-fallback';
+    fallback.innerHTML = `
+        <span class="material-icons">draft</span>
+        <div class="viewer-fallback-text">
+            <strong>${escapeHtml(filename || 'Source file')}</strong>
+            <span>${escapeHtml(mimeType || 'Unsupported file type')}</span>
+        </div>
+        <a class="auth-button viewer-open-link" href="${escapeHtml(fileUrl)}" target="_blank" rel="noopener">Open/download</a>
+    `;
+    wrap.appendChild(fallback);
+}
+
+function withoutFragment(url) {
+    return String(url || '').split('#')[0];
+}
+
+function scheduleViewerSrc(embed, fileUrl, version) {
+    const schedule = globalThis.requestAnimationFrame || ((callback) => globalThis.setTimeout(callback, 0));
+    schedule(() => {
+        if (version !== viewerSrcVersion) return;
+        embed.src = fileUrl;
+    });
+}
+
+function setViewerSrc(embed, fileUrl) {
+    const currentSrc = embed.getAttribute?.('src') || embed.src || '';
+    const nextVersion = ++viewerSrcVersion;
+    if (currentSrc && currentSrc !== fileUrl && withoutFragment(currentSrc) === withoutFragment(fileUrl)) {
+        embed.src = 'about:blank';
+        scheduleViewerSrc(embed, fileUrl, nextVersion);
+        return;
+    }
+    embed.src = fileUrl;
+}
+
+function getActiveNotebookKey() {
+    return document.getElementById('scene-chat')?.dataset.notebookId || '';
+}
+
+function isCurrentNotebookLoad(version, notebookId) {
+    return version === notebookLoadVersion && getActiveNotebookKey() === String(notebookId || '');
+}
+
+export function resetSourceViewer() {
+    viewerSrcVersion += 1;
+    viewerState.filename = null;
+    viewerState.page = null;
+    viewerState.documentId = null;
+    viewerState.mimeType = null;
 
     const viewer = document.querySelector('#sourceViewer');
     const empty = viewer?.querySelector('.viewer-empty');
@@ -115,17 +238,66 @@ export function showPagePreview(filename, page = null, documentId = null) {
     const embed = viewer?.querySelector('#pdfViewer');
     const nameEl = viewer?.querySelector('#viewerFileName');
 
+    if (empty) empty.style.display = 'flex';
+    if (content) content.style.display = 'none';
+    clearViewerFallback(viewer, embed);
+    if (embed) embed.removeAttribute('src');
+    if (nameEl) nameEl.textContent = 'filename.pdf';
+}
+
+function resetNotebookWorkspace({ chatThread, sourceList, sourceEmpty, chatPrompt, sourceInput, showSkeleton = false }) {
+    hideThinkingIndicator();
+    activeConversationId = null;
+
+    if (sourceList) sourceList.innerHTML = '';
+    if (sourceEmpty && sourceList) updateSourceEmpty(sourceEmpty, sourceList);
+    if (chatPrompt) {
+        chatPrompt.value = '';
+        chatPrompt.style.height = '';
+    }
+    if (sourceInput) sourceInput.value = '';
+    if (chatThread) {
+        chatThread.innerHTML = '';
+        if (showSkeleton) renderMessageSkeleton(chatThread);
+    }
+    resetSourceViewer();
+}
+
+function renderWelcomeMessage(chatThread) {
+    if (!chatThread) return;
+    chatThread.innerHTML = '';
+    const welcome = document.createElement('div');
+    welcome.className = 'ai-response';
+    welcome.innerHTML = `<div class="message-text">Hi, I can help you explore your sources. Add files on the left, then ask a question.</div><div class="message-meta">Lumina</div>`;
+    chatThread.appendChild(welcome);
+}
+
+export function showPagePreview(filename, page = null, documentId = null, mimeType = null) {
+    if (!filename && !documentId) return;
+    viewerState.filename = filename;
+    viewerState.page = page;
+    viewerState.documentId = documentId || null;
+    viewerState.mimeType = mimeType || null;
+
+    const viewer = document.querySelector('#sourceViewer');
+    const empty = viewer?.querySelector('.viewer-empty');
+    const content = viewer?.querySelector('.viewer-content');
+    const embed = viewer?.querySelector('#pdfViewer');
+    const nameEl = viewer?.querySelector('#viewerFileName');
+    const inferredMimeType = inferMimeType(filename, mimeType);
+    const fileUrl = sourceFileUrl(filename, page, documentId, mimeType);
+    const canUsePageFragment = supportsPdfPageFragment(filename, mimeType, page, documentId);
+
     if (empty) empty.style.display = 'none';
     if (content) content.style.display = 'flex';
-    if (nameEl) nameEl.textContent = filename;
+    if (nameEl) nameEl.textContent = viewerTitle(filename, documentId, page, !canUsePageFragment);
+    clearViewerFallback(viewer, embed);
     if (embed) {
-        const pageNumber = Number(page);
-        const pageFragment = Number.isFinite(pageNumber) && pageNumber > 0 ? `#page=${pageNumber}` : '';
-        const fileKey = documentId || filename;
-        const filePath = documentId
-            ? `/documents/${encodeURIComponent(fileKey)}/file`
-            : `/documents/file/${encodeURIComponent(fileKey)}`;
-        embed.src = `${BASE_URL}${filePath}${pageFragment}`;
+        if (isBrowserNativeMime(inferredMimeType)) {
+            setViewerSrc(embed, fileUrl);
+        } else {
+            showUnsupportedViewer(viewer, embed, fileUrl, filename || documentId, inferredMimeType);
+        }
     }
 
     if (document.querySelector('.chat-shell')?.getAttribute('data-right-collapsed') === 'true') {
@@ -142,7 +314,7 @@ function addMessage(chatThread, role, text, citations = []) {
     const citationsEl = msg.querySelector('.citation-strip');
     const metaEl = msg.querySelector('.message-meta');
     if (textEl) { if (role === 'ai') processRichText(textEl, text, citations); else textEl.textContent = text; }
-    renderCitationChips(citationsEl, role === 'ai' ? citations : []);
+    renderCitationChips(citationsEl, []);
     if (metaEl) metaEl.textContent = role === 'user' ? 'You' : 'Lumina';
     chatThread.appendChild(msg);
     chatThread.scrollTop = chatThread.scrollHeight;
@@ -224,23 +396,90 @@ export function initChatScene(transitionManager) {
     const chatScene = document.getElementById('scene-chat');
     if (!chatScene) return;
 
-    document.addEventListener('chat:notebookChanged', () => {
-        activeConversationId = null;
+    const chatThread = chatScene.querySelector('.chat-thread');
+    const sourceList = chatScene.querySelector('.source-list');
+    const sourceEmpty = chatScene.querySelector('.source-empty');
+
+    document.addEventListener('chat:notebookLeft', () => {
+        notebookLoadVersion += 1;
+        if (activeStreamController) {
+            activeStreamController.abort();
+            activeStreamController = null;
+        }
+        delete chatScene.dataset.notebookId;
+        resetNotebookWorkspace({ chatThread, sourceList, sourceEmpty, chatPrompt, sourceInput });
     });
 
-    const chatThread = chatScene.querySelector('.chat-thread');
-    if (chatThread) {
-        renderMessageSkeleton(chatThread);
-        setTimeout(() => {
+    document.addEventListener('chat:notebookChanged', async () => {
+        const notebookId = chatScene.dataset.notebookId || '';
+        const loadVersion = ++notebookLoadVersion;
+
+        if (activeStreamController) {
+            activeStreamController.abort();
+            activeStreamController = null;
+        }
+        resetNotebookWorkspace({ chatThread, sourceList, sourceEmpty, chatPrompt, sourceInput, showSkeleton: Boolean(notebookId) });
+
+        if (!notebookId) {
+            setTimeout(() => {
+                if (isCurrentNotebookLoad(loadVersion, notebookId)) renderWelcomeMessage(chatThread);
+            }, 600);
+            return;
+        }
+
+        try {
+            const [convData, docsData] = await Promise.all([
+                getLatestNotebookConversation(notebookId, { limit: 50 }),
+                listSources(),
+            ]);
+
+            if (!isCurrentNotebookLoad(loadVersion, notebookId)) return;
+
             if (chatThread) {
                 chatThread.innerHTML = '';
-                const welcome = document.createElement('div');
-                welcome.className = 'ai-response';
-                welcome.innerHTML = `<div class="message-text">Hi, I can help you explore your sources. Add files on the left, then ask a question.</div><div class="message-meta">Lumina</div>`;
-                chatThread.appendChild(welcome);
             }
-        }, 600);
-    }
+
+            const notebookDocs = (docsData.documents || []).filter(
+                d => Number(d.notebook_id) === Number(notebookId)
+            );
+
+            if (convData.has_conversation && convData.messages.length > 0) {
+                activeConversationId = convData.conversation.id;
+                if (chatThread) {
+                    convData.messages.forEach(msg => {
+                        addMessage(
+                            chatThread,
+                            msg.role === 'user' ? 'user' : 'ai',
+                            msg.content,
+                            msg.sources_used || [],
+                        );
+                    });
+                }
+            } else {
+                renderWelcomeMessage(chatThread);
+            }
+
+            if (sourceList) {
+                sourceList.innerHTML = '';
+                notebookDocs.forEach(doc => {
+                    const item = document.createElement('div');
+                    item.className = 'source-item';
+                    item.style.cursor = 'pointer';
+                    const icon = doc.filename.toLowerCase().endsWith('.pdf') ? 'picture_as_pdf' : 'description';
+                    const status = doc.latest_job?.status === 'succeeded' ? 'Ready' : (doc.latest_job?.status || 'Uploaded');
+                    item.innerHTML = `<div class="source-icon"><span class="material-icons">${icon}</span></div><div class="source-meta"><div class="source-name">${escapeHtml(doc.filename)}</div><div class="source-type">${status}</div></div>`;
+                    item.dataset.documentId = doc.document_id;
+                    item.addEventListener('click', () => showPagePreview(doc.filename, null, doc.document_id, doc.mime_type));
+                    sourceList.appendChild(item);
+                });
+                if (sourceEmpty) updateSourceEmpty(sourceEmpty, sourceList);
+            }
+        } catch (err) {
+            if (!isCurrentNotebookLoad(loadVersion, notebookId)) return;
+            console.error('[ChatScene] Failed to restore notebook state', err);
+            renderWelcomeMessage(chatThread);
+        }
+    });
 
     const chatShell = chatScene.querySelector('.chat-shell');
     const chatLayout = chatScene.querySelector('.chat-layout');
@@ -316,14 +555,15 @@ export function initChatScene(transitionManager) {
 
     const sourceInput = chatScene.querySelector('#sourceFileInput');
     const sourceDrop = chatScene.querySelector('.source-drop');
-    const sourceList = chatScene.querySelector('.source-list');
-    const sourceEmpty = chatScene.querySelector('.source-empty');
     const sourceAddButtons = chatScene.querySelectorAll('.source-add-button');
     const sourceNoteButton = chatScene.querySelector('.source-note-button');
 
     const handleFiles = async (files) => {
         const list = Array.from(files || []);
+        const uploadNotebookKey = getActiveNotebookKey();
+        const uploadNotebookId = uploadNotebookKey ? Number(uploadNotebookKey) : null;
         for (const file of list) {
+            if (getActiveNotebookKey() !== uploadNotebookKey) return;
             const isPDF = file.name.toLowerCase().endsWith('.pdf');
             const icon = isPDF ? 'picture_as_pdf' : 'description';
             const meta = isPDF ? 'Uploading…' : (file.type || 'file');
@@ -332,21 +572,22 @@ export function initChatScene(transitionManager) {
             item.className = 'source-item';
             item.style.cursor = 'pointer';
             item.innerHTML = `<div class="source-icon"><span class="material-icons">${icon}</span></div><div class="source-meta"><div class="source-name">${file.name}</div><div class="source-type uploading">${meta}</div></div>`;
-            item.addEventListener('click', () => { if (isPDF) showPagePreview(file.name, null, item.dataset.documentId || null); });
+            item.addEventListener('click', () => { if (isPDF) showPagePreview(file.name, null, item.dataset.documentId || null, file.type || 'application/pdf'); });
             sourceList.appendChild(item);
             updateSourceEmpty(sourceEmpty, sourceList);
 
             if (isPDF) {
                 const metaEl = item.querySelector('.source-type');
                 try {
-                    const notebookId = chatScene.dataset.notebookId ? Number(chatScene.dataset.notebookId) : null;
-                    const result = await uploadDocument(file, { notebookId });
+                    const result = await uploadDocument(file, { notebookId: uploadNotebookId });
+                    if (getActiveNotebookKey() !== uploadNotebookKey) return;
                     if (result.document_id) item.dataset.documentId = result.document_id;
                     if (result.pages !== undefined || result.chunks !== undefined) {
                         setSourceMeta(metaEl, `${result.pages ?? 0} pages, ${result.chunks ?? 0} chunks`, false);
                     } else if (result.job_id) {
                         setSourceMeta(metaEl, 'Queued for indexing', true);
                         pollUploadJob(result.job_id, metaEl).catch((err) => {
+                            if (getActiveNotebookKey() !== uploadNotebookKey) return;
                             console.error('[Upload job]', err);
                             setSourceMeta(metaEl, `Error: ${err.message}`, false);
                         });
@@ -354,6 +595,7 @@ export function initChatScene(transitionManager) {
                         setSourceMeta(metaEl, result.status || 'Upload accepted', false);
                     }
                 } catch (err) {
+                    if (getActiveNotebookKey() !== uploadNotebookKey) return;
                     console.error('[Upload]', err);
                     setSourceMeta(metaEl, `Error: ${err.message}`, false);
                 }
@@ -412,11 +654,14 @@ export function initChatScene(transitionManager) {
 
             let fullText = ''; let receivedFirst = false;
 
-            const notebookId = chatScene.dataset.notebookId ? Number(chatScene.dataset.notebookId) : null;
+            const requestNotebookKey = getActiveNotebookKey();
+            const requestNotebookId = requestNotebookKey ? Number(requestNotebookKey) : null;
+            const requestVersion = notebookLoadVersion;
             activeStreamController = chatStream(text, {
                 conversationId: activeConversationId,
-                notebookId,
+                notebookId: requestNotebookId,
                 onToken(token) {
+                    if (!isCurrentNotebookLoad(requestVersion, requestNotebookKey)) return;
                     if (!receivedFirst) { receivedFirst = true; hideThinkingIndicator(); aiMsg.style.display = 'flex'; }
                     fullText += token;
                     textEl.innerHTML = '';
@@ -424,6 +669,7 @@ export function initChatScene(transitionManager) {
                     chatThread.scrollTop = chatThread.scrollHeight;
                 },
                 onDone(payload) {
+                    if (!isCurrentNotebookLoad(requestVersion, requestNotebookKey)) return;
                     if (payload?.conversation_id) activeConversationId = payload.conversation_id;
                     const finalText = payload?.answer || fullText;
                     const citations = Array.isArray(payload?.citations) ? payload.citations : [];
@@ -432,12 +678,13 @@ export function initChatScene(transitionManager) {
                     aiMsg.style.display = 'flex';
                     textEl.innerHTML = '';
                     processRichText(textEl, finalText, citations);
-                    renderCitationChips(citationsEl, citations);
+                    renderCitationChips(citationsEl, []);
                     aiMsg.classList.remove('streaming');
                     activeStreamController = null;
                     if (sendBtn) sendBtn.disabled = false;
                 },
                 onError(err) {
+                    if (!isCurrentNotebookLoad(requestVersion, requestNotebookKey)) return;
                     hideThinkingIndicator();
                     aiMsg.style.display = 'flex';
                     textEl.insertAdjacentText('beforeend', `\n\nError: ${err.message}`);

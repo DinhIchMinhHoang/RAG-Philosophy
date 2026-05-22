@@ -189,10 +189,42 @@ class NonAdminApiContractTests(unittest.TestCase):
         self.assertEqual(delete_b_as_a.status_code, 200)
         self.assertFalse(delete_b_as_a.json()["deleted"])
 
-        with patch.object(documents.storage_client, "get_bytes", return_value=b"%PDF-1.4\n"):
+        payload = b"%PDF-1.4\nabcdef"
+
+        def iter_payload(_object_key, start=0, length=None, chunk_size=1024 * 1024):
+            end = None if length is None else start + length
+            yield payload[start:end]
+
+        with patch.object(documents.storage_client, "get_size", return_value=len(payload)), patch.object(
+            documents.storage_client, "iter_bytes", side_effect=iter_payload
+        ):
             own_file = self.client.get("/api/documents/doc-a/file", headers=headers_a)
         self.assertEqual(own_file.status_code, 200)
         self.assertEqual(own_file.headers["content-type"], "application/pdf")
+        self.assertEqual(own_file.headers["accept-ranges"], "bytes")
+        self.assertEqual(own_file.headers["content-disposition"], "inline; filename*=UTF-8''alice.pdf")
+        self.assertEqual(own_file.content, payload)
+
+        with patch.object(documents.storage_client, "get_size", return_value=len(payload)), patch.object(
+            documents.storage_client, "iter_bytes", side_effect=iter_payload
+        ):
+            range_file = self.client.get("/api/documents/doc-a/file", headers={**headers_a, "Range": "bytes=0-8"})
+        self.assertEqual(range_file.status_code, 206)
+        self.assertEqual(range_file.headers["content-range"], f"bytes 0-8/{len(payload)}")
+        self.assertEqual(range_file.headers["content-length"], "9")
+        self.assertEqual(range_file.content, payload[:9])
+
+        with patch.object(documents.storage_client, "get_size", return_value=len(payload)):
+            invalid_range = self.client.get("/api/documents/doc-a/file", headers={**headers_a, "Range": "bytes=999-1000"})
+        self.assertEqual(invalid_range.status_code, 416)
+        self.assertEqual(invalid_range.headers["content-range"], f"bytes */{len(payload)}")
+
+        with patch.object(documents.storage_client, "get_size", return_value=len(payload)), patch.object(
+            documents.storage_client, "iter_bytes", side_effect=iter_payload
+        ):
+            own_file_with_query_token = self.client.get(f"/api/documents/doc-a/file?token={token_a}")
+        self.assertEqual(own_file_with_query_token.status_code, 200)
+        self.assertEqual(own_file_with_query_token.headers["content-type"], "application/pdf")
 
         forbidden_file = self.client.get("/api/documents/doc-b/file", headers=headers_a)
         self.assertEqual(forbidden_file.status_code, 404)

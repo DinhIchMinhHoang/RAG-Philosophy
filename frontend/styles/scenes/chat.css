@@ -172,6 +172,15 @@
 #pdfViewer {
     width: 100%; height: 100%; border: none;
 }
+.viewer-fallback {
+    flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 12px; padding: 20px; color: rgba(255, 255, 255, 0.78); text-align: center;
+}
+.viewer-fallback .material-icons { font-size: 42px; color: var(--color-secondary); }
+.viewer-fallback-text { display: flex; flex-direction: column; gap: 4px; min-width: 0; max-width: 100%; }
+.viewer-fallback-text strong { color: #fff; overflow-wrap: anywhere; }
+.viewer-fallback-text span { font-size: 13px; color: rgba(255, 255, 255, 0.58); overflow-wrap: anywhere; }
+.viewer-open-link { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
 
 .citation-btn {
     display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; margin: 0 2px;

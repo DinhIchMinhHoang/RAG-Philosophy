@@ -21,3 +21,7 @@ export async function updateNotebook(id, payload) {
 export async function deleteNotebook(id) {
     return await request(`/notebooks/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
+
+export async function getLatestNotebookConversation(notebookId, { limit = 50 } = {}) {
+    return await request(`/notebooks/${encodeURIComponent(notebookId)}/conversations/latest?limit=${limit}`, { method: 'GET' });
+}

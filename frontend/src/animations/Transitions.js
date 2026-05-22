@@ -14,6 +14,9 @@ export class TransitionManager {
         if (this.isTransitioning || targetScene === this.currentScene) return;
         if (targetScene === 'account' && !isAuthenticated()) targetScene = 'signin';
         if (targetScene === 'admin' && (!isAuthenticated() || !store.getIsAdmin())) targetScene = 'dashboard';
+        if (this.currentScene === 'chat' && targetScene !== 'chat') {
+            document.dispatchEvent(new CustomEvent('chat:notebookLeft'));
+        }
 
         const transitionToken = ++this.transitionToken;
         const isCurrentTransition = () => transitionToken === this.transitionToken;

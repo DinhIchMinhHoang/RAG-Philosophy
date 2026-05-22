@@ -35,7 +35,7 @@ frontend/
 │   │   │   ├── LandingScene.js  # Landing page: logo, blob canvas, auth buttons
 │   │   │   ├── AuthScene.js      # Sign up, Sign in, Account forms with validation
 │   │   │   ├── DashboardScene.js # Notebook grid, sort/view toggles, more menu, show-all
-│   │   │   └── ChatScene.js     # SSE chat, panel resizer, PDF viewer, citations, markdown/KaTeX
+│   │   │   └── ChatScene.js     # SSE chat, panel resizer, source viewer, citations, markdown/KaTeX
 │   │   └── index.js        # Barrel
 │   └── utils/
 │       ├── logger.js       # Browser console logger with module prefix
@@ -70,7 +70,7 @@ The app uses a scene-based architecture with CSS visibility transitions. All sce
 | `dashboard` | User's notebooks/documents with grid/list toggle |
 | `showall` | Full-screen view of all notebooks (community or my) |
 | `account` | User profile management (name, bio, password change, delete) |
-| `chat` | RAG-powered Q&A interface with sources panel and PDF viewer |
+| `chat` | RAG-powered Q&A interface with sources panel and source viewer |
 
 ### Scene Transition
 
@@ -153,9 +153,12 @@ export class TransitionManager {
 │   │   ├── .chat-resizer/    # Draggable resize handle (left)
 │   │   ├── .panel-center/    # Conversation: thread + input form
 │   │   ├── .chat-resizer/    # Draggable resize handle (right)
-│   │   └── .panel-right/     # PDF viewer: page nav, zoom controls, image display
+│   │   └── .panel-right/     # Source Viewer: same-origin /file iframe with unsupported-file fallback
 │   └── .image-modal/         # Notebook cover image/color picker (global modal)
 ```
+
+The Source Viewer opens original stored files through `/api/documents/{document_id}/file?token=...`.
+PDF citations append `#page=N`; non-PDF browser-native files open without a page fragment, and unsupported MIME types show an inline fallback with an open/download action.
 
 ### Dashboard (scene-dashboard)
 

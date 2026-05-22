@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from pydantic import BaseModel
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Query, Session
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy.orm import Session
 
 from .. import database, models
 from ..core.dependencies import get_current_user
@@ -46,7 +46,7 @@ def _notebook_response(notebook: models.Notebook) -> NotebookResponse:
     )
 
 
-def _visible_notebooks_query(db: Session, user_id: int) -> Query[models.Notebook]:
+def _visible_notebooks_query(db: Session, user_id: int):
     return db.query(models.Notebook).filter(
         (models.Notebook.owner_id == user_id) | (models.Notebook.is_community == 1)
     )
@@ -76,6 +76,83 @@ def create_notebook(
     db.commit()
     db.refresh(nb)
     return _notebook_response(nb)
+
+
+class MessageResponse(BaseModel):
+    id: str
+    role: str
+    content: str
+    sources_used: list[dict] | None
+    rewritten_query: str | None
+    created_at: str
+
+
+class LatestConversationResponse(BaseModel):
+    has_conversation: bool
+    conversation: dict | None
+    messages: list[MessageResponse]
+    limit: int
+
+
+@router.get("/{notebook_id}/conversations/latest", response_model=LatestConversationResponse)
+def latest_notebook_conversation(
+    notebook_id: int,
+    limit: int = Query(50, ge=1, le=200),
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(database.get_db),
+):
+    nb = db.query(models.Notebook).filter(models.Notebook.id == notebook_id).first()
+    if not nb:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Notebook not found")
+    if nb.owner_id != current_user.id and not nb.is_community:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
+
+    conversation = (
+        db.query(models.Conversation)
+        .filter(
+            models.Conversation.notebook_id == notebook_id,
+            models.Conversation.owner_id == current_user.id,
+        )
+        .order_by(models.Conversation.created_at.desc())
+        .first()
+    )
+
+    if not conversation:
+        return LatestConversationResponse(
+            has_conversation=False,
+            conversation=None,
+            messages=[],
+            limit=limit,
+        )
+
+    messages = (
+        db.query(models.ChatMessage)
+        .filter(models.ChatMessage.conversation_id == conversation.id)
+        .order_by(models.ChatMessage.created_at.asc())
+        .limit(limit)
+        .all()
+    )
+
+    return LatestConversationResponse(
+        has_conversation=True,
+        conversation={
+            "id": conversation.id,
+            "created_at": conversation.created_at.isoformat(),
+            "updated_at": conversation.updated_at.isoformat(),
+        },
+        messages=[
+            MessageResponse(
+                id=msg.id,
+                role=msg.role,
+                content=msg.content,
+                sources_used=msg.sources_used,
+                rewritten_query=msg.rewritten_query,
+                created_at=msg.created_at.isoformat(),
+            )
+            for msg in messages
+        ],
+        limit=limit,
+    )
 
 
 @router.patch("/{notebook_id}", response_model=NotebookResponse)
