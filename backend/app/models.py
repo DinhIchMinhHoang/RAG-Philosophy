@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import enum
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, JSON, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -35,11 +35,19 @@ class User(Base):
     email: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=False)
     hashed_password: Mapped[str] = mapped_column(String, nullable=False)
 
+    conversations: Mapped[list[Conversation]] = relationship(
+        "Conversation",
+        back_populates="owner",
+        cascade="all, delete-orphan",
+    )
+
 
 class DocumentRecord(Base):
     __tablename__ = "documents"
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: str(uuid.uuid4()))
+    owner_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    notebook_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("notebooks.id", ondelete="SET NULL"), nullable=True, index=True)
     filename: Mapped[str] = mapped_column(String(512), nullable=False)
     object_key: Mapped[str] = mapped_column(String(1024), nullable=False, unique=True)
     mime_type: Mapped[str] = mapped_column(String(128), nullable=False)
@@ -76,6 +84,8 @@ class DocumentChunk(Base):
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: str(uuid.uuid4()))
     document_id: Mapped[str] = mapped_column(String(64), ForeignKey("documents.id", ondelete="CASCADE"), nullable=False, index=True)
+    owner_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    notebook_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("notebooks.id", ondelete="SET NULL"), nullable=True, index=True)
     job_id: Mapped[str | None] = mapped_column(String(64), ForeignKey("ingest_jobs.id", ondelete="SET NULL"), nullable=True, index=True)
     kind: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
     parent_chunk_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
@@ -114,8 +124,95 @@ class Notebook(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     title: Mapped[str] = mapped_column(String(256), nullable=False)
     owner_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    is_community: Mapped[bool] = mapped_column(Integer, nullable=False, default=False)
+    is_community: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     cover_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     cover_mode: Mapped[str | None] = mapped_column(String(32), nullable=True)
     cover_color: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    conversations: Mapped[list[Conversation]] = relationship("Conversation", back_populates="notebook")
+
+
+class Conversation(Base):
+    __tablename__ = "conversations"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: str(uuid.uuid4()))
+    owner_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    notebook_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("notebooks.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        server_default=func.now(),
+        nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+
+    owner: Mapped[User] = relationship("User", back_populates="conversations")
+    notebook: Mapped[Notebook | None] = relationship("Notebook", back_populates="conversations")
+    messages: Mapped[list[ChatMessage]] = relationship(
+        "ChatMessage",
+        back_populates="conversation",
+        cascade="all, delete-orphan",
+        order_by="ChatMessage.created_at",
+    )
+
+
+class ChatMessage(Base):
+    __tablename__ = "chat_messages"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: str(uuid.uuid4()))
+    conversation_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("conversations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    role: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    sources_used: Mapped[list[dict] | None] = mapped_column(JSON, nullable=True)
+    rewritten_query: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+    conversation: Mapped[Conversation] = relationship("Conversation", back_populates="messages")
+
+
+class SavedNotebookItem(Base):
+    __tablename__ = "saved_notebook_items"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: str(uuid.uuid4()))
+    owner_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    notebook_id: Mapped[int] = mapped_column(Integer, ForeignKey("notebooks.id", ondelete="CASCADE"), nullable=False, index=True)
+    conversation_id: Mapped[str | None] = mapped_column(String(64), ForeignKey("conversations.id", ondelete="SET NULL"), nullable=True, index=True)
+    message_id: Mapped[str | None] = mapped_column(String(64), ForeignKey("chat_messages.id", ondelete="SET NULL"), nullable=True, index=True)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    title: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    sources_used: Mapped[list[dict] | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+
+class PasswordResetCode(Base):
+    __tablename__ = "password_reset_codes"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: str(uuid.uuid4()))
+    email: Mapped[str] = mapped_column(String(256), nullable=False, index=True)
+    # NOTE: storing plaintext verification_code per user request. In production prefer hashing.
+    verification_code: Mapped[str] = mapped_column(String(32), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

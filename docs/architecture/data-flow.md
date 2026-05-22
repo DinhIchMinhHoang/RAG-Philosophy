@@ -2,6 +2,10 @@
 
 ## Document Ingestion Flow
 
+Current backend ingest flow is persistent and job-based: `/api/documents` creates a `DocumentRecord` plus `IngestJob`, Celery retries reuse the same job row, and the worker updates job state while fetching, parsing, chunking, embedding, indexing, and persisting metadata.
+
+The diagram below is the older standalone `rag_core` flow and is kept as a legacy reference.
+
 ```
 User Upload (PDF)
        │
@@ -124,7 +128,9 @@ User Question (Chat Input)
 
 ## State Transitions
 
-### RAGService State Machine
+The state diagram below is for the legacy `RAGService` singleton path, not the persistent backend ingest job state machine.
+
+### Legacy RAGService State Machine
 
 ```
 ┌─────────────┐     ┌──────────────┐     ┌─────────────┐

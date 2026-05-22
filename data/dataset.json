@@ -21,7 +21,7 @@
     },
     {
         "question": "Trong bài báo 'Sequence to Sequence Learning with Neural Networks', tác giả sử dụng mô hình gì để giải quyết vấn đề sequence to sequence?",
-"ground_truth": "Trong bài báo 'Sequence to Sequence Learning with Neural Networks', các tác giả sử dụng kiến trúc Long Short-Term Memory (LSTM) nhiều lớp[cite: 3]. Cụ thể, một LSTM được dùng để đọc chuỗi đầu vào từng bước thời gian để tạo ra một vector có số chiều cố định, và một LSTM sâu khác được dùng để giải mã chuỗi mục tiêu từ vector đó[cite: 3]."
+        "ground_truth": "Trong bài báo 'Sequence to Sequence Learning with Neural Networks', các tác giả sử dụng kiến trúc Long Short-Term Memory (LSTM) nhiều lớp[cite: 3]. Cụ thể, một LSTM được dùng để đọc chuỗi đầu vào từng bước thời gian để tạo ra một vector có số chiều cố định, và một LSTM sâu khác được dùng để giải mã chuỗi mục tiêu từ vector đó[cite: 3]."
     },
     {
         "question": "Kỹ thuật quan trọng nào đã giúp mô hình trong bài 'Sequence to Sequence...' cải thiện hiệu năng rõ rệt, đặc biệt với các câu dài?",
@@ -45,7 +45,7 @@
     },
     {
         "question": "Kích thước từ vựng (vocabulary size) cho ngôn ngữ nguồn và ngôn ngữ đích trong thử nghiệm WMT'14 của mô hình Sequence to Sequence là bao nhiêu?",
-"ground_truth": "Mô hình sử dụng 160.000 từ phổ biến nhất cho ngôn ngữ nguồn (đầu vào) và 80.000 từ phổ biến nhất cho ngôn ngữ đích (đầu ra)[cite: 3]."
+        "ground_truth": "Mô hình sử dụng 160.000 từ phổ biến nhất cho ngôn ngữ nguồn (đầu vào) và 80.000 từ phổ biến nhất cho ngôn ngữ đích (đầu ra)[cite: 3]."
     },
     {
         "question": "Mô hình LSTM sâu (deep LSTM) của nhóm tác giả Sutskever có tổng cộng bao nhiêu tham số?",
@@ -72,7 +72,7 @@
         "ground_truth": "Mô hình sử dụng thuật toán hạ gradient ngẫu nhiên (stochastic gradient descent) không có động lượng (momentum), với tốc độ học (learning rate) cố định là 0.7[cite: 3]. Sau 5 epoch, tốc độ học bắt đầu giảm đi một nửa sau mỗi nửa epoch[cite: 3]."
     },
     {
-"question": "Trong kiến trúc Transformer, chiều dữ liệu đầu ra của các lớp nhúng (embedding layers) và các lớp con (sub-layers) là bao nhiêu?",
+        "question": "Trong kiến trúc Transformer, chiều dữ liệu đầu ra của các lớp nhúng (embedding layers) và các lớp con (sub-layers) là bao nhiêu?",
         "ground_truth": "Tất cả các lớp con (sub-layers) trong mô hình Transformer, cũng như các lớp nhúng (embedding layers), đều tạo ra đầu ra có số chiều là $d_{model} = 512$[cite: 4]."
     },
     {
@@ -100,7 +100,7 @@
         "ground_truth": "Mô hình sử dụng thuật toán tối ưu hóa Adam với các siêu tham số $\\beta_1 = 0.9$, $\\beta_2 = 0.98$, và $\\epsilon = 10^{-9}$[cite: 4]."
     },
     {
-"question": "Chiến lược điều chỉnh tốc độ học (learning rate schedule) trong quá trình huấn luyện Transformer hoạt động theo nguyên tắc nào?",
+        "question": "Chiến lược điều chỉnh tốc độ học (learning rate schedule) trong quá trình huấn luyện Transformer hoạt động theo nguyên tắc nào?",
         "ground_truth": "Tốc độ học (learning rate) tăng tuyến tính trong 4000 bước huấn luyện đầu tiên (warmup_steps), và sau đó giảm dần tỷ lệ thuận với nghịch đảo căn bậc hai của số bước (inverse square root of the step number)[cite: 4]."
     },
     {

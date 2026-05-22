@@ -20,6 +20,10 @@ const API = {
     listSources() -> Promise<SourcesResponse>
     getJob(jobId: String) -> Promise<JobResponse>
 
+    // Notebook conversation state
+    getLatestNotebookConversation(id: Number, {limit?: Number}) -> Promise<LatestConversation>
+    createSavedNotebookItem(id: Number, payload: SavedItemPayload) -> Promise<SavedItem>
+
     // RAG Chat
     chatStream(message: String, {
         onToken: (token: String) => void,
@@ -64,13 +68,24 @@ const API = {
 
 ### getJob(jobId)
 - **Endpoint**: GET /api/jobs/{jobId}
-- **Response**: `{job_id, status, stage, progress_pct, stage_detail, error_message, ...}`
+- **Response**: `{job_id, document_id, status, stage, progress_pct, stage_detail, error_message, pipeline_version, queued_at, started_at, finished_at}`
+
+### getLatestNotebookConversation(id, {limit})
+- **Endpoint**: GET /api/notebooks/{id}/conversations/latest?limit=50
+- **Response**: `{conversation, messages, has_conversation, limit}`
+- **Behavior**: scoped by authenticated user and notebook; returns empty state when no history exists
+
+### createSavedNotebookItem(id, payload)
+- **Endpoint**: POST /api/notebooks/{id}/notes
+- **Request**: `{kind, title, content, conversation_id, message_id, sources_used}`
+- **Response**: saved long-term notebook item
+- **Behavior**: used by Save to Notes, Pin message, Save conversation, and summary drafts
 
 ### chatStream(message, callbacks)
 - **Endpoint**: POST /api/chat/stream
 - **Request**: `{message: "question"}`
-- **Response**: SSE stream
-- **Callback**: `onToken` called for each chunk, `onDone` at end
+- **Response**: SSE stream with token events plus a final `done: true` payload
+- **Callback**: `onToken` called for each chunk, `onDone` receives the final SSE payload, `onError` handles stream failures
 
 ## Error Handling
 
@@ -79,8 +94,8 @@ const API = {
 async request(endpoint, options = {}) {
     const response = await fetch(url, {...options, headers});
     if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.detail || `Error: ${response.status}`);
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.detail || error?.error?.message || `Error: ${response.status}`);
     }
     return response.json();
 }

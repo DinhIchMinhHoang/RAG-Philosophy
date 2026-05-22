@@ -26,7 +26,7 @@ CHILD_CHUNK_OVERLAP: int = 100   # Overlap between child chunks
 Input: Document(page_content=page_text, metadata={source, page})
 
 RecursiveCharacterTextSplitter(chunk_size=2000, overlap=200)
-    ¦
+    ï¿½
     ?
 For each raw_parent in splitted_documents:
     doc_id = UUID()
@@ -42,7 +42,7 @@ For each raw_parent in splitted_documents:
 ```
 For each parent in all_parents:
     RecursiveCharacterTextSplitter(chunk_size=500, overlap=100)
-        ¦
+        ï¿½
         ?
     For each raw_child in splitted_documents:
         child = Document(

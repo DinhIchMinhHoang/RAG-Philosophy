@@ -1,4 +1,20 @@
-import { chatStream, getJob, uploadDocument, BASE_URL } from '../../api/index.js';
+import { store } from '../../state/store.js';
+import {
+    BASE_URL,
+    chatStream,
+    createSavedNotebookItem,
+    getJob,
+    getLatestNotebookConversation,
+    getToken,
+    listSources,
+    renameSource,
+    deleteSource,
+    updateNotebook,
+    uploadDocument,
+} from '../../api/index.js';
+
+const CONVERSATION_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const CONVERSATION_MESSAGE_LIMIT = 50;
 
 function renderMessageSkeleton(thread) {
     thread.innerHTML = '';
@@ -15,9 +31,150 @@ function renderMessageSkeleton(thread) {
     }
 }
 
-function processRichText(container, text) {
-    let html = text.replace(/\[Trang (\d+)\]/g, (_, p1) => `<button class="citation-btn" data-page="${p1}"><span class="material-icons">find_in_page</span>Trang ${p1}</button>`);
-    html = html.replace(/- ([^,\n]+),\s*Trang\s*(\d+)/g, (_, file, page) => `<button class="citation-btn" data-file="${file.trim()}" data-page="${page}"><span class="material-icons">description</span> ${file.trim()} (P. ${page})</button>`);
+function renderWelcomeMessage(chatThread) {
+    if (!chatThread) return;
+    chatThread.innerHTML = '';
+    const welcome = document.createElement('div');
+    welcome.className = 'ai-response';
+    welcome.innerHTML = `<div class="message-text">Hi, I can help you explore your sources. Add files on the left, then ask a question.</div><div class="message-meta">Lumina</div>`;
+    chatThread.appendChild(welcome);
+}
+
+function currentNotebookId(chatScene) {
+    const raw = chatScene?.dataset?.notebookId;
+    const value = raw ? Number(raw) : null;
+    return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+export function conversationCacheKey(notebookId) {
+    return `notebook:${notebookId}:conversation:last`;
+}
+
+function normalizeConversationState(state = {}) {
+    const conversation = state.conversation || null;
+    const messages = Array.isArray(state.messages) ? state.messages : [];
+    return {
+        conversation,
+        messages,
+        has_conversation: Boolean(conversation || state.has_conversation),
+        limit: Number(state.limit) || CONVERSATION_MESSAGE_LIMIT,
+    };
+}
+
+export function readCachedConversation(notebookId) {
+    if (!notebookId) return null;
+    try {
+        const raw = localStorage.getItem(conversationCacheKey(notebookId));
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        if (!parsed || Date.now() - Number(parsed.cached_at || 0) > CONVERSATION_CACHE_TTL_MS) {
+            localStorage.removeItem(conversationCacheKey(notebookId));
+            return null;
+        }
+        return normalizeConversationState(parsed.state || {});
+    } catch (err) {
+        console.error('[Conversation cache] Failed to read cache', err);
+        return null;
+    }
+}
+
+export function writeCachedConversation(notebookId, state) {
+    if (!notebookId) return;
+    try {
+        localStorage.setItem(
+            conversationCacheKey(notebookId),
+            JSON.stringify({ cached_at: Date.now(), state: normalizeConversationState(state) }),
+        );
+    } catch (err) {
+        console.error('[Conversation cache] Failed to write cache', err);
+    }
+}
+
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+export function citationLabel(citation) {
+    const source = citation?.source || '';
+    const page = citation?.page ? `Trang ${citation.page}` : '';
+    if (source && page) return `${source}, ${page}`;
+    if (source) return source;
+    if (page) return page;
+    return 'Tai lieu';
+}
+
+function inlineCitationLabel(citation, fallbackLabel) {
+    if (citation?.page) return `Trang ${citation.page}`;
+    return fallbackLabel || citationLabel(citation);
+}
+
+function citationButtonHtml(citation, label) {
+    const citationId = citation?.citation_id || '';
+    const source = citation?.source || '';
+    const page = citation?.page || '';
+    const documentId = citation?.document_id || '';
+    const displayLabel = inlineCitationLabel(citation, label);
+    return `<button class="citation-btn" data-citation-id="${escapeHtml(citationId)}" data-document-id="${escapeHtml(documentId)}" data-file="${escapeHtml(source)}" data-page="${escapeHtml(page)}" title="${escapeHtml(citationLabel(citation))}"><span class="material-icons">find_in_page</span>${escapeHtml(displayLabel)}</button>`;
+}
+
+export function renderCitationMarkup(text, citations = []) {
+    const citationMap = new Map(citations.map((citation) => [String(citation.citation_id || '').toUpperCase(), citation]));
+    let html = text.replace(/\[((?:\s*C\d+\s*,)*\s*C\d+\s*)\]/gi, (match, citationGroup) => {
+        const citationIds = citationGroup.match(/C\d+/gi) || [];
+        if (!citationIds.length) return match;
+        return citationIds.map((citationId) => {
+            const normalized = citationId.toUpperCase();
+            const citation = citationMap.get(normalized);
+            return citation ? citationButtonHtml(citation, `[${normalized}]`) : `[${normalized}]`;
+        }).join(' ');
+    });
+    html = html.replace(/\[Trang (\d+)\]/g, (_, p1) => citationButtonHtml({ page: p1 }, `Trang ${p1}`));
+    html = html.replace(/- ([^,\n]+),\s*Trang\s*(\d+)/g, (_, file, page) => citationButtonHtml({ source: file.trim(), page }, `${file.trim()} (P. ${page})`));
+    html = html.replace(/ðŸ“š \*\*Nguá»“n tham kháº£o:\*\*/g, '<div class="sources-footer-title"><span class="material-icons">auto_stories</span> Nguá»“n tham kháº£o</div>');
+    return html;
+}
+
+function renderCitationChips(container, citations = []) {
+    if (!container) return;
+    container.innerHTML = '';
+    if (!citations.length) {
+        container.style.display = 'none';
+        return;
+    }
+
+    container.style.display = 'flex';
+    citations.forEach((citation) => {
+        const chip = document.createElement('button');
+        chip.className = 'source-chip';
+        chip.type = 'button';
+        chip.title = citationLabel(citation);
+        chip.dataset.documentId = citation.document_id || '';
+        chip.dataset.file = citation.source || '';
+        chip.dataset.page = citation.page || '';
+        chip.innerHTML = `<span class="material-icons">description</span><span>${escapeHtml(citationLabel(citation))}</span>`;
+        chip.addEventListener('click', () => showPagePreview(citation.source, citation.page, citation.document_id));
+        container.appendChild(chip);
+    });
+}
+
+function processRichText(container, text, citations = []) {
+    const citationMap = new Map(citations.map((citation) => [String(citation.citation_id || '').toUpperCase(), citation]));
+    let html = text.replace(/\[((?:\s*C\d+\s*,)*\s*C\d+\s*)\]/gi, (match, citationGroup) => {
+        const citationIds = citationGroup.match(/C\d+/gi) || [];
+        if (!citationIds.length) return match;
+        return citationIds.map((citationId) => {
+            const normalized = citationId.toUpperCase();
+            const citation = citationMap.get(normalized);
+            return citation ? citationButtonHtml(citation, `[${normalized}]`) : `[${normalized}]`;
+        }).join(' ');
+    });
+    html = html.replace(/\[Trang (\d+)\]/g, (_, p1) => citationButtonHtml({ page: p1 }, `Trang ${p1}`));
+    html = html.replace(/- ([^,\n]+),\s*Trang\s*(\d+)/g, (_, file, page) => citationButtonHtml({ source: file.trim(), page }, `${file.trim()} (P. ${page})`));
     html = html.replace(/📚 \*\*Nguồn tham khảo:\*\*/g, '<div class="sources-footer-title"><span class="material-icons">auto_stories</span> Nguồn tham khảo</div>');
 
     if (window.marked) container.innerHTML = marked.parse(html);
@@ -36,20 +193,37 @@ function processRichText(container, text) {
 
     container.querySelectorAll('.citation-btn').forEach(btn => {
         btn.addEventListener('click', () => {
+            const documentId = btn.getAttribute('data-document-id');
             const file = btn.getAttribute('data-file');
+            const page = btn.getAttribute('data-page');
             const firstSource = document.querySelector('#scene-chat .source-name')?.textContent;
-            showPagePreview(file || firstSource);
+            showPagePreview(file || firstSource, page, documentId);
         });
     });
 }
 
-const viewerState = { filename: null };
+const viewerState = { filename: null, page: null, documentId: null };
 let activeStreamController = null;
+let activeConversationId = null;
+const activeConversationByNotebook = new Map();
+const conversationStateByNotebook = new Map();
+const manualNewChatByNotebook = new Set();
 let setCollapsedFn = null;
+let activeViewerObjectUrl = null;
+let viewerLoadToken = 0;
 
-export function showPagePreview(filename) {
+function revokeActiveViewerObjectUrl() {
+    if (!activeViewerObjectUrl) return;
+    URL.revokeObjectURL(activeViewerObjectUrl);
+    activeViewerObjectUrl = null;
+}
+
+export async function showPagePreview(filename, page = null, documentId = null) {
     if (!filename) return;
+    const loadToken = ++viewerLoadToken;
     viewerState.filename = filename;
+    viewerState.page = page;
+    viewerState.documentId = documentId || null;
 
     const viewer = document.querySelector('#sourceViewer');
     const empty = viewer?.querySelector('.viewer-empty');
@@ -60,25 +234,97 @@ export function showPagePreview(filename) {
     if (empty) empty.style.display = 'none';
     if (content) content.style.display = 'flex';
     if (nameEl) nameEl.textContent = filename;
-    if (embed) embed.src = `${BASE_URL}/documents/file/${encodeURIComponent(filename)}`;
+    if (embed) {
+        const pageNumber = Number(page);
+        const pageFragment = Number.isFinite(pageNumber) && pageNumber > 0 ? `#page=${pageNumber}` : '';
+        const fileKey = documentId || filename;
+        const filePath = documentId
+            ? `/documents/${encodeURIComponent(fileKey)}/file`
+            : `/documents/file/${encodeURIComponent(fileKey)}`;
+        embed.removeAttribute('src');
+        try {
+            const token = getToken();
+            const headers = token ? { Authorization: `Bearer ${token}` } : {};
+            const response = await fetch(`${BASE_URL}${filePath}`, { headers });
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.detail || `Failed to load PDF: ${response.status}`);
+            }
+            const blob = await response.blob();
+            if (loadToken !== viewerLoadToken) return;
+            revokeActiveViewerObjectUrl();
+            activeViewerObjectUrl = URL.createObjectURL(blob);
+            embed.src = `${activeViewerObjectUrl}${pageFragment}`;
+        } catch (err) {
+            if (loadToken !== viewerLoadToken) return;
+            console.error('[Source viewer] Failed to load PDF', err);
+            embed.removeAttribute('src');
+        }
+    }
 
     if (document.querySelector('.chat-shell')?.getAttribute('data-right-collapsed') === 'true') {
         if (setCollapsedFn) setCollapsedFn('right', false);
     }
 }
 
-function addMessage(chatThread, role, text) {
+function addMessage(chatThread, role, text, citations = [], messageId = '') {
     if (!chatThread) return null;
     const msg = document.createElement('div');
     msg.className = role === 'ai' ? 'ai-response' : `message ${role}`;
-    msg.innerHTML = `<div class="message-text"></div><div class="message-meta"></div>`;
+    msg.dataset.role = role;
+    msg.dataset.messageId = messageId || '';
+    msg.innerHTML = `<div class="message-text"></div><div class="citation-strip"></div><div class="message-actions"><button class="message-action" data-action="pin-message" title="Pin message"><span class="material-icons">push_pin</span></button><button class="message-action" data-action="save-message" title="Save to Notes"><span class="material-icons">bookmark_add</span></button></div><div class="message-meta"></div>`;
     const textEl = msg.querySelector('.message-text');
+    const citationsEl = msg.querySelector('.citation-strip');
     const metaEl = msg.querySelector('.message-meta');
-    if (textEl) { if (role === 'ai') processRichText(textEl, text); else textEl.textContent = text; }
+    if (textEl) { if (role === 'ai') processRichText(textEl, text, citations); else textEl.textContent = text; }
+    renderCitationChips(citationsEl, role === 'ai' ? citations : []);
     if (metaEl) metaEl.textContent = role === 'user' ? 'You' : 'Lumina';
     chatThread.appendChild(msg);
     chatThread.scrollTop = chatThread.scrollHeight;
     return msg;
+}
+
+function messageStateFromPayload(message) {
+    return {
+        id: message.id || message.message_id || '',
+        role: message.role === 'assistant' ? 'ai' : message.role,
+        content: message.content || message.answer || '',
+        sources_used: Array.isArray(message.sources_used) ? message.sources_used : [],
+        rewritten_query: message.rewritten_query || null,
+        created_at: message.created_at || null,
+    };
+}
+
+function renderConversationState(chatThread, state) {
+    if (!chatThread) return;
+    const normalized = normalizeConversationState(state);
+    if (!normalized.messages.length) {
+        renderWelcomeMessage(chatThread);
+        return;
+    }
+    chatThread.innerHTML = '';
+    normalized.messages.forEach((message) => {
+        const item = messageStateFromPayload(message);
+        addMessage(chatThread, item.role, item.content, item.sources_used, item.id);
+    });
+}
+
+function applyConversationState(chatThread, notebookId, state) {
+    const normalized = normalizeConversationState(state);
+    conversationStateByNotebook.set(notebookId, normalized);
+    activeConversationByNotebook.set(notebookId, normalized.conversation?.id || null);
+    activeConversationId = normalized.conversation?.id || null;
+    renderConversationState(chatThread, normalized);
+}
+
+function emptyConversationState() {
+    return { conversation: null, messages: [], has_conversation: false, limit: CONVERSATION_MESSAGE_LIMIT };
+}
+
+function cacheConversationState(notebookId) {
+    const state = conversationStateByNotebook.get(notebookId);
+    if (state) writeCachedConversation(notebookId, state);
 }
 
 function showThinkingIndicator(chatThread) {
@@ -99,13 +345,53 @@ function updateSourceEmpty(sourceEmpty, sourceList) {
     sourceEmpty.style.display = sourceList.children.length ? 'none' : 'block';
 }
 
+function resetSourceViewer() {
+    viewerLoadToken += 1;
+    viewerState.filename = null;
+    viewerState.page = null;
+    viewerState.documentId = null;
+    revokeActiveViewerObjectUrl();
+
+    const viewer = document.querySelector('#sourceViewer');
+    const empty = viewer?.querySelector('.viewer-empty');
+    const content = viewer?.querySelector('.viewer-content');
+    const embed = viewer?.querySelector('#pdfViewer');
+    const nameEl = viewer?.querySelector('#viewerFileName');
+
+    if (empty) empty.style.display = 'flex';
+    if (content) content.style.display = 'none';
+    if (embed) embed.removeAttribute('src');
+    if (nameEl) nameEl.textContent = '';
+}
+
+export function resetNotebookWorkspace(chatScene) {
+    if (!chatScene) return;
+
+    renderWelcomeMessage(chatScene.querySelector('.chat-thread'));
+
+    const sourceList = chatScene.querySelector('.source-list');
+    const sourceEmpty = chatScene.querySelector('.source-empty');
+    if (sourceList) sourceList.innerHTML = '';
+    updateSourceEmpty(sourceEmpty, sourceList);
+
+    const chatPrompt = chatScene.querySelector('#chatPrompt');
+    if (chatPrompt) {
+        chatPrompt.value = '';
+        chatPrompt.style.height = '';
+    }
+
+    document.getElementById('thinkingIndicator')?.remove();
+    resetSourceViewer();
+}
+
 const ingestStageLabels = {
-    fetching_object: 'Fetching PDF',
-    parsing: 'Parsing PDF',
+    fetching_object: 'Fetching document',
+    parsing: 'Parsing document',
     chunking: 'Chunking text',
     embedding: 'Embedding chunks',
     indexing_vector: 'Indexing vectors',
     persisting_metadata: 'Saving metadata',
+    loading_sql: 'Loading spreadsheet',
 };
 
 function sleep(ms) {
@@ -125,6 +411,14 @@ function formatJobProgress(job) {
     const pct = Number(job.progress_pct);
     if (Number.isFinite(pct)) return `${label} ${pct}%`;
     return label;
+}
+
+function formatDocumentStatus(doc) {
+    const job = doc?.latest_job;
+    if (!job) return 'Uploaded';
+    if (job.status === 'succeeded') return 'Ready';
+    if (job.status === 'failed') return `Error: ${job.error_message || 'Ingest failed'}`;
+    return formatJobProgress(job);
 }
 
 async function pollUploadJob(jobId, metaEl) {
@@ -161,11 +455,7 @@ export function initChatScene(transitionManager) {
         renderMessageSkeleton(chatThread);
         setTimeout(() => {
             if (chatThread) {
-                chatThread.innerHTML = '';
-                const welcome = document.createElement('div');
-                welcome.className = 'ai-response';
-                welcome.innerHTML = `<div class="message-text">Hi, I can help you explore your sources. Add files on the left, then ask a question.</div><div class="message-meta">Lumina</div>`;
-                chatThread.appendChild(welcome);
+                renderWelcomeMessage(chatThread);
             }
         }, 600);
     }
@@ -248,6 +538,223 @@ export function initChatScene(transitionManager) {
     const sourceEmpty = chatScene.querySelector('.source-empty');
     const sourceAddButtons = chatScene.querySelectorAll('.source-add-button');
     const sourceNoteButton = chatScene.querySelector('.source-note-button');
+    let sourceLoadToken = 0;
+    let conversationLoadToken = 0;
+
+    const shareButton = chatScene.querySelector('.chat-top-actions .panel-icon-button[title="Share"]');
+    if (shareButton) {
+        shareButton.addEventListener('click', async () => {
+            const notebookId = currentNotebookId(chatScene);
+            if (!notebookId) return;
+            const title = document.querySelector('#scene-chat .chat-title')?.textContent?.trim() || '';
+            if (!title || title.toLowerCase() === 'untitled notebook') {
+                alert('Please name the notebook before sharing.');
+                return;
+            }
+            const isShared = shareButton.classList.contains('active');
+            try {
+                await updateNotebook(notebookId, { is_community: !isShared });
+                shareButton.classList.toggle('active', !isShared);
+                document.dispatchEvent(new CustomEvent('notebooks:refresh'));
+            } catch (err) {
+                alert(err.message || 'Failed to update share status. You can only share your own notebooks.');
+            }
+        });
+    }
+
+    const renderPersistedSources = (documents = []) => {
+        if (!sourceList) return;
+        sourceList.innerHTML = '';
+        documents.forEach((doc) => {
+            const item = document.createElement('div');
+            item.className = 'source-item';
+            item.style.cursor = 'pointer';
+            item.dataset.documentId = doc.document_id || '';
+
+            // build menu button and dropdown
+            const menuBtnHtml = `<button class="source-menu-btn" title="More" type="button"><span class="material-icons">more_vert</span></button>`;
+            const menuHtml = `<div class="source-menu"><button class="source-menu-item" data-action="rename"><span class=\"material-icons\">edit</span> Đổi tên</button><button class="source-menu-item" data-action="delete"><span class=\"material-icons\">delete</span> Xóa</button></div>`;
+
+            item.innerHTML = `<div class="source-icon"><span class="material-icons">picture_as_pdf</span></div><div class="source-meta"><div class="source-name">${escapeHtml(doc.filename || 'Untitled document')}</div><div class="source-type">${escapeHtml(formatDocumentStatus(doc))}</div></div>${menuBtnHtml}${menuHtml}`;
+
+            // click on item opens preview unless clicking within menu
+            item.addEventListener('click', (ev) => {
+                if (ev.target.closest('.source-menu') || ev.target.closest('.source-menu-btn') || ev.target.closest('.source-rename-input') || ev.target.closest('.source-rename-actions')) return;
+                showPagePreview(doc.filename, null, doc.document_id || null);
+            });
+
+            // wire menu toggle
+            const menuBtn = item.querySelector('.source-menu-btn');
+            const menu = item.querySelector('.source-menu');
+            if (menuBtn && menu) {
+                menuBtn.addEventListener('click', (ev) => {
+                    ev.stopPropagation();
+                    // hide other menus
+                    document.querySelectorAll('.source-menu').forEach(m => { if (m !== menu) m.style.display = 'none'; });
+                    menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
+                });
+            }
+
+            // handle menu actions
+            const handleRename = async () => {
+                // inline edit
+                const nameEl = item.querySelector('.source-name');
+                const original = nameEl.textContent || '';
+                // extract base name without extension
+                const base = original.replace(/\.[^/.]+$/, '') || original;
+                nameEl.innerHTML = `<input class="source-rename-input" type="text" value="${escapeHtml(base)}" style="width:140px;padding:4px" /> <span class="source-rename-actions"><button class="source-rename-save" type="button">Save</button> <button class="source-rename-cancel" type="button">Cancel</button></span>`;
+                const input = nameEl.querySelector('.source-rename-input');
+                const saveBtn = nameEl.querySelector('.source-rename-save');
+                const cancelBtn = nameEl.querySelector('.source-rename-cancel');
+                menu.style.display = 'none';
+                input.focus();
+
+                const notebookId = currentNotebookId(chatScene);
+                const fileId = doc.document_id || '';
+
+                const cleanup = () => { nameEl.textContent = original; };
+
+                saveBtn.addEventListener('click', async () => {
+                    const newVal = input.value.trim();
+                    if (!newVal) { alert('Name cannot be empty'); return; }
+                    // simple client-side sanitization
+                    if (/[\\/\.\.]/.test(newVal)) { alert('Invalid characters in name'); return; }
+                    saveBtn.disabled = true;
+                    try {
+                        await renameSource({ notebookId, fileId, newName: newVal });
+                        // update visible filename (backend preserves extension)
+                        // append original extension if present
+                        const extMatch = (original.match(/(\.[^/.]+)$/) || [])[0] || '';
+                        nameEl.textContent = `${newVal}${extMatch}`;
+                    } catch (err) {
+                        console.error('[Rename] failed', err);
+                        alert(err.message || 'Rename failed');
+                        cleanup();
+                    }
+                });
+
+                cancelBtn.addEventListener('click', () => {
+                    cleanup();
+                });
+            };
+
+            const handleDelete = async () => {
+                menu.style.display = 'none';
+                if (!confirm('Are you sure you want to delete this source?')) return;
+                const notebookId = currentNotebookId(chatScene);
+                const fileId = doc.document_id || '';
+                try {
+                    await deleteSource({ notebookId, fileId });
+                    item.remove();
+                    updateSourceEmpty(sourceEmpty, sourceList);
+                } catch (err) {
+                    console.error('[Delete] failed', err);
+                    alert(err.message || 'Delete failed');
+                }
+            };
+
+            // attach menu item handlers
+            item.querySelectorAll('.source-menu-item').forEach((btn) => {
+                const action = btn.getAttribute('data-action');
+                btn.addEventListener('click', (ev) => {
+                    ev.stopPropagation();
+                    if (action === 'rename') handleRename();
+                    else if (action === 'delete') handleDelete();
+                });
+            });
+
+            sourceList.appendChild(item);
+        });
+        updateSourceEmpty(sourceEmpty, sourceList);
+    };
+
+    const loadNotebookSources = async () => {
+        const token = ++sourceLoadToken;
+        const notebookId = currentNotebookId(chatScene);
+        if (!notebookId) {
+            renderPersistedSources([]);
+            return;
+        }
+        renderPersistedSources([]);
+        try {
+            const result = await listSources({ notebookId });
+            if (token !== sourceLoadToken) return;
+            renderPersistedSources(result.documents || []);
+        } catch (err) {
+            if (token !== sourceLoadToken) return;
+            console.error('[Sources] Failed to load notebook sources', err);
+            renderPersistedSources([]);
+        }
+    };
+
+    const loadNotebookConversation = async () => {
+        const token = ++conversationLoadToken;
+        const notebookId = currentNotebookId(chatScene);
+        if (!notebookId) {
+            activeConversationId = null;
+            renderWelcomeMessage(chatThread);
+            return;
+        }
+        if (manualNewChatByNotebook.has(notebookId)) {
+            applyConversationState(chatThread, notebookId, emptyConversationState());
+            return;
+        }
+
+        const cached = readCachedConversation(notebookId);
+        if (cached) {
+            applyConversationState(chatThread, notebookId, cached);
+        } else {
+            applyConversationState(chatThread, notebookId, emptyConversationState());
+        }
+
+        try {
+            const result = await getLatestNotebookConversation(notebookId, { limit: CONVERSATION_MESSAGE_LIMIT });
+            if (token !== conversationLoadToken || notebookId !== currentNotebookId(chatScene)) return;
+            const normalized = normalizeConversationState(result);
+            applyConversationState(chatThread, notebookId, normalized);
+            writeCachedConversation(notebookId, normalized);
+        } catch (err) {
+            if (token !== conversationLoadToken) return;
+            console.error('[Conversation] Failed to load notebook conversation', err);
+            if (!cached) applyConversationState(chatThread, notebookId, emptyConversationState());
+        }
+    };
+
+    document.addEventListener('chat:notebookChanged', () => {
+        if (shareButton) {
+            shareButton.classList.remove('active');
+            shareButton.style.pointerEvents = '';
+            shareButton.style.opacity = '';
+            shareButton.title = 'Share';
+
+            const isShared = chatScene.dataset.isCommunity === 'true';
+            if (isShared) shareButton.classList.add('active');
+
+            const ownerId = chatScene.dataset.notebookOwnerId;
+            if (ownerId && String(store.user?.id) !== ownerId) {
+                shareButton.style.pointerEvents = 'none';
+                shareButton.style.opacity = '0.35';
+                shareButton.title = 'Only the owner can share this notebook';
+            }
+        }
+        const settingsBtn = chatScene.querySelector('.panel-icon-button[title="Notebook settings"]');
+        if (settingsBtn) {
+            const ownerId = chatScene.dataset.notebookOwnerId;
+            if (ownerId && String(store.user?.id) !== ownerId) {
+                settingsBtn.style.display = 'none';
+            } else {
+                settingsBtn.style.display = '';
+            }
+        }
+        if (activeStreamController) {
+            activeStreamController.abort();
+            activeStreamController = null;
+        }
+        activeConversationId = null;
+        resetSourceViewer();
+        loadNotebookSources();
+        loadNotebookConversation();
+    });
 
     const SUPPORTED_EXTENSIONS = ['.pdf', '.xlsx', '.xls', '.csv', '.docx', '.html', '.htm', '.md'];
 
@@ -274,14 +781,16 @@ export function initChatScene(transitionManager) {
             item.className = 'source-item';
             item.style.cursor = 'pointer';
             item.innerHTML = `<div class="source-icon"><span class="material-icons">${icon}</span></div><div class="source-meta"><div class="source-name">${file.name}</div><div class="source-type uploading">${meta}</div></div>`;
-            item.addEventListener('click', () => { if (isPDF) showPagePreview(file.name); });
+            item.addEventListener('click', () => { if (isPDF) showPagePreview(file.name, null, item.dataset.documentId || null); });
             sourceList.appendChild(item);
             updateSourceEmpty(sourceEmpty, sourceList);
 
             if (canUpload) {
                 const metaEl = item.querySelector('.source-type');
                 try {
-                    const result = await uploadDocument(file);
+                    const notebookId = currentNotebookId(chatScene);
+                    const result = await uploadDocument(file, { notebookId });
+                    if (result.document_id) item.dataset.documentId = result.document_id;
                     if (result.pages !== undefined || result.chunks !== undefined) {
                         setSourceMeta(metaEl, `${result.pages ?? 0} pages, ${result.chunks ?? 0} chunks`, false);
                     } else if (result.job_id) {
@@ -323,6 +832,28 @@ export function initChatScene(transitionManager) {
     const chatForm = chatScene.querySelector('.chat-input');
     const chatPrompt = chatScene.querySelector('#chatPrompt');
     const clearChatBtn = chatScene.querySelector('[data-action="clear-chat"]');
+    const newChatBtn = chatScene.querySelector('[data-action="new-chat"]');
+    const saveConversationBtn = chatScene.querySelector('[data-action="save-conversation"]');
+    const summarizeBtn = chatScene.querySelector('[data-action="summarize-to-notebook"]');
+
+    const visibleConversationText = () => Array.from(chatThread?.querySelectorAll('.message, .ai-response') || [])
+        .map((node) => {
+            const role = node.dataset.role === 'user' ? 'User' : 'Lumina';
+            const content = node.querySelector('.message-text')?.textContent?.trim() || '';
+            return content ? `${role}: ${content}` : '';
+        })
+        .filter(Boolean)
+        .join('\n\n');
+
+    const saveNotebookItem = async (payload) => {
+        const notebookId = currentNotebookId(chatScene);
+        if (!notebookId) return;
+        try {
+            await createSavedNotebookItem(notebookId, payload);
+        } catch (err) {
+            console.error('[Notes] Failed to save notebook item', err);
+        }
+    };
 
     if (chatForm && chatPrompt) {
         chatForm.addEventListener('submit', (ev) => {
@@ -333,15 +864,17 @@ export function initChatScene(transitionManager) {
             if (activeStreamController) { activeStreamController.abort(); activeStreamController = null; }
 
             addMessage(chatThread, 'user', text);
+            const userMessageState = { id: '', role: 'user', content: text, sources_used: [] };
             chatPrompt.value = '';
             chatPrompt.style.height = '';
 
             const aiMsg = document.createElement('div');
             aiMsg.className = 'ai-response streaming';
             aiMsg.style.display = 'none';
-            aiMsg.innerHTML = `<div class="message-text"></div><div class="message-meta">Lumina</div>`;
+            aiMsg.innerHTML = `<div class="message-text"></div><div class="citation-strip"></div><div class="message-meta">Lumina</div>`;
             chatThread.appendChild(aiMsg);
             const textEl = aiMsg.querySelector('.message-text');
+            const citationsEl = aiMsg.querySelector('.citation-strip');
             if (!textEl) return;
 
             const sendBtn = chatForm.querySelector('.send-button');
@@ -351,7 +884,10 @@ export function initChatScene(transitionManager) {
 
             let fullText = ''; let receivedFirst = false;
 
+            const notebookId = currentNotebookId(chatScene);
             activeStreamController = chatStream(text, {
+                conversationId: activeConversationId,
+                notebookId,
                 onToken(token) {
                     if (!receivedFirst) { receivedFirst = true; hideThinkingIndicator(); aiMsg.style.display = 'flex'; }
                     fullText += token;
@@ -359,12 +895,46 @@ export function initChatScene(transitionManager) {
                     processRichText(textEl, fullText + ' <span class="streaming-cursor"></span>');
                     chatThread.scrollTop = chatThread.scrollHeight;
                 },
-                onDone() {
+                onDone(payload) {
+                    if (payload?.conversation_id) activeConversationId = payload.conversation_id;
+                    const finalText = payload?.answer || fullText;
+                    const citations = Array.isArray(payload?.citations) ? payload.citations : [];
+                    if (notebookId) {
+                        manualNewChatByNotebook.delete(notebookId);
+                        const previous = normalizeConversationState(
+                            conversationStateByNotebook.get(notebookId) || emptyConversationState(),
+                        );
+                        const conversation = previous.conversation || (payload?.conversation_id ? {
+                            id: payload.conversation_id,
+                            notebook_id: notebookId,
+                            owner_id: null,
+                            created_at: null,
+                            updated_at: null,
+                        } : null);
+                        const assistantMessageState = {
+                            id: payload?.message_id || '',
+                            role: 'assistant',
+                            content: finalText,
+                            sources_used: citations,
+                            rewritten_query: payload?.rewritten_query || null,
+                        };
+                        const nextState = {
+                            conversation,
+                            messages: [...previous.messages, userMessageState, assistantMessageState],
+                            has_conversation: Boolean(conversation),
+                            limit: CONVERSATION_MESSAGE_LIMIT,
+                        };
+                        conversationStateByNotebook.set(notebookId, nextState);
+                        activeConversationByNotebook.set(notebookId, activeConversationId);
+                        writeCachedConversation(notebookId, nextState);
+                    }
+                    fullText = finalText;
                     hideThinkingIndicator();
                     aiMsg.style.display = 'flex';
                     textEl.innerHTML = '';
-                    const displayText = fullText.trim() || 'Sorry, I could not generate a response. Please check backend logs for errors.';
-                    processRichText(textEl, displayText);
+                    const displayText = finalText.trim() || 'Sorry, I could not generate a response. Please check backend logs for errors.';
+                    processRichText(textEl, displayText, citations);
+                    renderCitationChips(citationsEl, citations);
                     aiMsg.classList.remove('streaming');
                     activeStreamController = null;
                     if (sendBtn) sendBtn.disabled = false;
@@ -386,7 +956,69 @@ export function initChatScene(transitionManager) {
         chatPrompt.addEventListener('input', () => { chatPrompt.style.height = 'auto'; chatPrompt.style.height = `${Math.min(chatPrompt.scrollHeight, 140)}px`; });
     }
 
+    chatThread?.addEventListener('click', (ev) => {
+        const action = ev.target.closest('.message-action')?.getAttribute('data-action');
+        if (!action) return;
+        const messageEl = ev.target.closest('.message, .ai-response');
+        const content = messageEl?.querySelector('.message-text')?.textContent?.trim();
+        if (!messageEl || !content) return;
+        const notebookId = currentNotebookId(chatScene);
+        const state = notebookId ? conversationStateByNotebook.get(notebookId) : null;
+        const messageId = messageEl.dataset.messageId || null;
+        const stateMessage = state?.messages?.find((message) => message.id === messageId);
+        saveNotebookItem({
+            kind: action === 'pin-message' ? 'pin' : 'note',
+            title: action === 'pin-message' ? 'Pinned message' : 'Saved message',
+            content,
+            conversation_id: activeConversationId,
+            message_id: messageId,
+            sources_used: stateMessage?.sources_used || [],
+        });
+    });
+
+    newChatBtn?.addEventListener('click', () => {
+        const notebookId = currentNotebookId(chatScene);
+        activeConversationId = null;
+        if (notebookId) {
+            manualNewChatByNotebook.add(notebookId);
+            activeConversationByNotebook.set(notebookId, null);
+            conversationStateByNotebook.set(notebookId, emptyConversationState());
+            writeCachedConversation(notebookId, emptyConversationState());
+        }
+        renderWelcomeMessage(chatThread);
+        resetSourceViewer();
+    });
+
+    saveConversationBtn?.addEventListener('click', () => {
+        const content = visibleConversationText();
+        if (!content) return;
+        saveNotebookItem({
+            kind: 'conversation',
+            title: document.querySelector('#scene-chat .chat-title')?.textContent || 'Saved conversation',
+            content,
+            conversation_id: activeConversationId,
+        });
+    });
+
+    summarizeBtn?.addEventListener('click', () => {
+        const content = visibleConversationText();
+        if (!content) return;
+        saveNotebookItem({
+            kind: 'summary',
+            title: 'Conversation summary draft',
+            content,
+            conversation_id: activeConversationId,
+        });
+    });
+
     clearChatBtn?.addEventListener('click', () => {
+        const notebookId = currentNotebookId(chatScene);
+        activeConversationId = null;
+        if (notebookId) {
+            activeConversationByNotebook.set(notebookId, null);
+            conversationStateByNotebook.set(notebookId, emptyConversationState());
+            writeCachedConversation(notebookId, emptyConversationState());
+        }
         if (chatThread) { chatThread.innerHTML = ''; addMessage(chatThread, 'ai', 'Chat cleared. How can I help next?'); }
     });
 }

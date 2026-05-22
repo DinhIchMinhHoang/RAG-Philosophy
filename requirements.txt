@@ -23,10 +23,9 @@ beautifulsoup4>=4.12.0  # HTML parsing
 python-docx>=1.1.0      # Word document parsing
 omml2latex>=0.1.0       # OMML → LaTeX conversion for math formulas
 pypandoc>=1.13,<2       # DOCX → Markdown conversion (Pandoc wrapper)
-trafilatura>=1.12,<2    # Primary HTML extraction (Markdown output)
-lxml>=4.9,<6            # XML/HTML parsing (Trafilatura + BSoup dependency)
-cssselect>=1.2,<2       # CSS selector support for Trafilatura
-readability-lxml>=0.8,<1 # Fallback HTML content extraction
+lxml>=4.9,<6            # XML/HTML parsing (BSoup + Readability dependency)
+cssselect>=1.2,<2       # CSS selector support (Readability-lxml dependency)
+readability-lxml>=0.8,<1 # Primary HTML content extraction (Mozilla Readability)
 
 # === 3. Vector Database & Storage ===
 qdrant-client==1.14.2

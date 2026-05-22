@@ -3,9 +3,9 @@ html_parser.py — HTML Parser for RAG pipeline.
 
 Pipeline:
   1. Flexible magic check (BSoup detect <html> tag)
-  2. Primary: Trafilatura.extract(output_format='markdown', favor_recall=True)
-  3. Last resort: BSoup raw text + noise removal
-  4. Reuse _sanitize_and_split from md_parser (sanitize + heading split + UUIDv5)
+  2. Primary: Readability-lxml extracts clean main-content HTML (removes nav/sidebar/ads)
+  3. BSoup converts clean HTML → Markdown (headings #, tables |, code blocks ```)
+  4. Reuse _sanitize_and_split from md_parser (heading split + UUIDv5, skip sanitize)
   5. Heading chain preserved in metadata for citation accuracy
 
 Sources:
@@ -153,26 +153,141 @@ def _validate_html_content(content: bytes) -> None:
 
 
 # =====================================================================
-#  PRIMARY: TRAFILATURA (favor_recall)
+#  PRIMARY: READABILITY + BEAUTIFULSOUP (clean HTML → Markdown)
 # =====================================================================
 
-def _extract_with_trafilatura(html: str) -> Optional[str]:
+def _extract_with_readability(html: str) -> Optional[BeautifulSoup]:
     """
-    Primary extraction using Trafilatura (favor_recall mode).
-    Returns Markdown or None if extraction fails or content too short.
+    Extract clean main-content HTML using Mozilla Readability algorithm.
+    Returns a BeautifulSoup object of the cleaned HTML, or None if extraction fails.
     """
-    import trafilatura
+    try:
+        from readability import Document
+        doc = Document(html)
+        summary = doc.summary()
+        if not summary or len(summary.strip()) < MIN_CONTENT_LENGTH:
+            return None
+        soup = BeautifulSoup(summary, 'lxml')
+        for tag in soup(['script', 'style']):
+            tag.decompose()
+        return soup
+    except Exception as exc:
+        logger.warning("[HtmlParser] Readability extraction failed: %s", exc)
+        return None
 
-    result = trafilatura.extract(
-        html,
-        include_tables=True,
-        include_images=False,
-        output_format='markdown',
-        favor_precision=False,
-    )
 
-    if result and len(result.strip()) > MIN_CONTENT_LENGTH:
-        return result
+def _html_to_markdown(soup: BeautifulSoup) -> str:
+    """
+    Convert clean HTML (from Readability) to Markdown text suitable for
+    MarkdownHeaderTextSplitter. Handles headings, tables, code blocks,
+    paragraphs, lists, and blockquotes.
+
+    Traversal rules:
+    - Container tags (div, section, article, main, ol, ul): recurse children
+    - Leaf block tags (p, li, blockquote): extract text as paragraph
+    - Headings (h1-h6): convert to # heading syntax
+    - Tables: convert to | pipe-style Markdown
+    - Code (pre, code): wrap in ```
+    - Other tags: recurse children (unwrap)
+    """
+    lines: list[str] = []
+    CONTAINERS = {'div', 'section', 'article', 'main', 'ol', 'ul', 'nav', 'header', 'footer'}
+    LEAF_BLOCKS = {'p', 'li', 'blockquote', 'th', 'td', 'dt', 'dd'}
+    HEADINGS = {'h1', 'h2', 'h3', 'h4', 'h5', 'h6'}
+
+    def process_table(table_el):
+        md_lines = []
+        rows = table_el.find_all('tr')
+        if not rows:
+            return
+        headers = rows[0].find_all(['th', 'td'])
+        header_cells = [h.get_text(' ', strip=True) for h in headers]
+        md_lines.append('| ' + ' | '.join(header_cells) + ' |')
+        md_lines.append('| ' + ' | '.join(['---'] * len(header_cells)) + ' |')
+        for row in rows[1:]:
+            cells = row.find_all(['th', 'td'])
+            cell_texts = [c.get_text(' ', strip=True) for c in cells]
+            md_lines.append('| ' + ' | '.join(cell_texts) + ' |')
+        lines.extend(md_lines)
+        lines.append('')
+
+    def process_node(el):
+        if not hasattr(el, 'name') or not el.name:
+            return
+
+        # Headings
+        if el.name in HEADINGS:
+            level = int(el.name[1])
+            text = el.get_text(' ', strip=True)
+            if text:
+                lines.append('#' * level + ' ' + text)
+                lines.append('')
+            return
+
+        # Tables
+        if el.name == 'table':
+            process_table(el)
+            return
+
+        # Code blocks
+        if el.name in ('pre', 'code'):
+            code_text = el.get_text()
+            if code_text.strip():
+                lines.append('```')
+                lines.append(code_text.rstrip())
+                lines.append('```')
+                lines.append('')
+            return
+
+        # Leaf blocks: extract text directly
+        if el.name in LEAF_BLOCKS:
+            text = el.get_text(' ', strip=True)
+            if text:
+                prefix = ''
+                if el.name == 'li':
+                    parent = el.parent
+                    if parent and parent.name == 'ol':
+                        idx = list(parent.children).index(el) + 1
+                        prefix = '%d. ' % idx
+                    else:
+                        prefix = '- '
+                elif el.name == 'blockquote':
+                    prefix = '> '
+                lines.append(prefix + text)
+                lines.append('')
+            return
+
+        # Container / unknown: recurse children
+        if el.name in CONTAINERS or True:
+            for child in el.children:
+                process_node(child)
+
+    process_node(soup.body or soup)
+    result = '\n'.join(lines).strip()
+    return result
+
+
+# =====================================================================
+#  LAST RESORT: BSoup raw text (when Readability fails)
+# =====================================================================
+
+def _extract_raw_text(html: str) -> Optional[str]:
+    """
+    Last-resort extraction: BSoup raw text with noise removal.
+    Used when Readability fails to produce meaningful output.
+    """
+    try:
+        try:
+            soup = BeautifulSoup(html, 'lxml')
+        except Exception:
+            soup = BeautifulSoup(html, 'html.parser')
+        for tag in soup(['script', 'style', 'nav', 'footer', 'header', 'aside']):
+            tag.decompose()
+        raw_text = soup.get_text(separator='\n\n', strip=True)
+        if raw_text and len(raw_text) > MIN_CONTENT_LENGTH:
+            return raw_text
+    except Exception as exc:
+        logger.warning("[HtmlParser] Raw text extraction failed: %s", exc)
     return None
 
 
@@ -189,6 +304,12 @@ def parse_html_bytes(
     """
     Core: Parse HTML string → List[Document].
 
+    Pipeline:
+      1. Readability-lxml extracts clean main-content HTML (removes nav/sidebar/ads).
+      2. BSoup converts clean HTML to Markdown (headings, tables, code blocks).
+      3. _sanitize_and_split splits by Markdown headings → List[Document].
+         (skip_sanitize=True since Readability output is already clean.)
+
     Args:
         html: Raw HTML content as string.
         source: Identifier (filename, URL) — stored in metadata.
@@ -201,29 +322,31 @@ def parse_html_bytes(
     Raises:
         ValueError: If no extractable content.
     """
-    # Primary: Trafilatura
+    # Primary: Readability + BSoup → Markdown
     try:
-        result = _extract_with_trafilatura(html)
-        if result:
-            logger.info("[HtmlParser] Trafilatura success: %d chars", len(result))
-            return _sanitize_and_split(result, source, document_id, pipeline_version, namespace=NAMESPACE_HTML)
+        soup = _extract_with_readability(html)
+        if soup is not None:
+            markdown = _html_to_markdown(soup)
+            if markdown and len(markdown) > MIN_CONTENT_LENGTH:
+                logger.info(
+                    "[HtmlParser] Readability success: %d chars → %d chars Markdown",
+                    len(str(soup)), len(markdown),
+                )
+                return _sanitize_and_split(
+                    markdown, source, document_id, pipeline_version,
+                    namespace=NAMESPACE_HTML, skip_sanitize=True,
+                )
     except Exception as exc:
-        logger.warning("[HtmlParser] Trafilatura failed: %s", exc)
+        logger.warning("[HtmlParser] Readability pipeline failed: %s", exc)
 
-    # Last resort: raw text extraction with noise removal
-    try:
-        try:
-            soup = BeautifulSoup(html, 'lxml')
-        except Exception:
-            soup = BeautifulSoup(html, 'html.parser')
-        for tag in soup(['script', 'style', 'nav', 'footer', 'header', 'aside']):
-            tag.decompose()
-        raw_text = soup.get_text(separator='\n\n', strip=True)
-        if raw_text and len(raw_text) > MIN_CONTENT_LENGTH:
-            logger.info("[HtmlParser] Raw text fallback success: %d chars", len(raw_text))
-            return _sanitize_and_split(raw_text, source, document_id, pipeline_version, namespace=NAMESPACE_HTML)
-    except Exception as exc:
-        logger.warning("[HtmlParser] Raw text extraction failed: %s", exc)
+    # Last resort: BSoup raw text extraction
+    raw_text = _extract_raw_text(html)
+    if raw_text:
+        logger.info("[HtmlParser] Raw text fallback success: %d chars", len(raw_text))
+        return _sanitize_and_split(
+            raw_text, source, document_id, pipeline_version,
+            namespace=NAMESPACE_HTML, skip_sanitize=True,
+        )
 
     raise ValueError(f"No extractable content from HTML source: {source}")
 

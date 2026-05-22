@@ -42,6 +42,7 @@ def _sanitize_and_split(
     document_id: str,
     pipeline_version: str,
     namespace: uuid.UUID = NAMESPACE_MD,
+    skip_sanitize: bool = False,
 ) -> List[Document]:
     """
     Sanitize Markdown → Split by headings → List[Document].
@@ -49,11 +50,13 @@ def _sanitize_and_split(
 
     Args:
         namespace: UUID namespace deterministic (NAMESPACE_MD/HTML/DOCX)
+        skip_sanitize: Skip MarkdownSanitizer.sanitize() — dùng cho HTML pipeline
+                       vì HTML→Markdown đã sạch, không cần PDF-style cleanup.
 
     UUIDv5 deterministic với {document_id}_{pipeline_version} → idempotent reindex.
     """
     # Step 1: Sanitize (reuse từ PDF pipeline)
-    clean_md = MarkdownSanitizer.sanitize(markdown)
+    clean_md = markdown if skip_sanitize else MarkdownSanitizer.sanitize(markdown)
     if not clean_md:
         raise ValueError(f"No extractable content from Markdown file: {source}")
 

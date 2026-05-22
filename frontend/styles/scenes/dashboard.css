@@ -141,6 +141,13 @@
 }
 .notebook-item:active { transform: translateY(-2px) scale(0.99); box-shadow: 0 8px 20px rgba(0,0,0,0.45); }
 
+.notebook-empty-state {
+    grid-column: 1 / -1;
+    color: rgba(255,255,255,0.62);
+    padding: 12px;
+    font-size: 14px;
+}
+
 .dashboard-container[data-view="grid"] .notebook-item { aspect-ratio: 3 / 4; overflow: hidden; }
 
 .dashboard-container[data-view="list"] .notebook-item {

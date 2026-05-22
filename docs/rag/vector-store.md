@@ -27,19 +27,19 @@ SPARSE_MIN_TOKEN_LEN: int = 2
 
 ```
 +-----------------------------------------------------------------+
-¦ MultiVectorRetriever / HybridParentRetriever                   ¦
-¦   id_key="doc_id"                                             ¦
+ï¿½ MultiVectorRetriever / HybridParentRetriever                   ï¿½
+ï¿½   id_key="doc_id"                                             ï¿½
 +-----------------------------------------------------------------+
-                           ¦
+                           ï¿½
           +---------------------------------+
           ?                                 ?
 +-------------------------+         +-------------------------+
-¦   QdrantVectorStore    ¦         ¦    InMemoryStore        ¦
-¦   (child documents)    ¦         ¦   (parent documents)    ¦
-+-------------------------¦         +-------------------------¦
-¦ Location: Config.QDRANT_LOCATION ¦ ¦ Key: doc_id (UUID)      ¦
-¦ Collection: rag_philosophy      ¦ ¦ Value: Parent Document  ¦
-¦ Embedding: Harrier              ¦ ¦                         ¦
+ï¿½   QdrantVectorStore    ï¿½         ï¿½    InMemoryStore        ï¿½
+ï¿½   (child documents)    ï¿½         ï¿½   (parent documents)    ï¿½
++-------------------------ï¿½         +-------------------------ï¿½
+ï¿½ Location: Config.QDRANT_LOCATION ï¿½ ï¿½ Key: doc_id (UUID)      ï¿½
+ï¿½ Collection: rag_philosophy      ï¿½ ï¿½ Value: Parent Document  ï¿½
+ï¿½ Embedding: Harrier              ï¿½ ï¿½                         ï¿½
 +-------------------------+         +-------------------------+
 ```
 
@@ -96,7 +96,7 @@ else:
 
 ## Metrics
 
-- **Index size**: ~2000 vectors × 384 dimensions ˜ 3MB
+- **Index size**: ~2000 vectors ï¿½ 384 dimensions ï¿½ 3MB
 - **Search latency**: <50ms on CPU for dense-only retrieval
 - **Hybrid overhead**: extra BM25 scoring proportional to child document count
 - **Memory usage**: ~50MB for 2000 child docs

@@ -24,8 +24,9 @@ class Config:
     CHILD_CHUNK_SIZE: int = 500
     CHILD_CHUNK_OVERLAP: int = 100
 
-    EMBEDDING_MODEL_NAME: str = "microsoft/harrier-oss-v1-270m"
-    DEVICE: str = "cpu"
+    EMBEDDING_MODEL_NAME: str = os.getenv("EMBEDDING_MODEL_NAME", "microsoft/harrier-oss-v1-270m").strip()
+    DEVICE: str = os.getenv("EMBEDDING_DEVICE", os.getenv("DEVICE", "cpu")).strip() or "cpu"
+
     LLM_MODEL: str = (os.getenv("LLM_MODEL") or DEFAULT_LLM_MODEL).strip()
     LLM_PROVIDER: str = (os.getenv("LLM_PROVIDER") or "auto").strip().lower()
 
@@ -50,7 +51,7 @@ class Config:
 
     # Cohere reranking (fail-open): rerank child chunks then map to parent docs.
     # When enabled, retrieval always uses dense+BM25 candidate merge.
-    RERANK_ENABLED: bool = False
+    RERANK_ENABLED: bool = True
     RERANK_MODEL: str = os.getenv("RERANK_MODEL", "rerank-v4.0-fast")
     RERANK_CANDIDATE_K: int = int(os.getenv("RERANK_CANDIDATE_K", "8"))
     RERANK_TIMEOUT_SECONDS: float = float(os.getenv("RERANK_TIMEOUT_SECONDS", "2.0"))
@@ -58,7 +59,7 @@ class Config:
 
     OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
     OLLAMA_MODEL_NAME: str = "glm-ocr"
-    OLLAMA_MAX_WORKERS: int = 5
+    OLLAMA_MAX_WORKERS: int = int(os.getenv("OLLAMA_MAX_WORKERS", "2"))
     DPI_FOR_OCR: int = 150
     VLM_TIMEOUT_SECONDS: int = 60
     MAX_IMAGE_LONG_EDGE: int = 1500

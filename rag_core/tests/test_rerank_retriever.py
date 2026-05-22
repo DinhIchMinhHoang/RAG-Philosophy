@@ -1,6 +1,11 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
+try:
+    from . import _bootstrap  # noqa: F401
+except ImportError:  # pragma: no cover
+    import _bootstrap  # noqa: F401
+
 from langchain_core.documents import Document
 from langchain_core.stores import InMemoryStore
 

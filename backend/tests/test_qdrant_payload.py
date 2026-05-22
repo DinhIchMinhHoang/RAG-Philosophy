@@ -38,6 +38,8 @@ class QdrantPayloadTests(unittest.TestCase):
 
         for key in [
             "document_id",
+            "owner_id",
+            "notebook_id",
             "doc_id",
             "parent_chunk_id",
             "source",

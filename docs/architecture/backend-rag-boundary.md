@@ -24,7 +24,7 @@ The backend (`backend/app/`) wraps the RAG core (`rag_core/`) as a service layer
 
 ## Interface Contract
 
-### Backend ? RAG Core
+### Backend -> RAG Core
 
 ```python
 # backend/app/services/rag_service.py
@@ -69,7 +69,7 @@ from rag_core.step3_vector_db import build_vector_db
 
 ## State Management
 
-### RAGService Singleton Pattern
+### RAG Service Singleton Pattern
 
 ```python
 # backend/app/services/rag_service.py

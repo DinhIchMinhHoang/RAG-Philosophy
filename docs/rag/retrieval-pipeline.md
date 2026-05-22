@@ -13,9 +13,9 @@ The retrieval pipeline transforms raw PDFs into searchable vectors and connects 
 ```
 Pass 1: Scan & Classify
 +-- For each page in PDF:
-¦   +-- Check for image blocks (> 50x50px) ? complex
-¦   +-- Check for vector drawings (= 15) ? complex
-¦   +-- Check for math symbols (> 3) ? complex
+ï¿½   +-- Check for image blocks (> 50x50px) ? complex
+ï¿½   +-- Check for vector drawings (= 15) ? complex
+ï¿½   +-- Check for math symbols (> 3) ? complex
 +-- Output: (simple_pages[], complex_pages[])
 
 Pass 2: Execute
@@ -36,29 +36,29 @@ Pass 2: Execute
 
 ```
 Page Document (from Step 1)
-       ¦
+       ï¿½
        ?
 +---------------------------------------------+
-¦ RecursiveCharacterTextSplitter              ¦
-¦ (chunk_size=2000, overlap=200)             ¦
+ï¿½ RecursiveCharacterTextSplitter              ï¿½
+ï¿½ (chunk_size=2000, overlap=200)             ï¿½
 +---------------------------------------------+
-                   ¦
+                   ï¿½
                    ?
 +---------------------------------------------+
-¦ Parent Documents (each with doc_id=UUID)   ¦
-¦ {source, page, doc_id}                     ¦
+ï¿½ Parent Documents (each with doc_id=UUID)   ï¿½
+ï¿½ {source, page, doc_id}                     ï¿½
 +---------------------------------------------+
-                   ¦
+                   ï¿½
                    ?
 +---------------------------------------------+
-¦ RecursiveCharacterTextSplitter              ¦
-¦ (chunk_size=500, overlap=100)              ¦
+ï¿½ RecursiveCharacterTextSplitter              ï¿½
+ï¿½ (chunk_size=500, overlap=100)              ï¿½
 +---------------------------------------------+
-                   ¦
+                   ï¿½
                    ?
 +---------------------------------------------+
-¦ Child Documents (inherit doc_id)           ¦
-¦ {source, page, doc_id}                     ¦
+ï¿½ Child Documents (inherit doc_id)           ï¿½
+ï¿½ {source, page, doc_id}                     ï¿½
 +---------------------------------------------+
 ```
 
@@ -70,25 +70,25 @@ Page Document (from Step 1)
 
 ```
 Query -----------------------------------------?
-                                                ¦
+                                                ï¿½
                                                 ?
 +--------------------------------------------------------------------+
-¦ Qdrant                                                             ¦
-¦ - Embeds child_docs with Harrier model                             ¦
-¦ - Performs dense similarity search                                 ¦
-¦ - Returns child docs with doc_id in metadata                       ¦
+ï¿½ Qdrant                                                             ï¿½
+ï¿½ - Embeds child_docs with Harrier model                             ï¿½
+ï¿½ - Performs dense similarity search                                 ï¿½
+ï¿½ - Returns child docs with doc_id in metadata                       ï¿½
 +--------------------------------------------------------------------+
-                         ¦
+                         ï¿½
                          ? (doc_id lookup)
 +--------------------------------------------------------------------+
-¦ InMemoryStore                                                      ¦
-¦ - Keyed by doc_id                                                  ¦
-¦ - Returns full parent documents (context)                          ¦
+ï¿½ InMemoryStore                                                      ï¿½
+ï¿½ - Keyed by doc_id                                                  ï¿½
+ï¿½ - Returns full parent documents (context)                          ï¿½
 +--------------------------------------------------------------------+
-                         ¦
+                         ï¿½
                          ?
 +--------------------------------------------------------------------+
-¦ Output: List[Document] (PARENT level, full context)                ¦
+ï¿½ Output: List[Document] (PARENT level, full context)                ï¿½
 +--------------------------------------------------------------------+
 ```
 
@@ -122,33 +122,33 @@ When `Config.HYBRID_ENABLED` is `True`, step3 builds a `HybridParentRetriever` i
 
 ```
 User Question
-       ¦
+       ï¿½
        ?
 +----------------------------------------------------------------+
-¦ MultiVectorRetriever.invoke(question)                         ¦
-¦ ? Returns parent documents with context                      ¦
+ï¿½ MultiVectorRetriever.invoke(question)                         ï¿½
+ï¿½ ? Returns parent documents with context                      ï¿½
 +----------------------------------------------------------------+
-                         ¦
+                         ï¿½
                          ?
 +----------------------------------------------------------------+
-¦ Context + Question ? ChatPromptTemplate                      ¦
-¦                                                                  ¦
-¦ System Prompt:                                                 ¦
-¦ "B?n là chuyên gia AI, tr? lý h?c t?p cho sinh viên UET..."   ¦
-¦ "Hãy tr? l?i câu h?i d?a TR?C TI?P trên các do?n van..."     ¦
-¦                                                                  ¦
-¦ Human: "{context}\n\n{input}"                                  ¦
+ï¿½ Context + Question ? ChatPromptTemplate                      ï¿½
+ï¿½                                                                  ï¿½
+ï¿½ System Prompt:                                                 ï¿½
+ï¿½ "B?n lï¿½ chuyï¿½n gia AI, tr? lï¿½ h?c t?p cho sinh viï¿½n UET..."   ï¿½
+ï¿½ "Hï¿½y tr? l?i cï¿½u h?i d?a TR?C TI?P trï¿½n cï¿½c do?n van..."     ï¿½
+ï¿½                                                                  ï¿½
+ï¿½ Human: "{context}\n\n{input}"                                  ï¿½
 +----------------------------------------------------------------+
-                         ¦
+                         ï¿½
                          ?
 +----------------------------------------------------------------+
-¦ ChatGoogleGenerativeAI (gemini-3.1-flash-lite-preview)        ¦
-¦ temperature=0.2                                               ¦
+ï¿½ ChatGoogleGenerativeAI (gemini-3.1-flash-lite-preview)        ï¿½
+ï¿½ temperature=0.2                                               ï¿½
 +----------------------------------------------------------------+
-                         ¦
+                         ï¿½
                          ?
 +----------------------------------------------------------------+
-¦ Output: {answer: str, sources: [{page, source}]}             ¦
+ï¿½ Output: {answer: str, sources: [{page, source}]}             ï¿½
 +----------------------------------------------------------------+
 ```
 

@@ -9,11 +9,11 @@ from pathlib import Path
 from langchain_core.documents import Document
 from sqlalchemy.orm import Session
 
-from rag_core.common.embeddings import build_embeddings
+from rag_core.common.embeddings import get_embeddings
 from rag_core.step1_parser import HybridPDFParser
 from rag_core.step2_chunker import chunk_documents
 
-from ..models import DocumentChunk
+from ..models import DocumentChunk, DocumentRecord
 from .idempotency import delete_chunks_for_document_version
 from .job_updater import JobUpdater
 from .logging_utils import log_event
@@ -29,6 +29,8 @@ from .storage import storage_client, validate_file_bytes
 class ChunkDraft:
     id: str
     document_id: str
+    owner_id: int | None
+    notebook_id: int | None
     job_id: str
     kind: str
     parent_chunk_id: str | None
@@ -44,6 +46,8 @@ def _draft_to_model(draft: ChunkDraft) -> DocumentChunk:
     return DocumentChunk(
         id=draft.id,
         document_id=draft.document_id,
+        owner_id=draft.owner_id,
+        notebook_id=draft.notebook_id,
         job_id=draft.job_id,
         kind=draft.kind,
         parent_chunk_id=draft.parent_chunk_id,
@@ -56,8 +60,16 @@ def _draft_to_model(draft: ChunkDraft) -> DocumentChunk:
     )
 
 
+def _normalize_parsed_page_sources(parsed_pages: list[Document], filename: str) -> None:
+    for page in parsed_pages:
+        page.metadata["source"] = filename
+
+
+
 def _build_chunk_drafts(
     document_id: str,
+    owner_id: int | None,
+    notebook_id: int | None,
     job_id: str,
     pipeline_version: str,
     parent_docs: list[Document],
@@ -74,6 +86,8 @@ def _build_chunk_drafts(
             ChunkDraft(
                 id=parent_id,
                 document_id=document_id,
+                owner_id=owner_id,
+                notebook_id=notebook_id,
                 job_id=job_id,
                 kind="parent",
                 parent_chunk_id=None,
@@ -97,6 +111,8 @@ def _build_chunk_drafts(
             ChunkDraft(
                 id=str(uuid.uuid4()),
                 document_id=document_id,
+                owner_id=owner_id,
+                notebook_id=notebook_id,
                 job_id=job_id,
                 kind="child",
                 parent_chunk_id=parent_chunk_id,
@@ -154,8 +170,20 @@ def _process_parsed_documents(
     updater: JobUpdater,
     total_started: float,
 ) -> dict[str, int]:
+    updater = JobUpdater(db)
+    document = db.query(DocumentRecord).filter(DocumentRecord.id == document_id).first()
+    if document is None:
+        raise ValueError(f"Document not found: {document_id}")
+
+    total_started = time.perf_counter()
+
     def _mark_stage(stage: str, ratio: float, detail: str) -> None:
         updater.advance_stage(job_id, stage, ratio=ratio, stage_detail=detail)
+
+    updater.start_run(job_id, pipeline_version=pipeline_version)
+
+    # Normalize source metadata (override temp filename → original filename)
+    _normalize_parsed_page_sources(parsed_pages, document.filename)
 
     stage_started = time.perf_counter()
     _mark_stage("chunking", 0.1, "chunking_started")
@@ -165,6 +193,8 @@ def _process_parsed_documents(
 
     parent_drafts, child_drafts = _build_chunk_drafts(
         document_id=document_id,
+        owner_id=document.owner_id,
+        notebook_id=document.notebook_id,
         job_id=job_id,
         pipeline_version=pipeline_version,
         parent_docs=parent_docs,
@@ -189,7 +219,7 @@ def _process_parsed_documents(
 
     stage_started = time.perf_counter()
     _mark_stage("embedding", 0.05, "embedding_started")
-    embedder = build_embeddings()
+    embedder = get_embeddings()
     child_texts = [draft.text for draft in child_drafts]
     vectors = embedder.embed_documents(child_texts)
     _mark_stage("embedding", 1.0, f"embedded_children={len(child_drafts)}")

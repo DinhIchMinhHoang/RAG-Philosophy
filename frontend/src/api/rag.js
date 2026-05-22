@@ -1,8 +1,9 @@
 import { BASE_URL, getToken, request } from './client.js';
 
-export async function uploadDocument(file) {
+export async function uploadDocument(file, { notebookId } = {}) {
     const formData = new FormData();
     formData.append('file', file);
+    if (notebookId) formData.append('notebook_id', String(notebookId));
     const headers = {};
     const token = getToken();
     if (token) headers['Authorization'] = `Bearer ${token}`;
@@ -17,7 +18,7 @@ export async function uploadDocument(file) {
     return await response.json();
 }
 
-export function chatStream(message, { onToken, onDone, onError }) {
+export function chatStream(message, { conversationId, notebookId, onToken, onDone, onError }) {
     const controller = new AbortController();
     const token = getToken();
     if (!token) {
@@ -26,13 +27,17 @@ export function chatStream(message, { onToken, onDone, onError }) {
         return controller;
     }
 
+    const payload = { message };
+    if (conversationId) payload.conversation_id = conversationId;
+    if (notebookId) payload.notebook_id = notebookId;
+
     fetch(`${BASE_URL}/chat/stream`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ message }),
+        body: JSON.stringify(payload),
         signal: controller.signal,
     })
         .then(async (response) => {
@@ -54,12 +59,12 @@ export function chatStream(message, { onToken, onDone, onError }) {
                     if (!trimmed || !trimmed.startsWith('data: ')) continue;
                     try {
                         const payload = JSON.parse(trimmed.slice(6));
-                        if (payload.done) { if (onDone) onDone(); return; }
+                        if (payload.done) { if (onDone) onDone(payload); return; }
                         if (payload.token && onToken) onToken(payload.token);
                     } catch (e) { /* skip malformed */ }
                 }
             }
-            if (onDone) onDone();
+            if (onDone) onDone(payload);
         })
         .catch((err) => {
             if (err.name === 'AbortError') return;
@@ -69,8 +74,9 @@ export function chatStream(message, { onToken, onDone, onError }) {
     return controller;
 }
 
-export async function listSources() {
-    const documents = await request('/documents', { method: 'GET' });
+export async function listSources({ notebookId } = {}) {
+    const query = notebookId ? `?notebook_id=${encodeURIComponent(notebookId)}` : '';
+    const documents = await request(`/documents${query}`, { method: 'GET' });
     if (!Array.isArray(documents)) return documents;
 
     const sources = documents.map((doc) => doc.filename).filter(Boolean);
@@ -84,4 +90,19 @@ export async function listSources() {
 
 export async function getJob(jobId) {
     return await request(`/jobs/${encodeURIComponent(jobId)}`, { method: 'GET' });
+}
+
+export async function renameSource({ notebookId, fileId, newName }) {
+    if (!notebookId || !fileId || !newName) throw new Error('missing parameters');
+    return await request(`/notebooks/${encodeURIComponent(notebookId)}/files/${encodeURIComponent(fileId)}/rename`, {
+        method: 'PATCH',
+        body: JSON.stringify({ new_file_name: newName }),
+    });
+}
+
+export async function deleteSource({ notebookId, fileId }) {
+    if (!notebookId || !fileId) throw new Error('missing parameters');
+    return await request(`/notebooks/${encodeURIComponent(notebookId)}/files/${encodeURIComponent(fileId)}`, {
+        method: 'DELETE',
+    });
 }

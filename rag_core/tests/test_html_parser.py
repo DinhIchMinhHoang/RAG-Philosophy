@@ -37,7 +37,9 @@ try:
         parse_html,
         parse_html_bytes,
         parse_html_from_url,
-        _extract_with_trafilatura,
+        _extract_with_readability,
+        _html_to_markdown,
+        _extract_raw_text,
         _validate_html_content,
     )
 except ImportError:
@@ -46,7 +48,9 @@ except ImportError:
         parse_html,
         parse_html_bytes,
         parse_html_from_url,
-        _extract_with_trafilatura,
+        _extract_with_readability,
+        _html_to_markdown,
+        _extract_raw_text,
         _validate_html_content,
     )
 
@@ -173,7 +177,7 @@ class TestHtmlParser(unittest.TestCase):
         try:
             docs = parse_html(path, self.DOCUMENT_ID, self.PIPELINE_VERSION)
             self.assertGreater(len(docs), 0)
-            # Table data should be preserved (Trafilatura extracts text, not Markdown syntax)
+            # Table data should be preserved (Readability + BSoup → pipe Markdown)
             all_content = "\n".join(doc.page_content for doc in docs)
             self.assertIn("Name", all_content)
             self.assertIn("Alice", all_content)
@@ -239,11 +243,12 @@ class TestHtmlParser(unittest.TestCase):
         finally:
             os.unlink(path)
 
-    # ── Test 8: Fallback trigger → mock Trafilatura failure → BSoup works ──
-    def test_fallback_when_trafilatura_fails(self):
+    # ── Test 8: Fallback trigger → mock Readability failure → BSoup raw text works ──
+    def test_fallback_when_readability_fails(self):
+        """When Readability returns None, _extract_raw_text is used."""
         path = self._write_html(VALID_HTML)
         try:
-            with mock.patch("rag_core.html_parser._extract_with_trafilatura", return_value=None):
+            with mock.patch("rag_core.html_parser._extract_with_readability", return_value=None):
                 docs = parse_html(path, self.DOCUMENT_ID, self.PIPELINE_VERSION)
                 self.assertGreater(len(docs), 0)
                 for doc in docs:
@@ -320,20 +325,27 @@ class TestHtmlParser(unittest.TestCase):
 
     # ── Test 16: Heading chain trong metadata ──
     def test_heading_chain_preserved_in_metadata(self):
-        """Mock Trafilatura trả về Markdown có heading → heading chain trong metadata."""
-        markdown_with_headings = "# Chương 1\n\nNội dung chương 1\n\n## 1.1 Giới thiệu\n\nChi tiết giới thiệu\n\n## 1.2 Phương pháp\n\nChi tiết phương pháp"
-        with mock.patch("rag_core.html_parser._extract_with_trafilatura", return_value=markdown_with_headings):
-            docs = parse_html_bytes(
-                "<html><body>dummy</body></html>",
-                "test.html",
-                self.DOCUMENT_ID,
-                self.PIPELINE_VERSION,
-            )
-            self.assertGreater(len(docs), 1)
-            has_heading_chain = any(
-                k.startswith("Header-") for doc in docs for k in doc.metadata
-            )
-            self.assertTrue(has_heading_chain)
+        """Real pipeline with headings → heading chain trong metadata."""
+        heading_html = """<!DOCTYPE html>
+<html><body>
+<h1>Chương 1</h1>
+<p>Nội dung chương 1</p>
+<h2>1.1 Giới thiệu</h2>
+<p>Chi tiết giới thiệu</p>
+<h2>1.2 Phương pháp</h2>
+<p>Chi tiết phương pháp</p>
+</body></html>"""
+        docs = parse_html_bytes(
+            heading_html,
+            "test.html",
+            self.DOCUMENT_ID,
+            self.PIPELINE_VERSION,
+        )
+        self.assertGreater(len(docs), 1)
+        has_heading_chain = any(
+            k.startswith("Header-") for doc in docs for k in doc.metadata
+        )
+        self.assertTrue(has_heading_chain)
 
 
 if __name__ == "__main__":

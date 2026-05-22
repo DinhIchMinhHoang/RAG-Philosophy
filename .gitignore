@@ -29,6 +29,7 @@ Thumbs.db
 data/*.pdf
 output/*
 converted/*
+*.db
 # ===== HuggingFace Model Cache =====
 .cache/
 
@@ -40,5 +41,6 @@ test_step1_step2.py
 
 .opencode/
 .context/
+e2e-artifacts/
 todo_backlog.md
 TODO.md

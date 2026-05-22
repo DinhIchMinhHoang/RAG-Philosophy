@@ -1,4 +1,6 @@
-export const BASE_URL = window.location.origin + '/api';
+
+export const BASE_URL = 'http://localhost:8000/api';
+
 
 export function getToken() {
     return localStorage.getItem('accessToken');
