@@ -66,7 +66,11 @@ export function initAuthScene(transitionManager) {
         btn.addEventListener('click', () => transitionManager.transitionTo('signin'));
     });
     document.querySelectorAll('[data-back-to="forgot"]').forEach(btn => {
-        btn.addEventListener('click', () => transitionManager.transitionTo('forgot'));
+        btn.addEventListener('click', () => {
+            pendingResetEmail = '';
+            pendingResetCode = '';
+            transitionManager.transitionTo('forgot');
+        });
     });
 
     const signInScene = document.getElementById('scene-signin');
@@ -233,8 +237,9 @@ export function initAuthScene(transitionManager) {
         }
     }
 
-    const forgotBtn = document.querySelector('[data-action="forgot-password"]');
-    if (forgotBtn) forgotBtn.addEventListener('click', () => transitionManager.transitionTo('forgot'));
+    document.querySelectorAll('[data-action="forgot-password"]').forEach(btn => {
+        btn.addEventListener('click', () => transitionManager.transitionTo('forgot'));
+    });
 
     let pendingResetEmail = '';
     let pendingResetCode = '';
