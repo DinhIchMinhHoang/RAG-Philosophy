@@ -37,13 +37,8 @@ _SYSTEM_PROMPT = (
     "Context:\n{context}"
 )
 
-<<<<<<< HEAD
 _CITATION_MARKER_RE = re.compile(r"\[(C\d+)\]", re.IGNORECASE)
 _CITATION_GROUP_RE = re.compile(r"\[((?:\s*C\d+\s*(?:,\s*)?)+)\]", re.IGNORECASE)
-=======
-_CITATION_ID_RE = re.compile(r"C\d+", re.IGNORECASE)
-_CITATION_GROUP_RE = re.compile(r"\[([Cc]\d+(?:\s*,\s*[Cc]\d+)*)\]")
->>>>>>> 4b4b696748237060493100f93545cbb4ea858f0d
 
 
 @dataclass
@@ -153,7 +148,6 @@ class ChatRuntimeService:
     def cited_ids_from_answer(self, answer: str) -> list[str]:
         cited_ids: list[str] = []
         seen: set[str] = set()
-<<<<<<< HEAD
         normalized_answer = self.normalize_citation_markers(answer)
         for match in _CITATION_MARKER_RE.finditer(normalized_answer):
             citation_id = match.group(1).upper()
@@ -161,15 +155,6 @@ class ChatRuntimeService:
                 continue
             seen.add(citation_id)
             cited_ids.append(citation_id)
-=======
-        for group_match in _CITATION_GROUP_RE.finditer(answer or ""):
-            for id_match in _CITATION_ID_RE.finditer(group_match.group(1)):
-                citation_id = id_match.group(0).upper()
-                if citation_id in seen:
-                    continue
-                seen.add(citation_id)
-                cited_ids.append(citation_id)
->>>>>>> 4b4b696748237060493100f93545cbb4ea858f0d
         return cited_ids
 
     def filter_citations_for_answer(self, answer: str, citations: list[dict]) -> list[dict]:

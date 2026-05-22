@@ -1,7 +1,3 @@
-<<<<<<< HEAD
-import { chatStream, getJob, uploadDocument, listSources, BASE_URL, getToken } from '../../api/index.js';
-import { getLatestNotebookConversation } from '../../api/notebooks.js';
-=======
 import { store } from '../../state/store.js';
 import {
     BASE_URL,
@@ -19,7 +15,6 @@ import {
 
 const CONVERSATION_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const CONVERSATION_MESSAGE_LIMIT = 50;
->>>>>>> 4b4b696748237060493100f93545cbb4ea858f0d
 
 function renderMessageSkeleton(thread) {
     thread.innerHTML = '';
@@ -105,24 +100,12 @@ function escapeHtml(value) {
 }
 
 export function citationLabel(citation) {
-<<<<<<< HEAD
-    const id = citation?.citation_id || 'C?';
-    const source = citation?.source || 'source';
-    const page = citation?.page ? `, p. ${citation.page}` : '';
-    return `${id} ${source}${page}`;
-=======
     const source = citation?.source || '';
     const page = citation?.page ? `Trang ${citation.page}` : '';
     if (source && page) return `${source}, ${page}`;
     if (source) return source;
     if (page) return page;
     return 'Tai lieu';
-}
-
-function inlineCitationLabel(citation, fallbackLabel) {
-    if (citation?.page) return `Trang ${citation.page}`;
-    return fallbackLabel || citationLabel(citation);
->>>>>>> 4b4b696748237060493100f93545cbb4ea858f0d
 }
 
 function citationDisplayLabel(citation, fallback) {
@@ -136,29 +119,23 @@ function citationButtonHtml(citation, label) {
     const source = citation?.source || '';
     const page = citation?.page || '';
     const documentId = citation?.document_id || '';
-<<<<<<< HEAD
     return `<button class="citation-btn" type="button" data-citation-id="${escapeHtml(citationId)}" data-document-id="${escapeHtml(documentId)}" data-file="${escapeHtml(source)}" data-page="${escapeHtml(page)}" title="${escapeHtml(citationLabel(citation))}">${escapeHtml(label)}</button>`;
-=======
-    const displayLabel = inlineCitationLabel(citation, label);
-    return `<button class="citation-btn" data-citation-id="${escapeHtml(citationId)}" data-document-id="${escapeHtml(documentId)}" data-file="${escapeHtml(source)}" data-page="${escapeHtml(page)}" title="${escapeHtml(citationLabel(citation))}"><span class="material-icons">find_in_page</span>${escapeHtml(displayLabel)}</button>`;
 }
 
 export function renderCitationMarkup(text, citations = []) {
     const citationMap = new Map(citations.map((citation) => [String(citation.citation_id || '').toUpperCase(), citation]));
-    let html = text.replace(/\[((?:\s*C\d+\s*,)*\s*C\d+\s*)\]/gi, (match, citationGroup) => {
+    let html = text.replace(/\[((?:\s*C\d+\s*(?:,\s*)?)+)\]/gi, (match, citationGroup) => {
         const citationIds = citationGroup.match(/C\d+/gi) || [];
-        if (!citationIds.length) return match;
-        return citationIds.map((citationId) => {
+        for (const citationId of citationIds) {
             const normalized = citationId.toUpperCase();
             const citation = citationMap.get(normalized);
-            return citation ? citationButtonHtml(citation, `[${normalized}]`) : `[${normalized}]`;
-        }).join(' ');
+            if (citation) return citationButtonHtml(citation, citationDisplayLabel(citation, `[${normalized}]`));
+        }
+        return match;
     });
     html = html.replace(/\[Trang (\d+)\]/g, (_, p1) => citationButtonHtml({ page: p1 }, `Trang ${p1}`));
     html = html.replace(/- ([^,\n]+),\s*Trang\s*(\d+)/g, (_, file, page) => citationButtonHtml({ source: file.trim(), page }, `${file.trim()} (P. ${page})`));
-    html = html.replace(/ðŸ“š \*\*Nguá»“n tham kháº£o:\*\*/g, '<div class="sources-footer-title"><span class="material-icons">auto_stories</span> Nguá»“n tham kháº£o</div>');
     return html;
->>>>>>> 4b4b696748237060493100f93545cbb4ea858f0d
 }
 
 function renderCitationChips(container, citations = []) {
@@ -185,31 +162,7 @@ function renderCitationChips(container, citations = []) {
 }
 
 export function processRichText(container, text, citations = []) {
-    const citationMap = new Map(citations.map((citation) => [String(citation.citation_id || '').toUpperCase(), citation]));
-<<<<<<< HEAD
-    let html = text.replace(/\[((?:\s*C\d+\s*(?:,\s*)?)+)\]/gi, (match, citationGroup) => {
-        const citationIds = citationGroup.match(/C\d+/gi) || [];
-        for (const citationId of citationIds) {
-            const normalized = citationId.toUpperCase();
-            const citation = citationMap.get(normalized);
-            if (citation) return citationButtonHtml(citation, citationDisplayLabel(citation, `[${normalized}]`));
-        }
-        return match;
-=======
-    let html = text.replace(/\[((?:\s*C\d+\s*,)*\s*C\d+\s*)\]/gi, (match, citationGroup) => {
-        const citationIds = citationGroup.match(/C\d+/gi) || [];
-        if (!citationIds.length) return match;
-        return citationIds.map((citationId) => {
-            const normalized = citationId.toUpperCase();
-            const citation = citationMap.get(normalized);
-            return citation ? citationButtonHtml(citation, `[${normalized}]`) : `[${normalized}]`;
-        }).join(' ');
->>>>>>> 4b4b696748237060493100f93545cbb4ea858f0d
-    });
-    html = html.replace(/\[Trang (\d+)\]/g, (_, p1) => citationButtonHtml({ page: p1 }, `Trang ${p1}`));
-    html = html.replace(/- ([^,\n]+),\s*Trang\s*(\d+)/g, (_, file, page) => citationButtonHtml({ source: file.trim(), page }, `${file.trim()} (P. ${page})`));
-    html = html.replace(/📚 \*\*Nguồn tham khảo:\*\*/g, '<div class="sources-footer-title"><span class="material-icons">auto_stories</span> Nguồn tham khảo</div>');
-
+    const html = renderCitationMarkup(text, citations);
     if (window.marked) container.innerHTML = marked.parse(html);
     else container.textContent = text;
 
@@ -235,6 +188,7 @@ export function processRichText(container, text, citations = []) {
     });
 }
 
+
 const viewerState = { filename: null, page: null, documentId: null, mimeType: null };
 let activeStreamController = null;
 let activeConversationId = null;
@@ -242,7 +196,6 @@ const activeConversationByNotebook = new Map();
 const conversationStateByNotebook = new Map();
 const manualNewChatByNotebook = new Set();
 let setCollapsedFn = null;
-<<<<<<< HEAD
 let notebookLoadVersion = 0;
 let viewerSrcVersion = 0;
 
@@ -361,23 +314,6 @@ export function resetSourceViewer() {
     viewerState.page = null;
     viewerState.documentId = null;
     viewerState.mimeType = null;
-=======
-let activeViewerObjectUrl = null;
-let viewerLoadToken = 0;
-
-function revokeActiveViewerObjectUrl() {
-    if (!activeViewerObjectUrl) return;
-    URL.revokeObjectURL(activeViewerObjectUrl);
-    activeViewerObjectUrl = null;
-}
-
-export async function showPagePreview(filename, page = null, documentId = null) {
-    if (!filename) return;
-    const loadToken = ++viewerLoadToken;
-    viewerState.filename = filename;
-    viewerState.page = page;
-    viewerState.documentId = documentId || null;
->>>>>>> 4b4b696748237060493100f93545cbb4ea858f0d
 
     const viewer = document.querySelector('#sourceViewer');
     const empty = viewer?.querySelector('.viewer-empty');
@@ -392,7 +328,7 @@ export async function showPagePreview(filename, page = null, documentId = null) 
     if (nameEl) nameEl.textContent = 'filename.pdf';
 }
 
-function resetNotebookWorkspace({ chatThread, sourceList, sourceEmpty, chatPrompt, sourceInput, showSkeleton = false }) {
+function resetNotebookWorkspaceState({ chatThread, sourceList, sourceEmpty, chatPrompt, sourceInput, showSkeleton = false }) {
     hideThinkingIndicator();
     activeConversationId = null;
 
@@ -408,15 +344,6 @@ function resetNotebookWorkspace({ chatThread, sourceList, sourceEmpty, chatPromp
         if (showSkeleton) renderMessageSkeleton(chatThread);
     }
     resetSourceViewer();
-}
-
-function renderWelcomeMessage(chatThread) {
-    if (!chatThread) return;
-    chatThread.innerHTML = '';
-    const welcome = document.createElement('div');
-    welcome.className = 'ai-response';
-    welcome.innerHTML = `<div class="message-text">Hi, I can help you explore your sources. Add files on the left, then ask a question.</div><div class="message-meta">Lumina</div>`;
-    chatThread.appendChild(welcome);
 }
 
 export function showPagePreview(filename, page = null, documentId = null, mimeType = null) {
@@ -440,37 +367,10 @@ export function showPagePreview(filename, page = null, documentId = null, mimeTy
     if (nameEl) nameEl.textContent = viewerTitle(filename, documentId, page, !canUsePageFragment);
     clearViewerFallback(viewer, embed);
     if (embed) {
-<<<<<<< HEAD
         if (isBrowserNativeMime(inferredMimeType)) {
             setViewerSrc(embed, fileUrl);
         } else {
             showUnsupportedViewer(viewer, embed, fileUrl, filename || documentId, inferredMimeType);
-=======
-        const pageNumber = Number(page);
-        const pageFragment = Number.isFinite(pageNumber) && pageNumber > 0 ? `#page=${pageNumber}` : '';
-        const fileKey = documentId || filename;
-        const filePath = documentId
-            ? `/documents/${encodeURIComponent(fileKey)}/file`
-            : `/documents/file/${encodeURIComponent(fileKey)}`;
-        embed.removeAttribute('src');
-        try {
-            const token = getToken();
-            const headers = token ? { Authorization: `Bearer ${token}` } : {};
-            const response = await fetch(`${BASE_URL}${filePath}`, { headers });
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                throw new Error(errorData.detail || `Failed to load PDF: ${response.status}`);
-            }
-            const blob = await response.blob();
-            if (loadToken !== viewerLoadToken) return;
-            revokeActiveViewerObjectUrl();
-            activeViewerObjectUrl = URL.createObjectURL(blob);
-            embed.src = `${activeViewerObjectUrl}${pageFragment}`;
-        } catch (err) {
-            if (loadToken !== viewerLoadToken) return;
-            console.error('[Source viewer] Failed to load PDF', err);
-            embed.removeAttribute('src');
->>>>>>> 4b4b696748237060493100f93545cbb4ea858f0d
         }
     }
 
@@ -555,25 +455,6 @@ function hideThinkingIndicator() {
 function updateSourceEmpty(sourceEmpty, sourceList) {
     if (!sourceEmpty || !sourceList) return;
     sourceEmpty.style.display = sourceList.children.length ? 'none' : 'block';
-}
-
-function resetSourceViewer() {
-    viewerLoadToken += 1;
-    viewerState.filename = null;
-    viewerState.page = null;
-    viewerState.documentId = null;
-    revokeActiveViewerObjectUrl();
-
-    const viewer = document.querySelector('#sourceViewer');
-    const empty = viewer?.querySelector('.viewer-empty');
-    const content = viewer?.querySelector('.viewer-content');
-    const embed = viewer?.querySelector('#pdfViewer');
-    const nameEl = viewer?.querySelector('#viewerFileName');
-
-    if (empty) empty.style.display = 'flex';
-    if (content) content.style.display = 'none';
-    if (embed) embed.removeAttribute('src');
-    if (nameEl) nameEl.textContent = '';
 }
 
 export function resetNotebookWorkspace(chatScene) {
@@ -662,97 +543,8 @@ export function initChatScene(transitionManager) {
     if (!chatScene) return;
 
     const chatThread = chatScene.querySelector('.chat-thread');
-<<<<<<< HEAD
     const sourceList = chatScene.querySelector('.source-list');
     const sourceEmpty = chatScene.querySelector('.source-empty');
-
-    document.addEventListener('chat:notebookLeft', () => {
-        notebookLoadVersion += 1;
-        if (activeStreamController) {
-            activeStreamController.abort();
-            activeStreamController = null;
-        }
-        delete chatScene.dataset.notebookId;
-        resetNotebookWorkspace({ chatThread, sourceList, sourceEmpty, chatPrompt, sourceInput });
-    });
-
-    document.addEventListener('chat:notebookChanged', async () => {
-        const notebookId = chatScene.dataset.notebookId || '';
-        const loadVersion = ++notebookLoadVersion;
-
-        if (activeStreamController) {
-            activeStreamController.abort();
-            activeStreamController = null;
-        }
-        resetNotebookWorkspace({ chatThread, sourceList, sourceEmpty, chatPrompt, sourceInput, showSkeleton: Boolean(notebookId) });
-
-        if (!notebookId) {
-            setTimeout(() => {
-                if (isCurrentNotebookLoad(loadVersion, notebookId)) renderWelcomeMessage(chatThread);
-            }, 600);
-            return;
-        }
-
-        try {
-            const [convData, docsData] = await Promise.all([
-                getLatestNotebookConversation(notebookId, { limit: 50 }),
-                listSources(),
-            ]);
-
-            if (!isCurrentNotebookLoad(loadVersion, notebookId)) return;
-
-            if (chatThread) {
-                chatThread.innerHTML = '';
-=======
-    if (chatThread) {
-        renderMessageSkeleton(chatThread);
-        setTimeout(() => {
-            if (chatThread) {
-                renderWelcomeMessage(chatThread);
->>>>>>> 4b4b696748237060493100f93545cbb4ea858f0d
-            }
-
-            const notebookDocs = (docsData.documents || []).filter(
-                d => Number(d.notebook_id) === Number(notebookId)
-            );
-
-            if (convData.has_conversation && convData.messages.length > 0) {
-                activeConversationId = convData.conversation.id;
-                if (chatThread) {
-                    convData.messages.forEach(msg => {
-                        addMessage(
-                            chatThread,
-                            msg.role === 'user' ? 'user' : 'ai',
-                            msg.content,
-                            msg.sources_used || [],
-                        );
-                    });
-                }
-            } else {
-                renderWelcomeMessage(chatThread);
-            }
-
-            if (sourceList) {
-                sourceList.innerHTML = '';
-                notebookDocs.forEach(doc => {
-                    const item = document.createElement('div');
-                    item.className = 'source-item';
-                    item.style.cursor = 'pointer';
-                    const icon = doc.filename.toLowerCase().endsWith('.pdf') ? 'picture_as_pdf' : 'description';
-                    const status = doc.latest_job?.status === 'succeeded' ? 'Ready' : (doc.latest_job?.status || 'Uploaded');
-                    item.innerHTML = `<div class="source-icon"><span class="material-icons">${icon}</span></div><div class="source-meta"><div class="source-name">${escapeHtml(doc.filename)}</div><div class="source-type">${status}</div></div>`;
-                    item.dataset.documentId = doc.document_id;
-                    item.addEventListener('click', () => showPagePreview(doc.filename, null, doc.document_id, doc.mime_type));
-                    sourceList.appendChild(item);
-                });
-                if (sourceEmpty) updateSourceEmpty(sourceEmpty, sourceList);
-            }
-        } catch (err) {
-            if (!isCurrentNotebookLoad(loadVersion, notebookId)) return;
-            console.error('[ChatScene] Failed to restore notebook state', err);
-            renderWelcomeMessage(chatThread);
-        }
-    });
 
     const chatShell = chatScene.querySelector('.chat-shell');
     const chatLayout = chatScene.querySelector('.chat-layout');
@@ -884,7 +676,7 @@ export function initChatScene(transitionManager) {
             item.addEventListener('click', (ev) => {
                 if (ev.target.closest('.source-menu') || ev.target.closest('.source-menu-btn') || ev.target.closest('.source-rename-input') || ev.target.closest('.source-rename-actions')) return;
                 closeAllSourceMenus();
-                showPagePreview(doc.filename, null, doc.document_id || null);
+                showPagePreview(doc.filename, null, doc.document_id || null, doc.mime_type);
             });
 
             // wire menu toggle
@@ -1035,7 +827,21 @@ export function initChatScene(transitionManager) {
         }
     };
 
+    document.addEventListener('chat:notebookLeft', () => {
+        notebookLoadVersion += 1;
+        sourceLoadToken += 1;
+        conversationLoadToken += 1;
+        if (activeStreamController) {
+            activeStreamController.abort();
+            activeStreamController = null;
+        }
+        activeConversationId = null;
+        delete chatScene.dataset.notebookId;
+        resetNotebookWorkspace(chatScene);
+    });
+
     document.addEventListener('chat:notebookChanged', () => {
+        notebookLoadVersion += 1;
         if (shareButton) {
             shareButton.classList.remove('active');
             shareButton.style.pointerEvents = '';
@@ -1092,13 +898,8 @@ export function initChatScene(transitionManager) {
             if (isPDF) {
                 const metaEl = item.querySelector('.source-type');
                 try {
-<<<<<<< HEAD
                     const result = await uploadDocument(file, { notebookId: uploadNotebookId });
                     if (getActiveNotebookKey() !== uploadNotebookKey) return;
-=======
-                    const notebookId = currentNotebookId(chatScene);
-                    const result = await uploadDocument(file, { notebookId });
->>>>>>> 4b4b696748237060493100f93545cbb4ea858f0d
                     if (result.document_id) item.dataset.documentId = result.document_id;
                     if (result.pages !== undefined || result.chunks !== undefined) {
                         setSourceMeta(metaEl, `${result.pages ?? 0} pages, ${result.chunks ?? 0} chunks`, false);
@@ -1195,13 +996,10 @@ export function initChatScene(transitionManager) {
 
             let fullText = ''; let receivedFirst = false;
 
-<<<<<<< HEAD
             const requestNotebookKey = getActiveNotebookKey();
             const requestNotebookId = requestNotebookKey ? Number(requestNotebookKey) : null;
             const requestVersion = notebookLoadVersion;
-=======
-            const notebookId = currentNotebookId(chatScene);
->>>>>>> 4b4b696748237060493100f93545cbb4ea858f0d
+            const notebookId = requestNotebookId;
             activeStreamController = chatStream(text, {
                 conversationId: activeConversationId,
                 notebookId: requestNotebookId,

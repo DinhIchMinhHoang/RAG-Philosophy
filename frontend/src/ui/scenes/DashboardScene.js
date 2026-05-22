@@ -261,17 +261,13 @@ export function initDashboardScene(transitionManager) {
             e.preventDefault();
             try {
                 const nb = await createNotebook({ title: 'Untitled notebook', is_community: false });
-<<<<<<< HEAD
                 const myGrid = document.querySelector('.my-grid');
                 if (myGrid) {
                     const empty = myGrid.querySelector('.notebook-empty-state');
                     if (empty) empty.remove();
                     myGrid.prepend(buildNotebookItem(nb));
                 }
-                transitionManager.openNotebook(nb.title, nb.id);
-=======
                 transitionManager.openNotebook(nb.title, nb.id, null, 'false');
->>>>>>> 4b4b696748237060493100f93545cbb4ea858f0d
             } catch (err) {
                 console.error('[Dashboard] Failed to create notebook', err);
             }
@@ -444,11 +440,12 @@ export function initDashboardScene(transitionManager) {
                     const notebookId = chatScene.dataset.notebookId;
                     if (!notebookId) return;
                     const chatTitle = chatScene.querySelector('.chat-title')?.textContent || 'Untitled notebook';
-<<<<<<< HEAD
                     const item = document.createElement('div');
                     item.className = 'notebook-item';
                     item.dataset.notebookId = notebookId;
                     item.dataset.title = chatTitle;
+                    if (chatScene.dataset.notebookOwnerId) item.dataset.ownerId = chatScene.dataset.notebookOwnerId;
+                    if (chatScene.dataset.isCommunity) item.dataset.isCommunity = chatScene.dataset.isCommunity;
                     item.style.position = 'absolute';
                     item.style.left = '-9999px';
                     item.style.top = '-9999px';
@@ -456,16 +453,6 @@ export function initDashboardScene(transitionManager) {
                     document.body.appendChild(item);
                     setLastFake(item);
                     showMenu(item, settingsBtn);
-=======
-                    const fake = document.createElement('div');
-                    fake.className = 'notebook-item';
-                    fake.style.position = 'absolute'; fake.style.left = '-9999px'; fake.style.top = '-9999px';
-                    if (chatScene.dataset.notebookId) fake.dataset.notebookId = chatScene.dataset.notebookId;
-                    fake.innerHTML = `<div class="cover" style="background: transparent;"></div><div class="item-title">${chatTitle}</div>`;
-                    document.body.appendChild(fake);
-                    setLastFake(fake);
-                    showMenu(fake, settingsBtn);
->>>>>>> 4b4b696748237060493100f93545cbb4ea858f0d
                 });
             }
         }
