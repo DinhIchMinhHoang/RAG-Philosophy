@@ -29,7 +29,7 @@ STAGE_ORDER: Final[list[str]] = [
 
 MAX_FILE_SIZE_MB: Final[int] = 50
 BATCH_SIZE: Final[int] = 500
-HEADER_CHECK_ROWS: Final[int] = 10
+HEADER_CHECK_ROWS: Final[int] = 20
 HEADER_MIN_NONEMPTY_RATIO: Final[float] = 0.5
 TABLE_PREFIX: Final[str] = "etbl"
 TABLE_NAME_MAX_LEN: Final[int] = 56

@@ -83,7 +83,7 @@ class TabularParser:
         max_cols: Optional[int] = None,
         max_size_mb: Optional[int] = None,
     ):
-        self.max_rows = max_rows or getattr(Config, 'TABULAR_CHUNK_ROWS', 50)
+        self.max_rows = max_rows or getattr(Config, 'TABULAR_CHUNK_ROWS', 15)
         self.max_cols = max_cols or getattr(Config, 'TABULAR_MAX_COLS', 15)
         self.max_size_mb = max_size_mb or getattr(Config, 'MAX_TABULAR_SIZE_MB', 20)
         self._wb = None
@@ -133,9 +133,14 @@ class TabularParser:
         total_rows = len(df)
         is_wide_table = len(df.columns) > self.max_cols
         
-        for chunk_start in range(0, total_rows, self.max_rows):
+        for chunk_idx, chunk_start in enumerate(range(0, total_rows, self.max_rows)):
             chunk_end = min(chunk_start + self.max_rows, total_rows)
             chunk_df = df.iloc[chunk_start:chunk_end]
+            
+            # CompactMode: drop all-empty columns per chunk
+            chunk_df = chunk_df.dropna(axis=1, how='all').fillna("")
+            if chunk_df.empty:
+                continue
             
             # Format: Markdown Table or Key-Value (wide table fallback)
             if is_wide_table:
@@ -164,7 +169,7 @@ class TabularParser:
                 page_content=content,
                 metadata={
                     "source": source,
-                    "page": page_idx,
+                    "page": page_idx + chunk_idx,
                     "doc_type": doc_type,
                     "sheet_name": sheet_name,
                     "is_tabular": True,
@@ -218,7 +223,17 @@ class TabularParser:
                 if df.empty:
                     continue
                 
-                # Patch merged cells: 1:1 Grid Mapping
+                # Auto-detect header row from RAW data (before merged cell mapping)
+                # to avoid merged-cell boilerplate in title rows corrupting detection
+                header_row = 0
+                # Phải đồng bộ với backend/app/ingest/constants.py HEADER_CHECK_ROWS (=20)
+                for i in range(min(20, len(df))):
+                    non_empty = df.iloc[i].notna().sum()
+                    if non_empty >= len(df.columns) * 0.5:
+                        header_row = i
+                        break
+                
+                # Patch merged cells: 1:1 Grid Mapping (after header detection)
                 if wb and sheet_name in wb.sheetnames:
                     ws = wb[sheet_name]
                     for merged_range in ws.merged_cells.ranges:
@@ -227,14 +242,6 @@ class TabularParser:
                         if val is not None:
                             # Map openpyxl coords (1-indexed) to pandas iloc (0-indexed)
                             df.iloc[min_row - 1:max_row, min_col - 1:max_col] = val
-                
-                # Auto-detect header row: find first row with ≥50% non-empty cells
-                header_row = 0
-                for i in range(min(10, len(df))):
-                    non_empty = df.iloc[i].notna().sum()
-                    if non_empty >= len(df.columns) * 0.5:
-                        header_row = i
-                        break
 
                 # Promote header row to column names, clean NaN and whitespace
                 df.columns = (

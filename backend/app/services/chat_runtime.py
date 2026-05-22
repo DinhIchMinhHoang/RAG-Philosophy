@@ -386,15 +386,36 @@ class ChatRuntimeService:
         normalized = rewritten.strip().strip('"').strip("'").strip()
         return normalized or question
 
+    def _append_excel_context(self, db: Session | None, user_id: str | None, question: str, context_text: str) -> str:
+        if db is None or not user_id:
+            return context_text
+        try:
+            excel_service = _get_excel_query_service()
+            result = excel_service.query(db, user_id, question)
+            if result:
+                logger.info("excel_query_result: %d chars — %s", len(result), result[:120])
+                block = (
+                    "[Excel Query Result — không có citation marker, "
+                    "không cần gắn [C1] cho dữ liệu này]\n"
+                    f"{result}"
+                )
+                return f"{block}\n\n---\n\n{context_text}" if context_text else block
+        except Exception as exc:
+            logger.warning("excel_query_failed: %s", str(exc))
+        return context_text
+
     async def answer(
         self,
         question: str,
         contexts: list[RetrievedContext],
         recent_history: list[dict[str, str]] | None = None,
+        db: Session | None = None,
+        user_id: str | None = None,
     ) -> tuple[str, str]:
 
         mode = settings.llm_mode
         context_text = self._build_context(contexts)
+        context_text = self._append_excel_context(db, user_id, question, context_text)
         chat_history_text = self._build_history(recent_history)
 
         if mode in {"gemini", "opencode"}:
@@ -416,10 +437,13 @@ class ChatRuntimeService:
         question: str,
         contexts: list[RetrievedContext],
         recent_history: list[dict[str, str]] | None = None,
+        db: Session | None = None,
+        user_id: str | None = None,
     ):
 
         mode = settings.llm_mode
         context_text = self._build_context(contexts)
+        context_text = self._append_excel_context(db, user_id, question, context_text)
         chat_history_text = self._build_history(recent_history)
 
         if mode in {"gemini", "opencode"}:

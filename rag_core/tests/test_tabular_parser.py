@@ -138,10 +138,10 @@ class TestCitationContract(unittest.TestCase):
             self.assertIsInstance(doc.metadata['page'], int)
             self.assertGreater(doc.metadata['page'], 0)
         
-        # Different sheets should have different page numbers
-        # (If same sheet has multiple chunks, they share the same page number)
-        unique_pages = set(doc.metadata['page'] for doc in docs)
-        self.assertEqual(len(unique_pages), 1, "Single sheet should have one page number")
+        # Each chunk gets a sequential page number
+        pages = [doc.metadata['page'] for doc in docs]
+        self.assertEqual(pages[0], 1, "First chunk should have page=1")
+        self.assertEqual(pages, sorted(pages), "Pages should be sequential")
 
 
 class TestWideTableFallback(unittest.TestCase):

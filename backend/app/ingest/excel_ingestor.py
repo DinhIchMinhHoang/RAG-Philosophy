@@ -93,6 +93,11 @@ def _ingest_dataframe(
     dtypes = [_infer_sql_dtype(sample_rows.iloc[:, i]) for i in range(len(final_cols))]
 
     with engine.connect() as conn:
+        # Xoá ExcelTableRecord cũ trước — tránh unique constraint violation khi re-index
+        conn.execute(
+            text('DELETE FROM excel_table_records WHERE document_id = :doc_id AND table_name = :tbl'),
+            {"doc_id": document_id, "tbl": table_name},
+        )
         conn.execute(text(f'DROP TABLE IF EXISTS "{table_name}"'))
         conn.execute(text(_create_table_ddl(table_name, final_cols, dtypes)))
         conn.execute(text(f'CREATE INDEX IF NOT EXISTS "ix_{table_name}_row" ON "{table_name}" (_row_idx)'))
