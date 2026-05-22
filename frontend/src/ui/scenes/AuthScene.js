@@ -1,6 +1,5 @@
-import { login, signup, changePassword, isAuthenticated, clearToken } from '../../api/index.js';
+import { login, signup, changePassword, forgotPassword, verifyPasswordCode, resetPassword, getMe, isAuthenticated, clearToken } from '../../api/index.js';
 import { store } from '../../state/store.js';
-import { isAdminEmail } from '../../utils/helpers.js';
 
 const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
@@ -30,22 +29,23 @@ function setupEmailValidation(formSelector) {
     emailInput.addEventListener('blur', validateEmail);
 }
 
-function showError(scene, msg) {
-    const err = scene.querySelector('.form-error');
-    if (err) { err.textContent = msg; err.style.display = 'block'; }
-}
-function clearError(scene) {
-    const err = scene.querySelector('.form-error');
-    if (err) { err.textContent = ''; err.style.display = 'none'; }
-}
-function showSuccess(scene, msg) {
-    const succ = scene.querySelector('.form-success');
-    if (succ) { succ.textContent = msg; succ.style.display = 'block'; setTimeout(() => { succ.style.display = 'none'; }, 3000); }
-}
+    function showError(scene, msg) {
+        const err = scene.querySelector('.form-error');
+        if (err) { err.textContent = msg; err.style.display = 'block'; }
+    }
+    function clearError(scene) {
+        const err = scene.querySelector('.form-error');
+        if (err) { err.textContent = ''; err.style.display = 'none'; }
+    }
+    function showSuccess(scene, msg) {
+        const succ = scene.querySelector('.form-success');
+        if (succ) { succ.textContent = msg; succ.style.display = 'block'; setTimeout(() => { succ.style.display = 'none'; }, 3000); }
+    }
 
 export function initAuthScene(transitionManager) {
     setupEmailValidation('#scene-signup .auth-form');
     setupEmailValidation('#scene-signin .auth-form');
+    setupEmailValidation('#scene-forgot .auth-form');
 
     const accountForm = document.querySelector('#scene-account .account-form');
     if (accountForm) {
@@ -62,6 +62,16 @@ export function initAuthScene(transitionManager) {
     document.querySelectorAll('[data-back-to="landing"]').forEach(btn => {
         btn.addEventListener('click', () => transitionManager.transitionTo('landing'));
     });
+    document.querySelectorAll('[data-back-to="signin"]').forEach(btn => {
+        btn.addEventListener('click', () => transitionManager.transitionTo('signin'));
+    });
+    document.querySelectorAll('[data-back-to="forgot"]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            pendingResetEmail = '';
+            pendingResetCode = '';
+            transitionManager.transitionTo('forgot');
+        });
+    });
 
     const signInScene = document.getElementById('scene-signin');
     if (signInScene) signInScene.addEventListener('click', (e) => { if (e.target === signInScene) transitionManager.transitionTo('landing'); });
@@ -71,6 +81,10 @@ export function initAuthScene(transitionManager) {
 
     const accountScene = document.getElementById('scene-account');
     if (accountScene) accountScene.addEventListener('click', (e) => { if (e.target === accountScene) transitionManager.transitionTo('dashboard'); });
+
+    const forgotScene = document.getElementById('scene-forgot');
+    const verifyScene = document.getElementById('scene-verify');
+    const resetScene = document.getElementById('scene-reset');
 
     const signInForm = document.querySelector('#scene-signin .auth-form');
     if (signInForm) {
@@ -85,8 +99,9 @@ export function initAuthScene(transitionManager) {
 
             try {
                 await login(email, password);
+                const me = await getMe();
                 const usernameGuess = email.split('@')[0] || 'user';
-                store.setUser({ username: usernameGuess, email, displayName: usernameGuess, bio: '', isAdmin: isAdminEmail(email) });
+                store.setUser({ id: me.id, username: me.username || usernameGuess, email, displayName: me.username || usernameGuess, bio: '', isAdmin: me.is_admin });
                 transitionManager.updateAuthUI();
                 document.dispatchEvent(new CustomEvent('auth:changed'));
                 signInForm.reset();
@@ -117,7 +132,8 @@ export function initAuthScene(transitionManager) {
 
             try {
                 await signup(username, email, password);
-                store.setUser({ username, email, displayName: username, bio: '', isAdmin: isAdminEmail(email) });
+                const me = await getMe();
+                store.setUser({ id: me.id, username, email, displayName: username, bio: '', isAdmin: me.is_admin });
                 transitionManager.updateAuthUI();
                 document.dispatchEvent(new CustomEvent('auth:changed'));
                 signUpForm.reset();
@@ -219,5 +235,99 @@ export function initAuthScene(transitionManager) {
                 }
             });
         }
+    }
+
+    document.querySelectorAll('[data-action="forgot-password"]').forEach(btn => {
+        btn.addEventListener('click', () => transitionManager.transitionTo('forgot'));
+    });
+
+    let pendingResetEmail = '';
+    let pendingResetCode = '';
+
+    const forgotForm = document.getElementById('forgot-form');
+    if (forgotForm && forgotScene) {
+        forgotForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            clearError(forgotScene);
+            const success = forgotScene.querySelector('.form-success');
+            if (success) success.style.display = 'none';
+            const email = forgotForm.querySelector('.email-input')?.value.trim() || '';
+            if (!email) { showError(forgotScene, 'Please enter your email'); return; }
+            if (!isValidEmail(email)) { showError(forgotScene, 'Please enter a valid email address'); return; }
+            try {
+                await forgotPassword(email);
+                pendingResetEmail = email;
+                pendingResetCode = '';
+                const codeBoxes = Array.from(document.querySelectorAll('#verify-form .code-box'));
+                codeBoxes.forEach((box) => { box.value = ''; });
+                showSuccess(forgotScene, 'Code sent. Check your email.');
+                transitionManager.transitionTo('verify');
+            } catch (err) {
+                showError(forgotScene, err.message);
+            }
+        });
+    }
+
+    const verifyForm = document.getElementById('verify-form');
+    if (verifyForm && verifyScene) {
+        const codeBoxes = Array.from(verifyForm.querySelectorAll('.code-box'));
+        const focusBox = (idx) => { if (codeBoxes[idx]) codeBoxes[idx].focus(); };
+
+        codeBoxes.forEach((box, idx) => {
+            box.addEventListener('input', () => {
+                box.value = box.value.replace(/\D/g, '').slice(0, 1);
+                if (box.value && idx < codeBoxes.length - 1) focusBox(idx + 1);
+            });
+            box.addEventListener('keydown', (ev) => {
+                if (ev.key === 'Backspace' && !box.value && idx > 0) focusBox(idx - 1);
+            });
+        });
+
+        verifyForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            clearError(verifyScene);
+            const success = verifyScene.querySelector('.form-success');
+            if (success) success.style.display = 'none';
+            const code = codeBoxes.map(b => b.value.trim()).join('');
+            if (!pendingResetEmail) { showError(verifyScene, 'Missing email. Please restart.'); return; }
+            if (code.length !== 4) { showError(verifyScene, 'Enter the 4-digit code'); return; }
+            try {
+                await verifyPasswordCode(pendingResetEmail, code);
+                pendingResetCode = code;
+                showSuccess(verifyScene, 'Code verified.');
+                transitionManager.transitionTo('reset');
+            } catch (err) {
+                showError(verifyScene, err.message);
+                codeBoxes.forEach((box) => { box.value = ''; });
+                focusBox(0);
+            }
+        });
+    }
+
+    const resetForm = document.getElementById('reset-form');
+    if (resetForm && resetScene) {
+        resetForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            clearError(resetScene);
+            const success = resetScene.querySelector('.form-success');
+            if (success) success.style.display = 'none';
+            const inputs = resetForm.querySelectorAll('input[type="password"]');
+            const newPassword = inputs[0]?.value || '';
+            const confirmPassword = inputs[1]?.value || '';
+            if (!newPassword || !confirmPassword) { showError(resetScene, 'Please fill in all password fields'); return; }
+            if (newPassword !== confirmPassword) { showError(resetScene, 'Passwords do not match'); return; }
+            if (newPassword.length < 6) { showError(resetScene, 'Password must be at least 6 characters'); return; }
+            if (!pendingResetEmail || !pendingResetCode) { showError(resetScene, 'Missing verification. Please restart.'); return; }
+            try {
+                await resetPassword(pendingResetEmail, pendingResetCode, newPassword);
+                pendingResetCode = '';
+                pendingResetEmail = '';
+                inputs.forEach((input) => { input.value = ''; });
+                showSuccess(resetScene, 'Password updated.');
+                transitionManager.transitionTo('signin');
+            } catch (err) {
+                showError(resetScene, err.message);
+            }
+        });
     }
 }

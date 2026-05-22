@@ -101,6 +101,21 @@ Landing -> Sign In -> Dashboard -> Chat
 | Documents / Jobs | Backend DB + object storage | Yes |
 | Chat History | Backend DB | Yes |
 | Vectors / Chunks | Qdrant + backend DB | Yes |
+| Latest notebook conversation snapshot | localStorage cache | Yes, until UI TTL expires |
+| Saved notes / pinned messages | Backend DB (`saved_notebook_items`) | Yes |
+
+## Notebook Chat Cache
+
+The backend database is the source of truth for chat history. The frontend only caches the latest visible conversation per notebook for fast switching.
+
+- Cache key: `notebook:{notebook_id}:conversation:last`
+- TTL: 24 hours
+- Expired cache is ignored and removed from localStorage
+- Cache expiration never deletes DB conversations or messages
+- On notebook switch, the UI shows cache first, then syncs from `GET /api/notebooks/{notebook_id}/conversations/latest`
+- New notebooks with no DB history render the empty welcome state
+
+Saved notes and pinned messages are stored separately from normal chat messages, so future DB cleanup jobs can archive/delete inactive chat without deleting user-selected long-term content.
 
 ## Reset Actions
 

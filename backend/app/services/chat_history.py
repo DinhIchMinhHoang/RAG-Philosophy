@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
@@ -107,6 +108,10 @@ def save_chat_message(
         rewritten_query=rewritten_query,
     )
     db.add(message)
+    db.query(Conversation).filter(Conversation.id == conversation_id).update(
+        {Conversation.updated_at: datetime.now(timezone.utc)},
+        synchronize_session=False,
+    )
     db.commit()
     db.refresh(message)
     return message

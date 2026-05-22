@@ -80,8 +80,9 @@ export function chatStream(message, { conversationId, notebookId, onToken, onDon
     return controller;
 }
 
-export async function listSources() {
-    const documents = await request('/documents', { method: 'GET' });
+export async function listSources({ notebookId } = {}) {
+    const query = notebookId ? `?notebook_id=${encodeURIComponent(notebookId)}` : '';
+    const documents = await request(`/documents${query}`, { method: 'GET' });
     if (!Array.isArray(documents)) return documents;
 
     const sources = documents.map((doc) => doc.filename).filter(Boolean);
@@ -95,4 +96,19 @@ export async function listSources() {
 
 export async function getJob(jobId) {
     return await request(`/jobs/${encodeURIComponent(jobId)}`, { method: 'GET' });
+}
+
+export async function renameSource({ notebookId, fileId, newName }) {
+    if (!notebookId || !fileId || !newName) throw new Error('missing parameters');
+    return await request(`/notebooks/${encodeURIComponent(notebookId)}/files/${encodeURIComponent(fileId)}/rename`, {
+        method: 'PATCH',
+        body: JSON.stringify({ new_file_name: newName }),
+    });
+}
+
+export async function deleteSource({ notebookId, fileId }) {
+    if (!notebookId || !fileId) throw new Error('missing parameters');
+    return await request(`/notebooks/${encodeURIComponent(notebookId)}/files/${encodeURIComponent(fileId)}`, {
+        method: 'DELETE',
+    });
 }

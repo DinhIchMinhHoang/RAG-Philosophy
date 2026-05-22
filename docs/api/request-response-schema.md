@@ -74,6 +74,38 @@ Only `message` is required. The backend creates a conversation when `conversatio
 
 Final `citations` includes only citations whose marker appears in `answer`.
 
+### Latest Notebook Conversation
+
+`GET /api/notebooks/{notebook_id}/conversations/latest?limit=50`
+
+```json
+{
+    "conversation": {"id": "uuid", "notebook_id": 1, "owner_id": 1, "created_at": "...", "updated_at": "..."},
+    "messages": [{"id": "uuid", "role": "assistant", "content": "...", "sources_used": [], "rewritten_query": null, "created_at": "..."}],
+    "has_conversation": true,
+    "limit": 50
+}
+```
+
+If the notebook has no history, `conversation` is `null` and `messages` is `[]`.
+
+### Saved Notebook Item
+
+`POST /api/notebooks/{notebook_id}/notes`
+
+```json
+{
+    "kind": "note",
+    "title": "Saved message",
+    "content": "...",
+    "conversation_id": "optional-uuid",
+    "message_id": "optional-uuid",
+    "sources_used": []
+}
+```
+
+Saved items are stored separately from normal chat history so future chat TTL cleanup does not delete user-selected notes or pins.
+
 ### Error Response Format
 ```json
 {"type": "error", "token": "", "done": true, "error": "Failed to generate answer", "citations": []}

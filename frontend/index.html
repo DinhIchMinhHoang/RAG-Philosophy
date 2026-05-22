@@ -38,6 +38,7 @@
             <div class="button-container">
                 <button class="auth-button" data-scene="signup">Sign Up</button>
                 <button class="auth-button" data-scene="signin">Sign In</button>
+                <button class="auth-button" data-scene="start" style="display:none;">Let's Start</button>
             </div>
         </div>
     </div>
@@ -93,6 +94,7 @@
                     <button type="button" class="auth-button admin-console-button">Admin Console</button>
                 </div>
                 <div style="display:flex; gap:8px; margin-top:12px; justify-content:flex-end;">
+                    <button type="button" class="auth-button" data-action="forgot-password">Forgot password</button>
                     <button type="button" class="auth-button logout-button">Log out</button>
                     <button type="button" class="auth-button delete-account-button" style="background: rgba(255,50,50,0.12); border-color: rgba(255,50,50,0.2);">Delete account</button>
                 </div>
@@ -149,6 +151,69 @@
                 <div class="form-buttons">
                     <button type="submit" class="auth-button">Sign In</button>
                     <button type="button" class="auth-button" data-back-to="landing">Back</button>
+                </div>
+                <button type="button" class="form-link" data-action="forgot-password">Forgot password?</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="scene-forgot" class="scene" style="display: none;">
+        <div class="form-container">
+            <h2 class="form-title">Forgot Password</h2>
+            <form class="auth-form" id="forgot-form">
+                <div class="form-error" style="display: none; color: #ff7a7a; font-weight: bold; margin-bottom: 12px; padding: 8px; background: rgba(255,68,68,0.1); border-radius: 4px;"></div>
+                <div class="form-success"></div>
+                <div class="form-group">
+                    <label class="form-label"><span class="material-icons">alternate_email</span> Email</label>
+                    <input type="text" class="form-input email-input" placeholder="Email" required>
+                    <div class="form-field-error" style="display: none; color: #ff7a7a; font-size: 12px; margin-top: 4px;"></div>
+                </div>
+                <div class="form-buttons">
+                    <button type="submit" class="auth-button">Send Code</button>
+                    <button type="button" class="auth-button" data-back-to="signin">Back</button>
+                </div>
+                <div class="form-note">We will send a 4-digit code to your email.</div>
+            </form>
+        </div>
+    </div>
+
+    <div id="scene-verify" class="scene" style="display: none;">
+        <div class="form-container">
+            <h2 class="form-title">Enter Code</h2>
+            <form class="auth-form" id="verify-form">
+                <div class="form-error" style="display: none; color: #ff7a7a; font-weight: bold; margin-bottom: 12px; padding: 8px; background: rgba(255,68,68,0.1); border-radius: 4px;"></div>
+                <div class="form-success"></div>
+                <div class="code-inputs" data-code-inputs>
+                    <input type="text" inputmode="numeric" maxlength="1" class="code-box">
+                    <input type="text" inputmode="numeric" maxlength="1" class="code-box">
+                    <input type="text" inputmode="numeric" maxlength="1" class="code-box">
+                    <input type="text" inputmode="numeric" maxlength="1" class="code-box">
+                </div>
+                <div class="form-buttons">
+                    <button type="submit" class="auth-button">Verify</button>
+                    <button type="button" class="auth-button" data-back-to="forgot">Back</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="scene-reset" class="scene" style="display: none;">
+        <div class="form-container">
+            <h2 class="form-title">Reset Password</h2>
+            <form class="auth-form" id="reset-form">
+                <div class="form-error" style="display: none; color: #ff7a7a; font-weight: bold; margin-bottom: 12px; padding: 8px; background: rgba(255,68,68,0.1); border-radius: 4px;"></div>
+                <div class="form-success"></div>
+                <div class="form-group">
+                    <label class="form-label"><span class="material-icons">lock</span> New Password</label>
+                    <input type="password" class="form-input" placeholder="New password" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label"><span class="material-icons">lock</span> Confirm Password</label>
+                    <input type="password" class="form-input" placeholder="Confirm password" required>
+                </div>
+                <div class="form-buttons">
+                    <button type="submit" class="auth-button">Update Password</button>
+                    <button type="button" class="auth-button" data-back-to="signin">Back</button>
                 </div>
             </form>
         </div>
@@ -293,7 +358,12 @@
                 <section class="chat-panel panel-center" data-panel="chat">
                     <div class="panel-header">
                         <div class="panel-title"><span class="material-icons">forum</span> Conversation</div>
-                        <div class="panel-actions"><button class="panel-icon-button" data-action="clear-chat" title="Clear chat"><span class="material-icons">delete_sweep</span></button></div>
+                        <div class="panel-actions">
+                            <button class="panel-icon-button" data-action="new-chat" title="New chat"><span class="material-icons">add_comment</span></button>
+                            <button class="panel-icon-button" data-action="save-conversation" title="Save conversation"><span class="material-icons">bookmark_add</span></button>
+                            <button class="panel-icon-button" data-action="summarize-to-notebook" title="Summarize to notebook"><span class="material-icons">summarize</span></button>
+                            <button class="panel-icon-button" data-action="clear-chat" title="Clear chat"><span class="material-icons">delete_sweep</span></button>
+                        </div>
                     </div>
                     <div class="panel-body chat-body">
                         <div class="chat-thread">
@@ -350,7 +420,7 @@
             <div class="admin-tabs" role="tablist" aria-label="Admin sections">
                 <button class="admin-tab active" data-tab="users">Users</button>
                 <button class="admin-tab" data-tab="documents">Documents</button>
-                <button class="admin-tab" data-tab="jobs">Jobs</button>
+                <button class="admin-tab" data-tab="api">API</button>
             </div>
 
             <div class="admin-content">
@@ -395,36 +465,40 @@
 
                 <section class="admin-panel" data-panel="documents">
                     <header class="admin-panel-header">
-                        <div class="panel-title">Documents</div>
+                        <div class="panel-title">Library</div>
                         <div class="panel-actions">
-                            <button class="auth-button admin-refresh" data-action="refresh-documents"><span class="material-icons">refresh</span> Refresh</button>
+                            <button class="auth-button admin-refresh" data-action="refresh-library"><span class="material-icons">refresh</span> Refresh</button>
                         </div>
                     </header>
                     <div class="admin-search-bar">
                         <span class="material-icons">search</span>
-                        <input type="text" class="admin-search-input" data-search="documents" placeholder="Search documents by name or ID...">
+                        <input type="text" class="admin-search-input" data-search="library" placeholder="Search users, notebooks, or documents...">
                     </div>
                     <div class="admin-panel-body">
                         <div class="admin-list" data-list="documents">
-                            <div class="list-empty" data-empty="documents">No documents found. Upload a document to begin.</div>
+                            <div class="list-empty" data-empty="library">No library data yet.</div>
                         </div>
                     </div>
                 </section>
 
-                <section class="admin-panel" data-panel="jobs">
+                <section class="admin-panel" data-panel="api">
                     <header class="admin-panel-header">
-                        <div class="panel-title">Jobs</div>
+                        <div class="panel-title">API Configuration</div>
                         <div class="panel-actions">
-                            <button class="auth-button admin-refresh" data-action="refresh-jobs"><span class="material-icons">refresh</span> Refresh</button>
+                            <button class="auth-button admin-refresh" data-action="refresh-api"><span class="material-icons">refresh</span> Refresh</button>
                         </div>
                     </header>
                     <div class="admin-search-bar">
                         <span class="material-icons">search</span>
-                        <input type="text" class="admin-search-input" data-search="jobs" placeholder="Search jobs by ID, document or status...">
+                        <input type="text" class="admin-search-input" data-search="api" placeholder="Search keys...">
                     </div>
                     <div class="admin-panel-body">
-                        <div class="admin-list" data-list="jobs">
-                            <div class="list-empty" data-empty="jobs">No jobs running yet. Ingest a document to see jobs.</div>
+                        <div class="admin-list" data-list="api">
+                            <div class="list-empty" data-empty="api">No configuration found.</div>
+                        </div>
+                        <div class="admin-note">
+                            <span class="material-icons">info</span>
+                            <span>Edit <code>.env</code> at the project root and restart services for changes to take effect.</span>
                         </div>
                     </div>
                 </section>

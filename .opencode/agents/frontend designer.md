@@ -1,7 +1,7 @@
 ---
 description: Manages the vanilla JS frontend in frontend/: UI changes, client-side state, user interactions, and API communication. Use for UI bugs, new components, or frontend-backend communication updates.
 mode: subagent
-model: github-copilot/gpt-5.4-mini
+model: opencode/minimax-m2.5-free
 temperature: 0.3
 permission:
   edit:

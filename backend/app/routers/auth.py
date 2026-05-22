@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from .. import database, models, schemas
-from ..core.dependencies import get_current_user
+from ..core.dependencies import ADMIN_EMAIL_SUFFIX, get_current_user
 from ..core.security import create_access_token, get_password_hash, verify_password
 
 router = APIRouter(tags=["Authentication"])
@@ -80,3 +80,15 @@ def change_password_api(
     db: Session = Depends(database.get_db),
 ):
     return _change_password(change_pwd, current_user, db)
+
+
+@router.get("/api/auth/me", response_model=schemas.UserOut)
+def get_current_user_info(
+    current_user: models.User = Depends(get_current_user),
+):
+    return schemas.UserOut(
+        id=current_user.id,
+        username=current_user.username,
+        email=current_user.email,
+        is_admin=(current_user.email or "").lower().endswith(ADMIN_EMAIL_SUFFIX),
+    )

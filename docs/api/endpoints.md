@@ -400,6 +400,47 @@ Content-Type: application/json
 
 ---
 
+### GET /api/notebooks/{notebook_id}/conversations/latest
+
+Load the authenticated user's latest non-archived conversation for one notebook.
+
+**Query:**
+- `limit`: max messages to return, clamped to 1..100, default 50
+
+**Response (200):**
+```json
+{
+    "conversation": {"id": "uuid", "notebook_id": 1, "owner_id": 1, "created_at": "...", "updated_at": "..."},
+    "messages": [],
+    "has_conversation": false,
+    "limit": 50
+}
+```
+
+The endpoint returns empty state for notebooks with no history and never falls back to another notebook.
+
+---
+
+### POST /api/notebooks/{notebook_id}/notes
+
+Save long-term notebook content such as pins, notes, saved conversations, or summary drafts.
+
+**Request Body:**
+```json
+{
+    "kind": "pin",
+    "title": "Important answer",
+    "content": "...",
+    "conversation_id": "optional-uuid",
+    "message_id": "optional-uuid",
+    "sources_used": []
+}
+```
+
+Saved items are separate from normal chat history and are not affected by UI cache TTL.
+
+---
+
 ## Admin Endpoints
 
 ### GET /api/admin/users

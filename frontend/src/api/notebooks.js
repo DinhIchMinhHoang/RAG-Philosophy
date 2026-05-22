@@ -18,10 +18,28 @@ export async function updateNotebook(id, payload) {
     });
 }
 
+export async function copyNotebook(id) {
+    return await request(`/notebooks/${encodeURIComponent(id)}/copy`, { method: 'POST' });
+}
+
 export async function deleteNotebook(id) {
     return await request(`/notebooks/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
 
+<<<<<<< HEAD
 export async function getLatestNotebookConversation(notebookId, { limit = 50 } = {}) {
     return await request(`/notebooks/${encodeURIComponent(notebookId)}/conversations/latest?limit=${limit}`, { method: 'GET' });
 }
+=======
+export async function getLatestNotebookConversation(id, { limit = 50 } = {}) {
+    const query = `?limit=${encodeURIComponent(limit)}`;
+    return await request(`/notebooks/${encodeURIComponent(id)}/conversations/latest${query}`, { method: 'GET' });
+}
+
+export async function createSavedNotebookItem(id, payload) {
+    return await request(`/notebooks/${encodeURIComponent(id)}/notes`, {
+        method: 'POST',
+        body: JSON.stringify(payload),
+    });
+}
+>>>>>>> 4b4b696748237060493100f93545cbb4ea858f0d
