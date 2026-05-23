@@ -564,6 +564,128 @@ def get_job(
     return _get_job_impl(db, job_id, current_user)
 
 
+
+
+@router.post("/documents/{document_id}", status_code=status.HTTP_200_OK)
+async def replace_document(
+    document_id: str,
+    file: UploadFile = File(...),
+    pipeline_version: str | None = Form(default=None),
+    current_user: User = Depends(get_current_user),
+):
+    """Replace an existing document with new file content (same document_id)."""
+    if not file.filename:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No filename provided")
+
+    ext = Path(file.filename).suffix.lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unsupported format: {ext}. Supported: {', '.join(ALLOWED_EXTENSIONS)}"
+        )
+
+    payload = await file.read()
+
+    max_size = MAX_UPLOAD_SIZE_MB * 1024 * 1024
+    if len(payload) > max_size:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"File too large: {len(payload)/1024/1024:.1f}MB (max: {MAX_UPLOAD_SIZE_MB}MB)"
+        )
+
+    if not payload:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Uploaded file is empty")
+
+    version = (pipeline_version or settings.pipeline_version).strip()
+    if not version:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="pipeline_version is required")
+
+    db = SessionLocal()
+    try:
+        document = db.query(DocumentRecord).filter(
+            DocumentRecord.id == document_id,
+            DocumentRecord.owner_id == current_user.id,
+        ).first()
+        if not document:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+
+        # Validate notebook ownership if notebook_id is set
+        _validate_notebook_for_upload(db, document.notebook_id, current_user)
+
+        object_key = document.object_key
+        content_hash = compute_content_hash(payload)
+
+        # Overwrite existing file in storage
+        storage_client.put_bytes(object_key, payload, file.content_type or MIME_TYPES.get(ext, 'application/octet-stream'))
+
+        # Update document metadata
+        document.filename = file.filename
+        document.size_bytes = len(payload)
+        document.content_hash = content_hash
+        document.mime_type = file.content_type or MIME_TYPES.get(ext, 'application/octet-stream')
+        db.commit()
+        db.refresh(document)
+
+        job = _create_job(db, document_id=document.id, pipeline_version=version)
+
+        # === HYBRID PATH: Sync if queue idle, async (Celery) if busy ===
+        is_idle = await asyncio.to_thread(_is_queue_idle)
+
+        if is_idle:
+            result = await asyncio.to_thread(
+                run_ingest_job,
+                db,
+                job_id=job.id,
+                document_id=document.id,
+                object_key=document.object_key,
+                pipeline_version=version,
+                user_id=current_user.username,
+            )
+            if "tables" in result:
+                return {
+                    "document_id": document.id,
+                    "job_id": job.id,
+                    "status": "completed",
+                    "pipeline_version": version,
+                    "object_key": document.object_key,
+                    "tables": result["tables"],
+                    "rows": result["rows"],
+                }
+            return {
+                "document_id": document.id,
+                "job_id": job.id,
+                "status": "completed",
+                "pipeline_version": version,
+                "object_key": document.object_key,
+                "pages": result["pages"],
+                "chunks": result["child_chunks"],
+            }
+        else:
+            _enqueue_ingest(job.id, document.id, document.object_key, version, current_user.username)
+            return {
+                "document_id": document.id,
+                "job_id": job.id,
+                "status": job.status,
+                "pipeline_version": version,
+                "object_key": document.object_key,
+            }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        log_event(
+            "error",
+            "replace_failed",
+            document_id=document_id,
+            pipeline_version=version,
+            stage="replace",
+            error_message=str(exc),
+        )
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to replace document: {exc}")
+    finally:
+        db.close()
+
+
+
 @router.post("/documents/{document_id}/reindex", status_code=status.HTTP_202_ACCEPTED)
 def reindex_document(
     document_id: str,
