@@ -656,6 +656,10 @@ def delete_file(
         # don't fail the whole op if qdrant not configured or delete fails
         errors.append("qdrant: failed or not configured")
 
+    # Drop Excel SQL tables if this is an Excel document
+    from ..ingest.excel_ingestor import drop_excel_tables
+    drop_excel_tables(db, document.id)
+
     # delete DB rows
     try:
         db.delete(document)
