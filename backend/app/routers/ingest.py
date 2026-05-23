@@ -360,6 +360,130 @@ def _list_documents_impl(
     notebook_id: int | None = None,
 ) -> list[DocumentListItem]:
     query = db.query(DocumentRecord).filter(DocumentRecord.owner_id == current_user.id)
+    if notebook_id is not None:
+        query = query.filter(DocumentRecord.notebook_id == notebook_id)
+
+    rows = query.order_by(DocumentRecord.created_at.desc()).all()
+    output: list[DocumentListItem] = []
+    for row in rows:
+        latest_job = (
+            db.query(IngestJob)
+            .filter(IngestJob.document_id == row.id)
+            .order_by(IngestJob.created_at.desc())
+            .first()
+        )
+        output.append(
+            DocumentListItem(
+                document_id=row.id,
+                owner_id=row.owner_id,
+                notebook_id=row.notebook_id,
+                filename=row.filename,
+                object_key=row.object_key,
+                mime_type=row.mime_type,
+                size_bytes=row.size_bytes,
+                created_at=row.created_at,
+                updated_at=row.updated_at,
+                latest_job=LatestJobSummary(
+                    job_id=latest_job.id,
+                    status=latest_job.status,
+                    stage=latest_job.stage,
+                    progress_pct=latest_job.progress_pct,
+                    stage_detail=latest_job.stage_detail,
+                    error_message=latest_job.error_message,
+                    pipeline_version=latest_job.pipeline_version,
+                    queued_at=latest_job.queued_at,
+                    started_at=latest_job.started_at,
+                    finished_at=latest_job.finished_at,
+                )
+                if latest_job
+                else None,
+            )
+        )
+    return output
+
+
+def _delete_document_impl(db: Session, document_id: str, current_user: User) -> DeleteDocumentResponse:
+    cleanup = {
+        "metadata_deleted": False,
+        "chunks_deleted": False,
+        "vectors_deleted": False,
+        "object_deleted": False,
+        "excel_tables_dropped": 0,
+    }
+    cleanup_errors: list[str] = []
+
+    document = (
+        db.query(DocumentRecord)
+        .filter(DocumentRecord.id == document_id, DocumentRecord.owner_id == current_user.id)
+        .first()
+    )
+    if not document:
+        return DeleteDocumentResponse(
+            document_id=document_id,
+            deleted=False,
+            status="not_found",
+            cleanup=cleanup,
+            cleanup_errors=[],
+        )
+
+    object_key = document.object_key
+
+    if object_key.startswith("url://"):
+        cleanup["object_deleted"] = True
+    else:
+        try:
+            storage_client.delete(object_key)
+            cleanup["object_deleted"] = True
+        except Exception as exc:
+            cleanup_errors.append(f"object_storage: {exc}")
+
+    try:
+        client = build_qdrant_client()
+        delete_vectors_for_document(client, document_id)
+        cleanup["vectors_deleted"] = True
+    except Exception as exc:
+        cleanup_errors.append(f"qdrant: {exc}")
+
+    chunk_count = len(document.chunks)
+    cleanup["chunks_deleted"] = chunk_count > 0
+
+    try:
+        from ..ingest.excel_ingestor import drop_excel_tables
+        dropped = drop_excel_tables(db, document_id)
+        cleanup["excel_tables_dropped"] = dropped
+    except Exception as exc:
+        cleanup_errors.append(f"excel_cleanup: {exc}")
+
+    try:
+        db.delete(document)
+        db.commit()
+        cleanup["metadata_deleted"] = True
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete metadata for document {document_id}: {exc}",
+        )
+
+    return DeleteDocumentResponse(
+        document_id=document_id,
+        deleted=True,
+        status="deleted",
+        cleanup=cleanup,
+        cleanup_errors=cleanup_errors,
+    )
+
+
+def _reindex_document_impl(db: Session, document_id: str, request: ReindexRequest, current_user: User) -> dict:
+    try:
+        document = (
+            db.query(DocumentRecord)
+            .filter(DocumentRecord.id == document_id, DocumentRecord.owner_id == current_user.id)
+            .first()
+        )
+        if not document:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+
         version = (request.pipeline_version or settings.pipeline_version).strip()
         if not version:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="pipeline_version is required")
@@ -448,3 +572,4 @@ def reindex_document(
     current_user: User = Depends(get_current_user),
 ):
     return _reindex_document_impl(db=db, document_id=document_id, request=request, current_user=current_user)
+
