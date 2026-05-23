@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import os
 from collections.abc import Iterator
 from pathlib import Path
@@ -241,5 +242,6 @@ def validate_file_bytes(object_key: str, payload: bytes) -> str:
 
     return ext
 
-
-
+def compute_content_hash(file_bytes: bytes) -> str:
+    """Compute SHA-256 hex digest of file bytes for deduplication."""
+    return hashlib.sha256(file_bytes).hexdigest()
