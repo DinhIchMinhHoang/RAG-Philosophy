@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import os
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -12,11 +14,64 @@ from ..core.dependencies import get_current_user
 from ..core.settings import settings
 from ..database import SessionLocal, get_db
 from ..ingest.logging_utils import log_event
+from ..ingest.processor import run_ingest_job
 from ..ingest.qdrant_store import build_qdrant_client, delete_vectors_for_document
 from ..ingest.storage import storage_client
 from ..models import DocumentRecord, IngestJob, JobStage, JobStatus, Notebook, User
 
 router = APIRouter(prefix="/api", tags=["Ingest"])
+
+ALLOWED_EXTENSIONS = {'.pdf', '.xlsx', '.xls', '.csv', '.docx', '.html', '.htm', '.md'}
+MAX_UPLOAD_SIZE_MB = int(os.getenv("MAX_UPLOAD_SIZE_MB", "20"))
+
+MIME_TYPES = {
+    '.pdf': 'application/pdf',
+    '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    '.xls': 'application/vnd.ms-excel',
+    '.csv': 'text/csv',
+    '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    '.html': 'text/html',
+    '.htm': 'text/html',
+    '.md': 'text/markdown',
+}
+
+
+
+
+def _is_queue_idle() -> bool:
+    """Check if Celery workers are alive and have no active/reserved tasks.
+
+    Returns True if it's safe to process synchronously:
+    - No workers respond (dead/not running) → nothing is processing
+    - Workers respond but have 0 active and 0 reserved tasks
+
+    Returns False if any worker has active or reserved tasks (queue is busy).
+    """
+    try:
+        from ..worker.celery_app import celery_app
+
+        inspector = celery_app.control.inspect(timeout=1.0)
+
+        # Celery returns None if no worker responds (dead or not running).
+        # Treat this as "nothing is processing right now" → safe for sync.
+        active = inspector.active()
+        reserved = inspector.reserved()
+
+        if active is None and reserved is None:
+            return True
+
+        active_count = sum(len(v) for v in (active or {}).values())
+        reserved_count = sum(len(v) for v in (reserved or {}).values())
+
+        return active_count == 0 and reserved_count == 0
+    except Exception:
+        # Celery unreachable (Redis down, import error, etc.)
+        # Fall back to sync processing rather than failing the upload
+        return True
+
+
+class UrlIngestRequest(BaseModel):
+    url: str
 
 
 class ReindexRequest(BaseModel):
@@ -71,7 +126,7 @@ class DeleteDocumentResponse(BaseModel):
     cleanup_errors: list[str]
 
 
-def _enqueue_ingest(job_id: str, document_id: str, object_key: str, pipeline_version: str) -> None:
+def _enqueue_ingest(job_id: str, document_id: str, object_key: str, pipeline_version: str, user_id: str) -> None:
     try:
         from ..worker.celery_app import celery_app
     except ModuleNotFoundError as exc:
@@ -84,6 +139,26 @@ def _enqueue_ingest(job_id: str, document_id: str, object_key: str, pipeline_ver
             "document_id": document_id,
             "object_key": object_key,
             "pipeline_version": pipeline_version,
+            "user_id": user_id,
+        },
+        queue=settings.celery_ingest_queue,
+    )
+
+
+def _enqueue_url_ingest(job_id: str, document_id: str, url: str, pipeline_version: str, user_id: str) -> None:
+    try:
+        from ..worker.celery_app import celery_app
+    except ModuleNotFoundError as exc:
+        raise RuntimeError("Celery is not installed. Run `pip install -r requirements.txt`.") from exc
+
+    celery_app.send_task(
+        "backend.app.worker.tasks.process_url_ingest_job",
+        kwargs={
+            "job_id": job_id,
+            "document_id": document_id,
+            "url": url,
+            "pipeline_version": pipeline_version,
+            "user_id": user_id,
         },
         queue=settings.celery_ingest_queue,
     )
@@ -125,10 +200,23 @@ async def _create_document_impl(
 ) -> dict:
     if not file.filename:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No filename provided")
-    if not file.filename.lower().endswith(".pdf"):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only PDF files are supported")
+
+    ext = Path(file.filename).suffix.lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unsupported format: {ext}. Supported: {', '.join(ALLOWED_EXTENSIONS)}"
+        )
 
     payload = await file.read()
+
+    max_size = MAX_UPLOAD_SIZE_MB * 1024 * 1024
+    if len(payload) > max_size:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"File too large: {len(payload)/1024/1024:.1f}MB (max: {MAX_UPLOAD_SIZE_MB}MB)"
+        )
+
     if not payload:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Uploaded file is empty")
 
@@ -150,7 +238,7 @@ async def _create_document_impl(
             notebook_id=notebook_id,
             filename=file.filename,
             object_key=object_key,
-            mime_type=file.content_type or "application/pdf",
+            mime_type=file.content_type or MIME_TYPES.get(ext, 'application/octet-stream'),
             size_bytes=len(payload),
         )
         db.add(document)
@@ -158,15 +246,51 @@ async def _create_document_impl(
         db.refresh(document)
 
         job = _create_job(db, document_id=document.id, pipeline_version=version)
-        _enqueue_ingest(job.id, document.id, document.object_key, version)
 
-        return {
-            "document_id": document.id,
-            "job_id": job.id,
-            "status": job.status,
-            "pipeline_version": version,
-            "object_key": document.object_key,
-        }
+        # === HYBRID PATH: Sync if queue idle, async (Celery) if busy ===
+        is_idle = await asyncio.to_thread(_is_queue_idle)
+
+        if is_idle:
+            # Queue is idle → process synchronously: no Celery delay,
+            # frontend gets pages/chunks immediately.
+            result = await asyncio.to_thread(
+                run_ingest_job,
+                db,
+                job_id=job.id,
+                document_id=document.id,
+                object_key=document.object_key,
+                pipeline_version=version,
+                user_id=current_user.username,
+            )
+            if "tables" in result:
+                return {
+                    "document_id": document.id,
+                    "job_id": job.id,
+                    "status": "completed",
+                    "pipeline_version": version,
+                    "object_key": document.object_key,
+                    "tables": result["tables"],
+                    "rows": result["rows"],
+                }
+            return {
+                "document_id": document.id,
+                "job_id": job.id,
+                "status": "completed",
+                "pipeline_version": version,
+                "object_key": document.object_key,
+                "pages": result["pages"],
+                "chunks": result["child_chunks"],
+            }
+        else:
+            # Queue is busy → delegate to Celery (existing behavior)
+            _enqueue_ingest(job.id, document.id, document.object_key, version, current_user.username)
+            return {
+                "document_id": document.id,
+                "job_id": job.id,
+                "status": job.status,
+                "pipeline_version": version,
+                "object_key": document.object_key,
+            }
     except HTTPException:
         raise
     except Exception as exc:
@@ -266,6 +390,7 @@ def _delete_document_impl(db: Session, document_id: str, current_user: User) -> 
         "chunks_deleted": False,
         "vectors_deleted": False,
         "object_deleted": False,
+        "excel_tables_dropped": 0,
     }
     cleanup_errors: list[str] = []
 
@@ -285,11 +410,14 @@ def _delete_document_impl(db: Session, document_id: str, current_user: User) -> 
 
     object_key = document.object_key
 
-    try:
-        storage_client.delete(object_key)
+    if object_key.startswith("url://"):
         cleanup["object_deleted"] = True
-    except Exception as exc:
-        cleanup_errors.append(f"object_storage: {exc}")
+    else:
+        try:
+            storage_client.delete(object_key)
+            cleanup["object_deleted"] = True
+        except Exception as exc:
+            cleanup_errors.append(f"object_storage: {exc}")
 
     try:
         client = build_qdrant_client()
@@ -300,6 +428,13 @@ def _delete_document_impl(db: Session, document_id: str, current_user: User) -> 
 
     chunk_count = len(document.chunks)
     cleanup["chunks_deleted"] = chunk_count > 0
+
+    try:
+        from ..ingest.excel_ingestor import drop_excel_tables
+        dropped = drop_excel_tables(db, document_id)
+        cleanup["excel_tables_dropped"] = dropped
+    except Exception as exc:
+        cleanup_errors.append(f"excel_cleanup: {exc}")
 
     try:
         db.delete(document)
@@ -336,15 +471,26 @@ def _reindex_document_impl(db: Session, document_id: str, request: ReindexReques
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="pipeline_version is required")
 
         job = _create_job(db, document_id=document.id, pipeline_version=version)
-        _enqueue_ingest(job.id, document.id, document.object_key, version)
 
-        return {
-            "document_id": document.id,
-            "job_id": job.id,
-            "status": job.status,
-            "pipeline_version": version,
-            "object_key": document.object_key,
-        }
+        if document.object_key.startswith("url://"):
+            url = document.object_key[6:]
+            _enqueue_url_ingest(job.id, document.id, url, version, current_user.username)
+            return {
+                "document_id": document.id,
+                "job_id": job.id,
+                "status": job.status,
+                "pipeline_version": version,
+                "url": url,
+            }
+        else:
+            _enqueue_ingest(job.id, document.id, document.object_key, version, current_user.username)
+            return {
+                "document_id": document.id,
+                "job_id": job.id,
+                "status": job.status,
+                "pipeline_version": version,
+                "object_key": document.object_key,
+            }
     except HTTPException:
         raise
     except Exception as exc:

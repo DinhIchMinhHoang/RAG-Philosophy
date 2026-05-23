@@ -7,6 +7,13 @@ from typing import Protocol
 
 from ..core.settings import settings
 
+# File validation limits
+MAX_PDF_SIZE_MB = int(os.getenv("MAX_PDF_SIZE_MB", "100"))
+MAX_TABULAR_SIZE_MB = int(os.getenv("MAX_TABULAR_SIZE_MB", "50"))
+MAX_DOCX_SIZE_MB = int(os.getenv("MAX_DOCX_SIZE_MB", "50"))
+MAX_HTML_SIZE_MB = int(os.getenv("MAX_HTML_SIZE_MB", "50"))
+MAX_MD_SIZE_MB = int(os.getenv("MAX_MD_SIZE_MB", "50"))
+
 
 class StorageClient(Protocol):
     def put_bytes(self, object_key: str, content: bytes, content_type: str) -> None:
@@ -174,13 +181,65 @@ def build_storage_client() -> StorageClient:
 storage_client = build_storage_client()
 
 
-def validate_pdf_bytes(object_key: str, payload: bytes) -> None:
-    if not object_key.lower().endswith(".pdf"):
-        raise ValueError("Only PDF object keys are supported")
+def validate_file_bytes(object_key: str, payload: bytes) -> str:
+    ext = Path(object_key).suffix.lower()
+
+    if ext not in {'.pdf', '.xlsx', '.xls', '.csv', '.docx', '.html', '.htm', '.md'}:
+        raise ValueError(f"Unsupported format: {ext}")
 
     size_limit_bytes = settings.max_pdf_size_mb * 1024 * 1024
     if len(payload) > size_limit_bytes:
         raise ValueError(f"PDF too large (>{settings.max_pdf_size_mb} MB)")
 
-    if len(payload) < 5 or payload[:4] != b"%PDF":
-        raise ValueError("Object payload is not a readable PDF")
+    if ext == '.pdf':
+        max_bytes = MAX_PDF_SIZE_MB * 1024 * 1024
+        if len(payload) > max_bytes:
+            raise ValueError(f"PDF too large (>{MAX_PDF_SIZE_MB} MB)")
+        if len(payload) < 5 or payload[:4] != b"%PDF":
+            raise ValueError("Invalid PDF format")
+    elif ext in ['.xlsx', '.xls']:
+        max_bytes = MAX_TABULAR_SIZE_MB * 1024 * 1024
+        if len(payload) > max_bytes:
+            raise ValueError(f"Excel file too large (>{MAX_TABULAR_SIZE_MB} MB)")
+        if ext == '.xlsx' and len(payload) >= 2 and payload[:2] != b'PK':
+            raise ValueError("Invalid Excel format")
+    elif ext == '.docx':
+        max_bytes = MAX_DOCX_SIZE_MB * 1024 * 1024
+        if len(payload) > max_bytes:
+            raise ValueError(f"DOCX file too large (>{MAX_DOCX_SIZE_MB} MB)")
+        if len(payload) >= 2 and payload[:2] != b'PK':
+            raise ValueError("Invalid DOCX format")
+    elif ext == '.csv':
+        max_bytes = MAX_TABULAR_SIZE_MB * 1024 * 1024
+        if len(payload) > max_bytes:
+            raise ValueError(f"CSV file too large (>{MAX_TABULAR_SIZE_MB} MB)")
+        try:
+            payload.decode('utf-8')
+        except UnicodeDecodeError:
+            raise ValueError("Invalid CSV encoding (expected UTF-8)")
+    elif ext in ('.html', '.htm'):
+        max_bytes = MAX_HTML_SIZE_MB * 1024 * 1024
+        if len(payload) > max_bytes:
+            raise ValueError(f"HTML file too large (>{MAX_HTML_SIZE_MB} MB)")
+        try:
+            text = payload[:8192].decode('utf-8', errors='ignore').lower()
+            if '<html' not in text and '<!doctype' not in text:
+                from bs4 import BeautifulSoup
+                soup = BeautifulSoup(payload[:8192], 'html.parser')
+                if not soup.find(['html', 'head', 'body']):
+                    raise ValueError("Invalid HTML format")
+        except UnicodeDecodeError:
+            raise ValueError("Invalid HTML encoding (expected UTF-8)")
+    elif ext == '.md':
+        max_bytes = MAX_MD_SIZE_MB * 1024 * 1024
+        if len(payload) > max_bytes:
+            raise ValueError(f"Markdown file too large (>{MAX_MD_SIZE_MB} MB)")
+        try:
+            payload.decode('utf-8')
+        except UnicodeDecodeError:
+            raise ValueError("Invalid Markdown encoding (expected UTF-8)")
+
+    return ext
+
+
+

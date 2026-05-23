@@ -179,6 +179,8 @@ async def _chat_non_stream_impl(db: Session, request: ChatRequest, current_user:
             turn.message,
             turn.contexts,
             turn.recent_history,
+            db=db,
+            user_id=current_user.username,
         )
     except Exception as exc:
         logger.error("chat_non_stream_failed: %s", str(exc), exc_info=True)
@@ -330,6 +332,8 @@ async def _chat_stream_impl(db: Session, request: ChatRequest, current_user: Use
                 turn.message,
                 turn.contexts,
                 turn.recent_history,
+                db=db,
+                user_id=current_user.username,
             ):
                 answer_parts.append(token)
                 if timings.llm_first_token_ms is None:

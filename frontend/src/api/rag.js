@@ -40,43 +40,37 @@ export function chatStream(message, { conversationId, notebookId, onToken, onDon
         body: JSON.stringify(payload),
         signal: controller.signal,
     })
-    .then(async (response) => {
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.detail || `Chat error: ${response.status}`);
-        }
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-        while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split('\n');
-            buffer = lines.pop();
-            for (const line of lines) {
-                const trimmed = line.trim();
-                if (!trimmed || !trimmed.startsWith('data: ')) continue;
-                let payload;
-                try {
-                    payload = JSON.parse(trimmed.slice(6));
-                } catch (e) {
-                    continue;
-                }
-                if (payload.type === 'error') {
-                    throw new Error(payload.error || 'Chat stream failed');
-                }
-                if (payload.done) { if (onDone) onDone(payload); return; }
-                if (payload.token && onToken) onToken(payload.token);
+        .then(async (response) => {
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.detail || `Chat error: ${response.status}`);
             }
-        }
-        if (onDone) onDone();
-    })
-    .catch((err) => {
-        if (err.name === 'AbortError') return;
-        console.error('[API.chatStream] Error:', err);
-        if (onError) onError(err);
-    });
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop();
+                for (const line of lines) {
+                    const trimmed = line.trim();
+                    if (!trimmed || !trimmed.startsWith('data: ')) continue;
+                    try {
+                        const payload = JSON.parse(trimmed.slice(6));
+                        if (payload.done) { if (onDone) onDone(payload); return; }
+                        if (payload.token && onToken) onToken(payload.token);
+                    } catch (e) { /* skip malformed */ }
+                }
+            }
+            if (onDone) onDone(payload);
+        })
+        .catch((err) => {
+            if (err.name === 'AbortError') return;
+            console.error('[API.chatStream] Error:', err);
+            if (onError) onError(err);
+        });
     return controller;
 }
 

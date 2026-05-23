@@ -478,12 +478,13 @@ export function resetNotebookWorkspace(chatScene) {
 }
 
 const ingestStageLabels = {
-    fetching_object: 'Fetching PDF',
-    parsing: 'Parsing PDF',
+    fetching_object: 'Fetching document',
+    parsing: 'Parsing document',
     chunking: 'Chunking text',
     embedding: 'Embedding chunks',
     indexing_vector: 'Indexing vectors',
     persisting_metadata: 'Saving metadata',
+    loading_sql: 'Loading spreadsheet',
 };
 
 function sleep(ms) {
@@ -877,6 +878,19 @@ export function initChatScene(transitionManager) {
         loadNotebookConversation();
     });
 
+    const SUPPORTED_EXTENSIONS = ['.pdf', '.xlsx', '.xls', '.csv', '.docx', '.html', '.htm', '.md'];
+
+    function getFileIcon(filename) {
+        const ext = filename.toLowerCase().split('.').pop();
+        const icons = { pdf: 'picture_as_pdf', xlsx: 'table_chart', xls: 'table_chart', csv: 'grid_on', docx: 'description', html: 'language', htm: 'language', md: 'article' };
+        return icons[ext] || 'description';
+    }
+
+    function isSupported(filename) {
+        const ext = '.' + filename.toLowerCase().split('.').pop();
+        return SUPPORTED_EXTENSIONS.includes(ext);
+    }
+
     const handleFiles = async (files) => {
         const list = Array.from(files || []);
         const uploadNotebookKey = getActiveNotebookKey();
@@ -884,8 +898,9 @@ export function initChatScene(transitionManager) {
         for (const file of list) {
             if (getActiveNotebookKey() !== uploadNotebookKey) return;
             const isPDF = file.name.toLowerCase().endsWith('.pdf');
-            const icon = isPDF ? 'picture_as_pdf' : 'description';
-            const meta = isPDF ? 'Uploading…' : (file.type || 'file');
+            const canUpload = isSupported(file.name);
+            const icon = getFileIcon(file.name);
+            const meta = canUpload ? 'Uploading…' : (file.type || 'file');
 
             const item = document.createElement('div');
             item.className = 'source-item';
@@ -895,7 +910,7 @@ export function initChatScene(transitionManager) {
             sourceList.appendChild(item);
             updateSourceEmpty(sourceEmpty, sourceList);
 
-            if (isPDF) {
+            if (canUpload) {
                 const metaEl = item.querySelector('.source-type');
                 try {
                     const result = await uploadDocument(file, { notebookId: uploadNotebookId });
@@ -1049,7 +1064,8 @@ export function initChatScene(transitionManager) {
                     hideThinkingIndicator();
                     aiMsg.style.display = 'flex';
                     textEl.innerHTML = '';
-                    processRichText(textEl, finalText, citations);
+                    const displayText = finalText.trim() || 'Sorry, I could not generate a response. Please check backend logs for errors.';
+                    processRichText(textEl, displayText, citations);
                     renderCitationChips(citationsEl, []);
                     aiMsg.classList.remove('streaming');
                     activeStreamController = null;

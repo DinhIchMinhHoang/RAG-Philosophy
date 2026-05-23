@@ -28,6 +28,7 @@ def ensure_runtime_schema(engine: Engine) -> None:
         "documents": {
             "owner_id": "INTEGER",
             "notebook_id": "INTEGER",
+            "content_hash": "VARCHAR(64)",
         },
         "document_chunks": {
             "owner_id": "INTEGER",

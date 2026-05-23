@@ -12,6 +12,8 @@ except ImportError:  # pragma: no cover
 def resolve_llm_model(model: str | None = None) -> str:
     selected_model = (model if model is not None else Config.LLM_MODEL) or DEFAULT_LLM_MODEL
     selected_model = selected_model.strip()
+    if selected_model.lower() == "auto":
+        return DEFAULT_LLM_MODEL
     return selected_model or DEFAULT_LLM_MODEL
 
 

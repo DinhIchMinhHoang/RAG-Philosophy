@@ -4,7 +4,7 @@ import enum
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, ForeignKey, Integer, JSON, String, Text, func
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, JSON, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -24,6 +24,7 @@ class JobStage(str, enum.Enum):
     EMBEDDING = "embedding"
     INDEXING_VECTOR = "indexing_vector"
     PERSISTING_METADATA = "persisting_metadata"
+    LOADING_SQL = "loading_sql"
 
 
 class User(Base):
@@ -51,6 +52,7 @@ class DocumentRecord(Base):
     object_key: Mapped[str] = mapped_column(String(1024), nullable=False, unique=True)
     mime_type: Mapped[str] = mapped_column(String(128), nullable=False)
     size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
@@ -97,6 +99,24 @@ class DocumentChunk(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     document: Mapped[DocumentRecord] = relationship("DocumentRecord", back_populates="chunks")
+
+
+class ExcelTableRecord(Base):
+    __tablename__ = "excel_table_records"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: str(uuid.uuid4()))
+    document_id: Mapped[str] = mapped_column(String(64), ForeignKey("documents.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id: Mapped[str] = mapped_column(String(256), nullable=False, index=True)
+    table_name: Mapped[str] = mapped_column(String(256), nullable=False, unique=True)
+    sheet_name: Mapped[str] = mapped_column(String(256), nullable=False)
+    column_schema: Mapped[str] = mapped_column(Text, nullable=False)
+    row_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "document_id", "table_name", name="uq_user_doc_excel"),
+        Index("ix_etl_doc_id", "document_id"),
+    )
 
 
 class Notebook(Base):

@@ -43,6 +43,12 @@ class Config:
     HYBRID_SPARSE_WEIGHT: float = 0.3
     SPARSE_MIN_TOKEN_LEN: int = 2
 
+    # Tabular Parser Settings (Excel, CSV)
+    TABULAR_CHUNK_ROWS: int = int(os.getenv("TABULAR_CHUNK_ROWS", "15"))
+    TABULAR_MAX_COLS: int = int(os.getenv("TABULAR_MAX_COLS", "15"))
+    MAX_TABULAR_SIZE_MB: int = int(os.getenv("MAX_TABULAR_SIZE_MB", "20"))
+    MAX_CONCURRENT_TABULAR_JOBS: int = int(os.getenv("MAX_CONCURRENT_TABULAR_JOBS", "2"))
+
     # Cohere reranking (fail-open): rerank child chunks then map to parent docs.
     # When enabled, retrieval always uses dense+BM25 candidate merge.
     RERANK_ENABLED: bool = True

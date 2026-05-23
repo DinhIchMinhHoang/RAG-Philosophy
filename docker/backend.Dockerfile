@@ -1,5 +1,10 @@
 FROM python:3.11-slim
 
+# Install Pandoc for DOCX → Markdown conversion
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    pandoc \
+    && rm -rf /var/lib/apt/lists/*
+
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV PIP_NO_CACHE_DIR=1

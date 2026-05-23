@@ -15,6 +15,18 @@ PyMuPDF==1.25.5
 pymupdf4llm==0.0.24
 pillow==11.2.1
 
+# === 2.1 Tabular & Document Parsing (Excel, CSV, HTML, DOCX) ===
+openpyxl>=3.1.0         # Excel merged cells handling
+tabulate>=0.9.0         # Markdown table formatting (pandas.to_markdown)
+psutil>=5.9.0           # Memory guard for Worker
+beautifulsoup4>=4.12.0  # HTML parsing
+python-docx>=1.1.0      # Word document parsing
+omml2latex>=0.1.0       # OMML → LaTeX conversion for math formulas
+pypandoc>=1.13,<2       # DOCX → Markdown conversion (Pandoc wrapper)
+lxml>=4.9,<6            # XML/HTML parsing (BSoup + Readability dependency)
+cssselect>=1.2,<2       # CSS selector support (Readability-lxml dependency)
+readability-lxml>=0.8,<1 # Primary HTML content extraction (Mozilla Readability)
+
 # === 3. Vector Database & Storage ===
 qdrant-client==1.14.2
 

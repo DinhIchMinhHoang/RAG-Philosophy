@@ -154,7 +154,7 @@ def _is_share_title_valid(title: str | None) -> bool:
     return trimmed.lower() != "untitled notebook"
 
 
-def _enqueue_ingest(job_id: str, document_id: str, object_key: str, pipeline_version: str) -> None:
+def _enqueue_ingest(job_id: str, document_id: str, object_key: str, pipeline_version: str, user_id: str = "system") -> None:
     try:
         from ..worker.celery_app import celery_app
     except ModuleNotFoundError as exc:
@@ -167,6 +167,26 @@ def _enqueue_ingest(job_id: str, document_id: str, object_key: str, pipeline_ver
             "document_id": document_id,
             "object_key": object_key,
             "pipeline_version": pipeline_version,
+            "user_id": user_id,
+        },
+        queue=settings.celery_ingest_queue,
+    )
+
+
+def _enqueue_url_ingest(job_id: str, document_id: str, url: str, pipeline_version: str, user_id: str = "system") -> None:
+    try:
+        from ..worker.celery_app import celery_app
+    except ModuleNotFoundError as exc:
+        raise RuntimeError("Celery is not installed. Run `pip install -r requirements.txt`.") from exc
+
+    celery_app.send_task(
+        "backend.app.worker.tasks.process_url_ingest_job",
+        kwargs={
+            "job_id": job_id,
+            "document_id": document_id,
+            "url": url,
+            "pipeline_version": pipeline_version,
+            "user_id": user_id,
         },
         queue=settings.celery_ingest_queue,
     )
@@ -385,38 +405,62 @@ def copy_notebook(
     documents_copied = 0
     jobs_enqueued = 0
     for doc in documents:
-        try:
-            payload = storage_client.get_bytes(doc.object_key)
-        except Exception as exc:
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to read source object: {exc}")
         new_document_id = str(uuid.uuid4())
-        filename = Path(doc.object_key).name or doc.filename
-        new_object_key = f"{new_document_id}/{filename}"
-        try:
-            storage_client.put_bytes(new_object_key, payload, doc.mime_type)
-        except Exception as exc:
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to write copied object: {exc}")
 
-        copied = models.DocumentRecord(
-            id=new_document_id,
-            owner_id=current_user.id,
-            notebook_id=new_notebook.id,
-            filename=doc.filename,
-            object_key=new_object_key,
-            mime_type=doc.mime_type,
-            size_bytes=doc.size_bytes,
-        )
-        db.add(copied)
-        db.commit()
-        db.refresh(copied)
-        documents_copied += 1
+        if doc.object_key.startswith("url://"):
+            url = doc.object_key[6:]
+            copied = models.DocumentRecord(
+                id=new_document_id,
+                owner_id=current_user.id,
+                notebook_id=new_notebook.id,
+                filename=doc.filename,
+                object_key=doc.object_key,
+                mime_type="text/html",
+                size_bytes=0,
+            )
+            db.add(copied)
+            db.commit()
+            db.refresh(copied)
+            documents_copied += 1
 
-        try:
-            job = _create_job(db, document_id=copied.id, pipeline_version=pipeline_version)
-            _enqueue_ingest(job.id, copied.id, copied.object_key, pipeline_version)
-            jobs_enqueued += 1
-        except Exception as exc:
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to enqueue ingest for copied document: {exc}")
+            try:
+                job = _create_job(db, document_id=copied.id, pipeline_version=pipeline_version)
+                _enqueue_url_ingest(job.id, copied.id, url, pipeline_version, current_user.username)
+                jobs_enqueued += 1
+            except Exception as exc:
+                raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to enqueue ingest for copied URL document: {exc}")
+        else:
+            try:
+                payload = storage_client.get_bytes(doc.object_key)
+            except Exception as exc:
+                raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to read source object: {exc}")
+            filename = Path(doc.object_key).name or doc.filename
+            new_object_key = f"{new_document_id}/{filename}"
+            try:
+                storage_client.put_bytes(new_object_key, payload, doc.mime_type)
+            except Exception as exc:
+                raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to write copied object: {exc}")
+
+            copied = models.DocumentRecord(
+                id=new_document_id,
+                owner_id=current_user.id,
+                notebook_id=new_notebook.id,
+                filename=doc.filename,
+                object_key=new_object_key,
+                mime_type=doc.mime_type,
+                size_bytes=doc.size_bytes,
+            )
+            db.add(copied)
+            db.commit()
+            db.refresh(copied)
+            documents_copied += 1
+
+            try:
+                job = _create_job(db, document_id=copied.id, pipeline_version=pipeline_version)
+                _enqueue_ingest(job.id, copied.id, copied.object_key, pipeline_version, current_user.username)
+                jobs_enqueued += 1
+            except Exception as exc:
+                raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to enqueue ingest for copied document: {exc}")
 
     return NotebookCopyResponse(
         notebook=_notebook_response(new_notebook),
@@ -448,10 +492,11 @@ def delete_notebook(
             pass
 
         for doc in documents:
-            try:
-                storage_client.delete(doc.object_key)
-            except Exception:
-                pass
+            if not doc.object_key.startswith("url://"):
+                try:
+                    storage_client.delete(doc.object_key)
+                except Exception:
+                    pass
             if qdrant_client is not None:
                 try:
                     delete_vectors_for_document(qdrant_client, doc.id)
@@ -587,15 +632,18 @@ def delete_file(
     errors: list[str] = []
 
     # delete physical file
-    try:
-        # storage_client.delete is idempotent for missing files
-        storage_client.delete(document.object_key)
+    if document.object_key.startswith("url://"):
         cleanup["object_deleted"] = True
-    except FileNotFoundError:
-        # missing on disk - proceed
-        cleanup["object_deleted"] = False
-    except Exception as exc:
-        errors.append(f"storage: {exc}")
+    else:
+        try:
+            # storage_client.delete is idempotent for missing files
+            storage_client.delete(document.object_key)
+            cleanup["object_deleted"] = True
+        except FileNotFoundError:
+            # missing on disk - proceed
+            cleanup["object_deleted"] = False
+        except Exception as exc:
+            errors.append(f"storage: {exc}")
 
     # delete vectors if qdrant available
     try:

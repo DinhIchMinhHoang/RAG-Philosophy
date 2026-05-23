@@ -34,8 +34,9 @@ SYSTEM_PROMPT = (
     "1. Chỉ sử dụng thông tin từ tài liệu được cung cấp.\n"
     "2. Nếu thông tin không đủ, hãy chỉ ra phần nào thiếu "
     "thay vì tự ý bổ sung.\n"
-    # "3. Luôn đính kèm số trang (VD: [Trang X]) vào cuối "
-    # "mỗi ý quan trọng trong câu trả lời.\n\n"
+    "3. Bắt buộc đính kèm trích dẫn nguồn ở cuối mỗi ý quan trọng sử dụng thông tin từ tài liệu đó theo đúng định dạng sau:\n"
+    "   `- tên_file, Trang X` (ví dụ: `- giao_trinh_triet_hoc.pdf, Trang 12` hoặc `- mac_lenin.pdf, Trang 5`)\n"
+    "   Trong đó tên_file và X lấy chính xác từ context.\n\n"
     "Tài liệu tham khảo:\n"
     "{context}"
 )

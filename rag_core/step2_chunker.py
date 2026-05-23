@@ -73,15 +73,54 @@ def _split_page_into_parents(page: Document) -> List[Document]:
     Mỗi Parent kế thừa metadata gốc {'source', 'page'} của page,
     đồng thời được gán thêm một 'doc_id' UUIDv5 cố định (deterministic).
 
+    Nếu page đã có doc_id trong metadata (từ HTML/MD/DOCX parser),
+    giữ nguyên doc_id đó để đảm bảo idempotent reindex.
+
     Args:
         page: Một Document đại diện cho một trang PDF (từ Step 1).
 
     Returns:
         Danh sách Parent Documents, mỗi cái có metadata đầy đủ.
     """
-    # source và page là metadata cốt lõi, BẮT BUỘC phải có
     source: str = page.metadata.get("source", "unknown")
     page_num: int = page.metadata.get("page", -1)
+
+    # === TABULAR BYPASS: Skip text splitting for table data ===
+    # Tabular data (Excel/CSV) has pre-formatted chunks with headers.
+    # Don't let _PARENT_SPLITTER break the table structure.
+    if page.metadata.get("is_tabular"):
+        # Generate unique doc_id per chunk using row_range hash
+        row_range = page.metadata.get("row_range", "0")
+        unique_key = hash(row_range) % 100000
+        doc_id = _generate_deterministic_doc_id(source, page_num, unique_key)
+        return [
+            Document(
+                page_content=page.page_content,
+                metadata={
+                    "source": source,
+                    "page": page_num,
+                    "doc_id": doc_id,
+                }
+            )
+        ]
+    # =======================================================
+
+    # === PRESERVE EXISTING doc_id FROM PARSER ===
+    # HTML/MD/DOCX parsers already create deterministic doc_id with
+    # {document_id}_{pipeline_version}_{chunk_idx}. Preserve it.
+    existing_doc_id = page.metadata.get("doc_id")
+    if existing_doc_id:
+        return [
+            Document(
+                page_content=page.page_content,
+                metadata={
+                    "source": source,
+                    "page": page_num,
+                    "doc_id": existing_doc_id,
+                }
+            )
+        ]
+    # ============================================
 
     raw_parents = _PARENT_SPLITTER.create_documents(
         texts=[page.page_content],
@@ -91,7 +130,6 @@ def _split_page_into_parents(page: Document) -> List[Document]:
     parents: List[Document] = []
     for chunk_idx, raw in enumerate(raw_parents):
         doc_id = _generate_deterministic_doc_id(source, page_num, chunk_idx)
-        # Đảm bảo metadata sạch: chỉ giữ source, page và thêm doc_id
         parents.append(
             Document(
                 page_content=raw.page_content,
