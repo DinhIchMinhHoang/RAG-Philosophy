@@ -11,6 +11,7 @@ import {
     deleteSource,
     updateNotebook,
     uploadDocument,
+    replaceDocument,
 } from '../../api/index.js';
 
 const CONVERSATION_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
@@ -497,6 +498,37 @@ function setSourceMeta(metaEl, text, active = false) {
     metaEl.classList.toggle('uploading', active);
 }
 
+function showReplaceConfirm(filename) {
+    return new Promise((resolve) => {
+        const existing = document.querySelector('.confirm-modal');
+        if (existing) existing.remove();
+
+        const overlay = document.createElement('div');
+        overlay.className = 'confirm-modal open';
+        overlay.innerHTML = `
+            <div class="confirm-modal-backdrop"></div>
+            <div class="confirm-modal-body">
+                <div class="confirm-modal-title">File already exists</div>
+                <div class="confirm-modal-message">"${escapeHtml(filename)}" already exists in this notebook. Replace the existing file?</div>
+                <div class="confirm-modal-actions">
+                    <button class="auth-button is-ghost" data-action="cancel">No</button>
+                    <button class="auth-button" data-action="confirm">Yes</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+
+        const close = (result) => {
+            overlay.remove();
+            resolve(result);
+        };
+
+        overlay.querySelector('[data-action="cancel"]').addEventListener('click', () => close(false));
+        overlay.querySelector('[data-action="confirm"]').addEventListener('click', () => close(true));
+        overlay.querySelector('.confirm-modal-backdrop').addEventListener('click', () => close(false));
+    });
+}
+
 function formatJobProgress(job) {
     if (job.status === 'queued') return 'Queued for indexing';
 
@@ -930,6 +962,39 @@ export function initChatScene(transitionManager) {
                     }
                 } catch (err) {
                     if (getActiveNotebookKey() !== uploadNotebookKey) return;
+
+                    if (err.isDuplicate) {
+                        const confirmed = await showReplaceConfirm(err.filename || file.name);
+                        if (confirmed) {
+                            setSourceMeta(metaEl, 'Replacing…', true);
+                            try {
+                                const result = await replaceDocument(err.documentId, file);
+                                if (getActiveNotebookKey() !== uploadNotebookKey) return;
+                                if (result.document_id) item.dataset.documentId = result.document_id;
+                                if (result.pages !== undefined || result.chunks !== undefined) {
+                                    setSourceMeta(metaEl, `${result.pages ?? 0} pages, ${result.chunks ?? 0} chunks`, false);
+                                } else if (result.job_id) {
+                                    setSourceMeta(metaEl, 'Queued for indexing', true);
+                                    pollUploadJob(result.job_id, metaEl).catch((err2) => {
+                                        if (getActiveNotebookKey() !== uploadNotebookKey) return;
+                                        console.error('[Replace job]', err2);
+                                        setSourceMeta(metaEl, `Error: ${err2.message}`, false);
+                                    });
+                                } else {
+                                    setSourceMeta(metaEl, result.status || 'Replace accepted', false);
+                                }
+                            } catch (replaceErr) {
+                                if (getActiveNotebookKey() !== uploadNotebookKey) return;
+                                console.error('[Replace]', replaceErr);
+                                setSourceMeta(metaEl, `Error: ${replaceErr.message}`, false);
+                            }
+                        } else {
+                            item.remove();
+                            updateSourceEmpty(sourceEmpty, sourceList);
+                        }
+                        continue;
+                    }
+
                     console.error('[Upload]', err);
                     setSourceMeta(metaEl, `Error: ${err.message}`, false);
                 }

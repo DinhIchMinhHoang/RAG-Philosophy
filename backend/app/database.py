@@ -48,6 +48,18 @@ def ensure_runtime_schema(engine: Engine) -> None:
                 if column_name not in existing:
                     connection.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}"))
 
+        # Migrate uq_user_doc_excel constraint from (user_id, document_id) → (user_id, document_id, table_name)
+        if "excel_table_records" in table_names:
+            constraints = inspector.get_unique_constraints("excel_table_records")
+            for constraint in constraints:
+                if constraint["name"] == "uq_user_doc_excel" and set(constraint["column_names"]) == {"user_id", "document_id"}:
+                    connection.execute(text(
+                        "ALTER TABLE excel_table_records DROP CONSTRAINT uq_user_doc_excel"
+                    ))
+                    connection.execute(text(
+                        "ALTER TABLE excel_table_records ADD CONSTRAINT uq_user_doc_excel UNIQUE (user_id, document_id, table_name)"
+                    ))
+
 
 def get_db():
     db = SessionLocal()

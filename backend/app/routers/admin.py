@@ -120,6 +120,12 @@ def _delete_documents(db: Session, document_ids: list[str], cleanup_errors: list
             except Exception as exc:
                 cleanup_errors.append(f"qdrant:{doc.id}: {exc}")
 
+        try:
+            from ..ingest.excel_ingestor import drop_excel_tables
+            drop_excel_tables(db, doc.id)
+        except Exception as exc:
+            cleanup_errors.append(f"excel_tables:{doc.id}: {exc}")
+
     db.query(models.IngestJob).filter(models.IngestJob.document_id.in_(document_ids)).delete(synchronize_session=False)
     db.query(models.DocumentChunk).filter(models.DocumentChunk.document_id.in_(document_ids)).delete(synchronize_session=False)
     db.query(models.DocumentRecord).filter(models.DocumentRecord.id.in_(document_ids)).delete(synchronize_session=False)

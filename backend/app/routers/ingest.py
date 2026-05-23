@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -239,13 +240,13 @@ async def _create_document_impl(
                 DocumentRecord.content_hash.isnot(None),
             ).first()
             if existing:
-                raise HTTPException(
+                return JSONResponse(
                     status_code=status.HTTP_409_CONFLICT,
-                    headers={
-                        "X-Document-Id": existing.id,
-                        "X-Filename": existing.filename,
+                    content={
+                        "detail": f"File already exists in this notebook: {existing.filename}",
+                        "document_id": existing.id,
+                        "filename": existing.filename,
                     },
-                    detail=f"File already exists in this notebook: {existing.filename}",
                 )
         storage_client.put_bytes(object_key, payload, file.content_type or "application/pdf")
 

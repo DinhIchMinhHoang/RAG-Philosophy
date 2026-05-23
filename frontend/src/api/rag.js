@@ -13,7 +13,30 @@ export async function uploadDocument(file, { notebookId } = {}) {
     });
     if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.detail || `Upload failed: ${response.status}`);
+        const err = new Error(errorData.detail || `Upload failed: ${response.status}`);
+        if (response.status === 409) {
+            err.isDuplicate = true;
+            err.documentId = errorData.document_id;
+            err.filename = errorData.filename;
+        }
+        throw err;
+    }
+    return await response.json();
+}
+
+export async function replaceDocument(documentId, file) {
+    const formData = new FormData();
+    formData.append('file', file);
+    const headers = {};
+    const token = getToken();
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    const response = await fetch(`${BASE_URL}/documents/${encodeURIComponent(documentId)}`, {
+        method: 'POST', headers, body: formData
+    });
+    if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || `Replace failed: ${response.status}`);
     }
     return await response.json();
 }

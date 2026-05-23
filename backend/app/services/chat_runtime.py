@@ -415,12 +415,13 @@ class ChatRuntimeService:
                 logger.info("excel_query_result: %d chars — %s", len(result), result[:120])
                 block = (
                     "[Excel Query Result — không có citation marker, "
-                    "không cần gắn [C1] cho dữ liệu này]\n"
+                    "không cần gắn Trang cho dữ liệu này]\n"
                     f"{result}"
                 )
                 return f"{block}\n\n---\n\n{context_text}" if context_text else block
         except Exception as exc:
             logger.warning("excel_query_failed: %s", str(exc))
+            db.rollback()
         return context_text
 
     async def answer(

@@ -5,7 +5,14 @@
   "type": "module",
   "scripts": {
     "test": "node tests/api-rag.test.mjs && node tests/dashboard-auth.test.mjs && node tests/source-viewer.test.mjs && node tests/notebook-conversation.test.mjs && node tests/store-state.test.mjs",
+    "test:e2e": "npx playwright test",
+    "test:e2e:ui": "npx playwright test --ui",
+    "test:e2e:headed": "npx playwright test --headed",
+    "test:e2e:debug": "npx playwright test --debug",
     "dev": "npx serve .",
     "serve": "npx serve . -l 5500"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.40.0"
   }
 }

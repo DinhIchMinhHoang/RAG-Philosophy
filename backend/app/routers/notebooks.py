@@ -502,6 +502,11 @@ def delete_notebook(
                     delete_vectors_for_document(qdrant_client, doc.id)
                 except Exception:
                     pass
+            try:
+                from ..ingest.excel_ingestor import drop_excel_tables
+                drop_excel_tables(db, doc.id)
+            except Exception:
+                pass
 
         if doc_ids:
             db.query(models.IngestJob).filter(models.IngestJob.document_id.in_(doc_ids)).delete(synchronize_session=False)

@@ -1,7 +1,7 @@
 ---
 description: Manages the vanilla JS frontend in frontend/: UI changes, client-side state, user interactions, and API communication. Use for UI bugs, new components, or frontend-backend communication updates.
 mode: subagent
-model: opencode/minimax-m2.5-free
+model: opencode-go/deepseek-v4-flash
 temperature: 0.3
 permission:
   edit:
