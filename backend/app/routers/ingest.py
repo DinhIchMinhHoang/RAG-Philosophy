@@ -267,7 +267,7 @@ async def _create_document_impl(
         job = _create_job(db, document_id=document.id, pipeline_version=version)
 
         # === HYBRID PATH: Sync if queue idle, async (Celery) if busy ===
-        is_idle = await asyncio.to_thread(_is_queue_idle)
+        is_idle = settings.sync_ingest_when_queue_idle and await asyncio.to_thread(_is_queue_idle)
 
         if is_idle:
             # Queue is idle → process synchronously: no Celery delay,
@@ -630,7 +630,7 @@ async def replace_document(
         job = _create_job(db, document_id=document.id, pipeline_version=version)
 
         # === HYBRID PATH: Sync if queue idle, async (Celery) if busy ===
-        is_idle = await asyncio.to_thread(_is_queue_idle)
+        is_idle = settings.sync_ingest_when_queue_idle and await asyncio.to_thread(_is_queue_idle)
 
         if is_idle:
             result = await asyncio.to_thread(

@@ -3,6 +3,9 @@ from __future__ import annotations
 import json
 import re
 import logging
+from difflib import SequenceMatcher
+from dataclasses import dataclass
+from datetime import date, datetime
 from enum import Enum
 from typing import Any
 
@@ -11,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from ..ingest.constants import SQL_MAX_ROWS, MAX_LLM_RETRIES
 from ..models import ExcelTableRecord
+from .excel_schema import build_column_profile, compact_text, normalize_text
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +56,7 @@ _STOPWORDS: frozenset[str] = frozenset({
     'thì', 'mà', 'là', 'ở', 'tại', 'trong', 'ngoài', 'trên',
     'dưới', 'cả', 'rất', 'lắm', 'quá', 'nữa', 'vẫn', 'cứ',
     'lớp', 'môn', 'học', 'phần', 'dạy', 'dành', 'sinh', 'viên',
+    'file', 'tệp', 'thời', 'khóa', 'biểu', 'thoi', 'khoa', 'bieu',
 })
 
 
@@ -75,6 +80,14 @@ _INTENT_PATTERNS: list[tuple[re.Pattern, Intent]] = [
 
 # ── Keyword extraction ────────────────────────────────────────────
 _SINGLE_DIGIT = re.compile(r'^\d{1,2}$')
+_DATE_FORMATS = (
+    "%d/%m/%Y",
+    "%d-%m-%Y",
+    "%Y-%m-%d",
+    "%Y/%m/%d",
+    "%d/%m/%y",
+    "%d-%m-%y",
+)
 
 
 def _extract_keywords(question: str) -> list[str]:
@@ -83,8 +96,397 @@ def _extract_keywords(question: str) -> list[str]:
     for t in tokens:
         if t in _STOPWORDS:
             continue
+        if _SINGLE_DIGIT.match(t):
+            continue
         keywords.append(t)
     return keywords
+
+
+def _select_search_keywords(keywords: list[str]) -> list[str]:
+    code_like = [
+        kw for kw in keywords
+        if re.search(r'[a-zA-Z]', kw) and re.search(r'\d', kw)
+    ]
+    if code_like:
+        return code_like
+    return keywords
+
+
+def _sql_quote_identifier(identifier: str) -> str:
+    return '"' + identifier.replace('"', '""') + '"'
+
+
+def _like_pattern(value: str) -> str:
+    escaped = str(value).replace("'", "''")
+    return f"'%{escaped}%'"
+
+
+def _contains_expr(expr: str, value: str) -> str:
+    return f"LOWER(CAST({expr} AS TEXT)) LIKE LOWER({_like_pattern(value)})"
+
+
+def _search_text_conditions(keywords: list[str]) -> str:
+    return " AND ".join(_contains_expr("search_text", kw) for kw in keywords)
+
+
+def _schema_with_profiles(schema: list[dict], sample_data: str | None = None) -> list[dict]:
+    try:
+        samples = json.loads(sample_data or "[]")
+    except (json.JSONDecodeError, TypeError):
+        samples = []
+
+    profiled: list[dict] = []
+    for col in schema:
+        name = col.get("name", "")
+        values = [row.get(name) for row in samples if isinstance(row, dict)]
+        inferred = build_column_profile(
+            original_name=col.get("original_name", name),
+            safe_name=name,
+            dtype=col.get("dtype", "TEXT"),
+            values=values,
+        )
+        if col.get("semantic_type"):
+            name_compact = compact_text(f"{col.get('original_name', '')} {col.get('name', '')}")
+            if (
+                col.get("semantic_type") == "birth_year"
+                and col.get("dtype") not in {"INTEGER", "REAL"}
+                and ("sinh" in name_compact or "birth" in name_compact)
+            ):
+                upgraded = dict(col)
+                upgraded["semantic_type"] = "date_of_birth"
+                upgraded["semantic_confidence"] = max(float(upgraded.get("semantic_confidence") or 0.0), 0.9)
+                profiled.append(upgraded)
+                continue
+            if (
+                col.get("semantic_type") in {"generic_text", "generic_number"}
+                and inferred.get("semantic_type") not in {"generic_text", "generic_number"}
+            ):
+                profiled.append({**col, **inferred})
+                continue
+            profiled.append(col)
+            continue
+        profiled.append(inferred)
+    return profiled
+
+
+def _column_text(col: dict) -> str:
+    parts = [
+        col.get("name", ""),
+        col.get("original_name", ""),
+        col.get("semantic_type", ""),
+        " ".join(col.get("aliases") or []),
+        " ".join(str(v) for v in (col.get("sample_values") or [])[:5]),
+    ]
+    return normalize_text(" ".join(parts))
+
+
+def _semantic_columns(schema: list[dict], semantic_types: set[str]) -> list[dict]:
+    return [c for c in schema if c.get("semantic_type") in semantic_types]
+
+
+def _score_column(col: dict, question: str, semantic_types: set[str] | None = None) -> int:
+    score = 0
+    q_norm = normalize_text(question)
+    q_compact = compact_text(question)
+    col_name = normalize_text(col.get("original_name") or col.get("name") or "")
+    col_compact = compact_text(col.get("original_name") or col.get("name") or "")
+    col_text = _column_text(col)
+
+    if semantic_types and col.get("semantic_type") in semantic_types:
+        score += int(float(col.get("semantic_confidence") or 0.5) * 100)
+    if col_name and (col_name in q_norm or col_compact in q_compact):
+        score += 80
+    for alias in col.get("aliases") or []:
+        alias_norm = normalize_text(alias)
+        if alias_norm and alias_norm in q_norm:
+            score += 50
+    for token in q_norm.split():
+        if len(token) >= 3 and token in col_text:
+            score += 8
+    return score
+
+
+def _best_column(
+    schema: list[dict],
+    question: str,
+    semantic_types: set[str],
+    *,
+    require_numeric: bool = False,
+    min_score: int = 60,
+) -> dict | None:
+    candidates = [
+        col for col in schema
+        if not require_numeric or col.get("dtype") in ("INTEGER", "REAL")
+    ]
+    ranked = sorted(
+        ((col, _score_column(col, question, semantic_types)) for col in candidates),
+        key=lambda item: item[1],
+        reverse=True,
+    )
+    if not ranked or ranked[0][1] < min_score:
+        return None
+    return ranked[0][0]
+
+
+def _parse_date_value(value: Any) -> datetime | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, date):
+        return datetime(value.year, value.month, value.day)
+    text_value = str(value).strip()
+    if not text_value:
+        return None
+    for fmt in _DATE_FORMATS:
+        try:
+            return datetime.strptime(text_value[:10], fmt)
+        except ValueError:
+            continue
+    return None
+
+
+def _to_float(value: Any) -> float | None:
+    try:
+        return float(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+
+
+def _extract_lookup_entity(text_value: str) -> str | None:
+    patterns = [
+        r"(?:thông\s*tin\s*về|biết\s*về|nói\s*về|về)\s+(.+)$",
+        r"(?:thong\s*tin\s*ve|biet\s*ve|noi\s*ve|ve)\s+(.+)$",
+    ]
+    entity = None
+    for pattern in patterns:
+        match = re.search(pattern, text_value, flags=re.I)
+        if match:
+            entity = match.group(1)
+            break
+    if entity is None:
+        return None
+    entity = re.split(r"\b(?:và|va|đồng thời|dong thoi|còn|con|ai là|ai la|có bao nhiêu|co bao nhieu)\b", entity, maxsplit=1, flags=re.I)[0]
+    return entity.strip() or None
+
+
+def _extract_compare_entities(question: str) -> list[str]:
+    match = re.search(r"(?:so\s*sánh|so\s*sanh)\s+(.+)$", question, flags=re.I)
+    if not match:
+        return []
+    tail = match.group(1)
+    parts = [p.strip() for p in re.split(r"\s+(?:và|va|với|voi)\s+", tail, flags=re.I) if p.strip()]
+    return parts[:4]
+
+
+def _filter_keywords_for_question(question: str) -> list[str]:
+    tokens = re.findall(r"[A-Za-z0-9\u00C0-\u1EF9]+", question.lower())
+    blocked = _STOPWORDS.union({
+        "ai", "người", "nguoi", "nào", "nao", "lớn", "lon", "tuổi", "tuoi",
+        "cao", "già", "gia", "nhỏ", "nho", "trẻ", "tre", "ít", "it",
+        "nhất", "nhat", "danh", "sách", "sach",
+        "thông", "tin", "thong", "so", "sánh", "sanh", "tổng", "tong",
+        "trung", "bình", "binh", "cao", "thấp", "thap",
+    })
+    result = []
+    for token in tokens:
+        if token in blocked:
+            continue
+        if _SINGLE_DIGIT.match(token):
+            continue
+        result.append(token)
+    return result
+
+
+def _asks_gender_count(text_value: str) -> bool:
+    norm = normalize_text(text_value)
+    if "bao nhieu" not in norm and "so luong" not in norm and "dem" not in norm:
+        return False
+    has_female = bool(re.search(r"\b(?:nu|female)\b", norm))
+    has_male = bool(re.search(r"\b(?:nam|male)\b", norm))
+    return has_male and has_female
+
+
+def _fuzzy_score(left: str, right: str) -> float:
+    left_norm = normalize_text(left)
+    right_norm = normalize_text(right)
+    if not left_norm or not right_norm:
+        return 0.0
+    if left_norm in right_norm or right_norm in left_norm:
+        return 1.0
+    return SequenceMatcher(None, left_norm, right_norm).ratio()
+
+
+def _has_code_like_token(keywords: list[str]) -> bool:
+    return any(re.search(r"[a-zA-Z]", kw) and re.search(r"\d", kw) for kw in keywords)
+
+
+@dataclass
+class PlannedTask:
+    kind: str
+    text: str
+    entity: str | None = None
+    entities: list[str] | None = None
+    target_hint: str | None = None
+    group_by_hint: str | None = None
+    value_hints: list[str] | None = None
+    metric_hint: str | None = None
+    direction: str | None = None
+    op: str | None = None
+    filters: list[dict[str, Any]] | None = None
+
+
+_LLM_TASK_TYPES = {
+    "lookup",
+    "lookup_entity",
+    "count",
+    "count_rows",
+    "group_count",
+    "aggregate",
+    "extreme",
+    "compare",
+}
+_LLM_AGG_OPS = {"sum", "avg", "min", "max", "count"}
+_LLM_FILTER_OPS = {"contains", "equals", "gt", "lt", "gte", "lte", "between"}
+
+
+def _extract_json_object(value: str) -> dict[str, Any] | None:
+    text_value = (value or "").strip()
+    if text_value.startswith("```"):
+        text_value = re.sub(r"^```(?:json)?\s*", "", text_value, flags=re.I)
+        text_value = re.sub(r"\s*```$", "", text_value)
+    start = text_value.find("{")
+    end = text_value.rfind("}")
+    if start < 0 or end <= start:
+        return None
+    try:
+        parsed = json.loads(text_value[start:end + 1])
+    except json.JSONDecodeError:
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
+def _coerce_text_list(value: Any, *, limit: int = 6) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    result: list[str] = []
+    for item in value:
+        if item is None:
+            continue
+        text_item = str(item).strip()
+        if text_item:
+            result.append(text_item[:120])
+        if len(result) >= limit:
+            break
+    return result
+
+
+def _sanitize_filters(value: Any) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    filters: list[dict[str, Any]] = []
+    for item in value[:6]:
+        if not isinstance(item, dict):
+            continue
+        op = str(item.get("op") or "contains").strip().lower()
+        if op not in _LLM_FILTER_OPS:
+            continue
+        field_hint = str(item.get("field_hint") or item.get("field") or "").strip()[:120]
+        raw_value = item.get("value")
+        if raw_value is None:
+            continue
+        filters.append({"field_hint": field_hint, "op": op, "value": str(raw_value).strip()[:200]})
+    return filters
+
+
+def _task_from_llm(raw_task: dict[str, Any], question: str) -> PlannedTask | None:
+    task_type = str(raw_task.get("type") or "").strip().lower()
+    if task_type not in _LLM_TASK_TYPES:
+        return None
+
+    if task_type in {"lookup", "lookup_entity"}:
+        entity = str(raw_task.get("entity") or "").strip()
+        if not entity:
+            return None
+        return PlannedTask(
+            "lookup",
+            question,
+            entity=entity[:200],
+            target_hint=str(raw_task.get("target_hint") or raw_task.get("entity_type") or "").strip()[:80] or None,
+        )
+
+    if task_type == "compare":
+        entities = _coerce_text_list(raw_task.get("entities"), limit=4)
+        if not entities:
+            return None
+        return PlannedTask(
+            "compare",
+            question,
+            entities=entities,
+            metric_hint=str(raw_task.get("metric_hint") or "").strip()[:120] or None,
+        )
+
+    if task_type in {"count", "count_rows"}:
+        return PlannedTask("count", question, filters=_sanitize_filters(raw_task.get("filters")))
+
+    if task_type == "group_count":
+        group_by_hint = str(raw_task.get("group_by_hint") or raw_task.get("dimension") or "").strip()
+        if not group_by_hint:
+            return None
+        return PlannedTask(
+            "group_count",
+            question,
+            group_by_hint=group_by_hint[:120],
+            value_hints=_coerce_text_list(raw_task.get("value_hints"), limit=10),
+            filters=_sanitize_filters(raw_task.get("filters")),
+        )
+
+    if task_type == "aggregate":
+        op = str(raw_task.get("op") or "").strip().lower()
+        if op not in _LLM_AGG_OPS:
+            return None
+        metric_hint = str(raw_task.get("metric_hint") or raw_task.get("metric") or "").strip()
+        if not metric_hint:
+            return None
+        return PlannedTask(
+            "aggregate",
+            question,
+            op=op,
+            metric_hint=metric_hint[:120],
+            filters=_sanitize_filters(raw_task.get("filters")),
+        )
+
+    if task_type == "extreme":
+        direction = str(raw_task.get("direction") or "").strip().lower()
+        if direction not in {"max", "min"}:
+            return None
+        metric_hint = str(raw_task.get("metric_hint") or raw_task.get("metric") or "").strip()
+        if not metric_hint:
+            return None
+        return PlannedTask(
+            "extreme",
+            question,
+            direction=direction,
+            metric_hint=metric_hint[:120],
+            target_hint=str(raw_task.get("target_hint") or "").strip()[:80] or None,
+            filters=_sanitize_filters(raw_task.get("filters")),
+        )
+
+    return None
+
+
+def _tasks_from_llm_plan(plan: dict[str, Any], question: str) -> list[PlannedTask]:
+    raw_tasks = plan.get("tasks")
+    if not isinstance(raw_tasks, list):
+        return []
+    tasks: list[PlannedTask] = []
+    for raw_task in raw_tasks[:5]:
+        if not isinstance(raw_task, dict):
+            continue
+        task = _task_from_llm(raw_task, question)
+        if task is not None:
+            tasks.append(task)
+    return tasks
 
 
 # ── Intent classification ─────────────────────────────────────────
@@ -114,7 +516,7 @@ def _resolve_column(question: str, schema: list[dict]) -> list[str] | None:
                 matched.append(col)
                 break
 
-    return matched[:3] if matched else numeric[:3]
+    return matched[:3] if matched else None
 
 
 # ── Post-processor ────────────────────────────────────────────────
@@ -268,9 +670,13 @@ class ExcelQueryService:
         keywords: list[str],
         question: str,
     ) -> str | None:
-        schema_list = json.loads(table.column_schema)
+        schema_list = _schema_with_profiles(json.loads(table.column_schema), table.sample_data)
 
         try:
+            planned_result = self._query_planned(table, db, question, schema_list)
+            if planned_result is not None:
+                return planned_result
+
             if intent.is_retas():
                 result = self._query_retas(
                     table, db, intent, keywords, question, schema_list
@@ -298,6 +704,712 @@ class ExcelQueryService:
         except Exception as exc:
             logger.debug("table_query_failed: %s — %s", table.table_name, exc)
             return None
+
+    # ── LLM planner + deterministic executor ────────────────────
+    def _schema_summary_for_planner(self, table: ExcelTableRecord, schema_list: list[dict]) -> dict[str, Any]:
+        columns: list[dict[str, Any]] = []
+        for col in schema_list[:60]:
+            columns.append({
+                "name": col.get("name"),
+                "original_name": col.get("original_name") or col.get("name"),
+                "dtype": col.get("dtype"),
+                "semantic_type": col.get("semantic_type"),
+                "sample_values": (col.get("sample_values") or [])[:8],
+            })
+        return {
+            "table_name": table.table_name,
+            "sheet_name": table.sheet_name,
+            "row_count": table.row_count,
+            "columns": columns,
+        }
+
+    def _build_planner_prompt(self, table: ExcelTableRecord, question: str, schema_list: list[dict]) -> str:
+        schema_summary = self._schema_summary_for_planner(table, schema_list)
+        return (
+            "Bạn là Excel query planner cho dữ liệu bảng. "
+            "Nhiệm vụ của bạn là chuyển câu hỏi tiếng Việt/tự nhiên thành JSON plan.\n\n"
+            "QUY TẮC BẮT BUỘC:\n"
+            "- Chỉ trả JSON hợp lệ, không markdown, không giải thích.\n"
+            "- Không viết SQL.\n"
+            "- Không bịa tên cột. Dùng hint ngôn ngữ tự nhiên như group_by_hint, metric_hint, field_hint.\n"
+            "- Nếu câu hỏi có nhiều ý, tách thành nhiều tasks theo đúng thứ tự.\n"
+            "- Chỉ dùng task type: lookup, count, group_count, aggregate, extreme, compare.\n"
+            "- aggregate.op chỉ được là sum, avg, min, max, count.\n"
+            "- filter.op chỉ được là contains, equals, gt, lt, gte, lte, between.\n"
+            "- Với câu hỏi thống kê theo nhóm như nam/nữ, con trai/con gái, trạng thái, học vị, nơi sinh, "
+            "hãy dùng group_count với group_by_hint là khái niệm cần nhóm.\n"
+            "- Với câu hỏi người lớn tuổi/nhỏ tuổi nhất, dùng extreme metric_hint='tuổi hoặc ngày sinh', "
+            "direction=max cho lớn tuổi nhất và direction=min cho nhỏ tuổi nhất.\n\n"
+            "JSON schema mong muốn:\n"
+            "{\n"
+            '  "tasks": [\n'
+            '    {"type":"lookup","entity":"...","target_hint":"person|course|product|row|unknown"},\n'
+            '    {"type":"count","filters":[{"field_hint":"...","op":"contains","value":"..."}]},\n'
+            '    {"type":"group_count","group_by_hint":"...","value_hints":["..."],"filters":[]},\n'
+            '    {"type":"aggregate","op":"sum|avg|min|max|count","metric_hint":"...","filters":[]},\n'
+            '    {"type":"extreme","direction":"max|min","metric_hint":"...","target_hint":"row|person|unknown","filters":[]},\n'
+            '    {"type":"compare","entities":["..."],"metric_hint":"..."}\n'
+            "  ]\n"
+            "}\n\n"
+            f"SCHEMA SUMMARY:\n{json.dumps(schema_summary, ensure_ascii=False)}\n\n"
+            f"USER QUESTION:\n{question}\n"
+        )
+
+    def _plan_tasks_with_llm(
+        self,
+        table: ExcelTableRecord,
+        question: str,
+        schema_list: list[dict],
+    ) -> list[PlannedTask]:
+        try:
+            response = self.llm.invoke(self._build_planner_prompt(table, question, schema_list))
+            raw = getattr(response, "content", str(response))
+            plan = _extract_json_object(raw)
+            if plan is None:
+                logger.warning("excel_llm_planner_invalid_json")
+                return []
+            tasks = _tasks_from_llm_plan(plan, question)
+            if tasks:
+                logger.info("excel_llm_planner_tasks: %s", ",".join(task.kind for task in tasks))
+            return tasks
+        except Exception as exc:
+            logger.warning("excel_llm_planner_failed: %s", str(exc)[:200])
+            return []
+
+    def _plan_tasks(self, table: ExcelTableRecord, question: str, schema_list: list[dict]) -> list[PlannedTask]:
+        llm_tasks = self._plan_tasks_with_llm(table, question, schema_list)
+        if llm_tasks:
+            return llm_tasks
+        return self._plan_tasks_rule(question)
+
+    def _plan_tasks_rule(self, question: str) -> list[PlannedTask]:
+        norm = normalize_text(question)
+        raw_parts = [
+            part.strip()
+            for part in re.split(r"\s+(?:và|va|đồng thời|dong thoi)\s+", question)
+            if part.strip()
+        ] or [question]
+
+        tasks: list[PlannedTask] = []
+        if "so sanh" in norm:
+            entities = _extract_compare_entities(question)
+            if entities:
+                tasks.append(PlannedTask("compare", question, entities=entities))
+                return tasks
+
+        has_gender_count = _asks_gender_count(question)
+
+        for part in raw_parts:
+            part_norm = normalize_text(part)
+            entity = _extract_lookup_entity(part)
+            if entity:
+                tasks.append(PlannedTask("lookup", part, entity=entity))
+                continue
+            if re.search(r"\b(?:lon tuoi nhat|cao tuoi nhat|gia nhat)\b", part_norm):
+                tasks.append(PlannedTask("oldest", part))
+                continue
+            if re.search(r"\b(?:nho tuoi nhat|it tuoi nhat|tre nhat)\b", part_norm):
+                tasks.append(PlannedTask("youngest", part))
+                continue
+            if has_gender_count and re.search(r"\b(?:nam|nu|male|female)\b", part_norm):
+                continue
+            if re.search(r"\b(?:bao nhieu|so luong|dem|may)\b", part_norm):
+                tasks.append(PlannedTask("count", part))
+                continue
+            if re.search(r"\b(?:tong|cong)\b", part_norm):
+                tasks.append(PlannedTask("sum", part))
+                continue
+            if "trung binh" in part_norm:
+                tasks.append(PlannedTask("avg", part))
+                continue
+            if re.search(r"\b(?:cao nhat|lon nhat|nhieu nhat)\b", part_norm):
+                tasks.append(PlannedTask("max", part))
+                continue
+            if re.search(r"\b(?:thap nhat|it nhat|nho nhat)\b", part_norm):
+                tasks.append(PlannedTask("min", part))
+                continue
+        if has_gender_count:
+            tasks.append(PlannedTask("gender_count", question))
+        return tasks
+
+    def _query_planned(
+        self,
+        table: ExcelTableRecord,
+        db: Session,
+        question: str,
+        schema_list: list[dict],
+    ) -> str | None:
+        tasks = self._plan_tasks(table, question, schema_list)
+        if not tasks:
+            return None
+
+        parts: list[str] = []
+        for task in tasks:
+            result = self._run_planned_task(table, db, task, schema_list)
+            if result:
+                parts.append(f"{self._planned_task_title(task)}\n{result}")
+
+        if not parts:
+            return None
+        if len(parts) == 1:
+            return parts[0]
+        return "\n\n".join(parts)
+
+    def _planned_task_title(self, task: PlannedTask) -> str:
+        if task.kind == "lookup" and task.entity:
+            return f"Thông tin về {task.entity}:"
+        if task.kind == "compare":
+            return "Kết quả so sánh:"
+        if task.kind == "oldest":
+            return "Người lớn tuổi nhất phù hợp điều kiện:"
+        if task.kind == "youngest":
+            return "Người nhỏ tuổi nhất phù hợp điều kiện:"
+        if task.kind == "group_count":
+            hint = task.group_by_hint or "nhóm"
+            return f"Thống kê theo {hint}:"
+        if task.kind == "aggregate":
+            return "Kết quả tính toán:"
+        if task.kind == "extreme":
+            return "Kết quả tìm giá trị phù hợp:"
+        labels = {
+            "count": "Kết quả đếm:",
+            "gender_count": "Thống kê giới tính:",
+            "sum": "Kết quả tính tổng:",
+            "avg": "Kết quả trung bình:",
+            "max": "Giá trị cao nhất:",
+            "min": "Giá trị thấp nhất:",
+        }
+        return labels.get(task.kind, "Kết quả:")
+
+    def _run_planned_task(
+        self,
+        table: ExcelTableRecord,
+        db: Session,
+        task: PlannedTask,
+        schema_list: list[dict],
+    ) -> str | None:
+        if task.kind == "lookup":
+            return self._query_lookup_entity(table, db, schema_list, task.entity or task.text)
+        if task.kind == "compare":
+            parts = [
+                self._query_lookup_entity(table, db, schema_list, entity)
+                for entity in (task.entities or [])
+            ]
+            parts = [part for part in parts if part]
+            return "\n\n".join(parts) if parts else None
+        if task.kind == "oldest":
+            return self._query_oldest_person(table, db, schema_list, task.text)
+        if task.kind == "youngest":
+            return self._query_youngest_person(table, db, schema_list, task.text)
+        if task.kind == "gender_count":
+            return self._query_gender_count(table, db, schema_list)
+        if task.kind == "group_count":
+            return self._query_group_count(table, db, schema_list, task)
+        if task.kind == "aggregate":
+            return self._query_generic_aggregate(table, db, schema_list, task)
+        if task.kind == "extreme":
+            return self._query_generic_extreme(table, db, schema_list, task)
+        if task.kind in {"count", "sum", "avg", "max", "min"}:
+            return self._query_basic_aggregate(table, db, schema_list, task)
+        return None
+
+    def _query_lookup_entity(
+        self,
+        table: ExcelTableRecord,
+        db: Session,
+        schema_list: list[dict],
+        entity: str,
+    ) -> str | None:
+        entity = entity.strip()
+        if not entity:
+            return None
+
+        person_col = _best_column(schema_list, entity, {"person_name"}, min_score=65)
+        conditions = []
+        if person_col is not None:
+            conditions.append(_contains_expr(_sql_quote_identifier(person_col["name"]), entity))
+        conditions.append(_contains_expr("search_text", entity))
+        sql = (
+            f'SELECT * FROM "{table.table_name}" '
+            f'WHERE {" OR ".join(conditions)} '
+            f'ORDER BY "_row_idx" LIMIT {SQL_MAX_ROWS}'
+        )
+        result = self._execute(sql, db)
+        if not result or not result[0]:
+            fuzzy_result = self._query_lookup_entity_fuzzy(table, db, schema_list, entity, person_col)
+            if fuzzy_result is not None:
+                return fuzzy_result
+            return None
+        return self._format_result(result)
+
+    def _query_lookup_entity_fuzzy(
+        self,
+        table: ExcelTableRecord,
+        db: Session,
+        schema_list: list[dict],
+        entity: str,
+        person_col: dict | None,
+    ) -> str | None:
+        person_col = person_col or _best_column(schema_list, entity, {"person_name"}, min_score=45)
+        if person_col is None:
+            return None
+        sql = (
+            f'SELECT * FROM "{table.table_name}" '
+            f'WHERE {_sql_quote_identifier(person_col["name"])} IS NOT NULL '
+            f'ORDER BY "_row_idx" LIMIT {SQL_MAX_ROWS}'
+        )
+        result = self._execute(sql, db)
+        if not result or not result[0]:
+            return None
+        rows, col_keys = result
+        col_index = col_keys.index(person_col["name"])
+        ranked = [
+            (row, _fuzzy_score(entity, row[col_index]))
+            for row in rows
+            if row[col_index] is not None
+        ]
+        ranked.sort(key=lambda item: item[1], reverse=True)
+        if not ranked or ranked[0][1] < 0.82:
+            return None
+        return self._format_result(([ranked[0][0]], col_keys))
+
+    def _query_oldest_person(
+        self,
+        table: ExcelTableRecord,
+        db: Session,
+        schema_list: list[dict],
+        question: str,
+    ) -> str | None:
+        name_col = _best_column(schema_list, question, {"person_name"}, min_score=45)
+        age_col = _best_column(schema_list, question, {"age"}, require_numeric=True, min_score=60)
+        birth_year_col = _best_column(schema_list, question, {"birth_year"}, min_score=60)
+        dob_col = _best_column(schema_list, question, {"date_of_birth"}, min_score=60)
+
+        if name_col is None:
+            name_candidates = _semantic_columns(schema_list, {"person_name"})
+            name_col = name_candidates[0] if name_candidates else None
+
+        filter_terms = _filter_keywords_for_question(question)
+        where_clause = ""
+        if filter_terms:
+            where_clause = "WHERE " + _search_text_conditions(filter_terms)
+
+        if age_col is not None:
+            sql = (
+                f'SELECT * FROM "{table.table_name}" {where_clause} '
+                f'ORDER BY {_sql_quote_identifier(age_col["name"])} IS NULL ASC, '
+                f'{_sql_quote_identifier(age_col["name"])} DESC LIMIT 1'
+            )
+            result = self._execute(sql, db)
+            if result and result[0]:
+                return self._format_result(result)
+
+        if birth_year_col is not None and birth_year_col.get("dtype") in {"INTEGER", "REAL"}:
+            sql = (
+                f'SELECT * FROM "{table.table_name}" {where_clause} '
+                f'ORDER BY {_sql_quote_identifier(birth_year_col["name"])} IS NULL ASC, '
+                f'{_sql_quote_identifier(birth_year_col["name"])} ASC LIMIT 1'
+            )
+            result = self._execute(sql, db)
+            if result and result[0]:
+                return self._format_result(result)
+
+        date_like_col = dob_col or birth_year_col
+        if date_like_col is None:
+            logger.info("excel_query_oldest: no age/date/year column resolved for table=%s", table.table_name)
+            return None
+
+        sql = (
+            f'SELECT * FROM "{table.table_name}" {where_clause} '
+            f'ORDER BY "_row_idx" LIMIT {SQL_MAX_ROWS}'
+        )
+        result = self._execute(sql, db)
+        if not result or not result[0]:
+            return None
+        rows, col_keys = result
+        col_index = col_keys.index(date_like_col["name"])
+        selected = None
+        selected_key = None
+        for row in rows:
+            value = row[col_index]
+            if date_like_col.get("semantic_type") == "birth_year":
+                key = _to_float(value)
+                if key is None:
+                    continue
+            else:
+                parsed = _parse_date_value(value)
+                if parsed is None:
+                    continue
+                key = parsed.timestamp()
+            if selected is None or key < selected_key:
+                selected = row
+                selected_key = key
+
+        if selected is None:
+            return None
+        return self._format_result(([selected], col_keys))
+
+    def _query_youngest_person(
+        self,
+        table: ExcelTableRecord,
+        db: Session,
+        schema_list: list[dict],
+        question: str,
+    ) -> str | None:
+        name_col = _best_column(schema_list, question, {"person_name"}, min_score=45)
+        age_col = _best_column(schema_list, question, {"age"}, require_numeric=True, min_score=60)
+        birth_year_col = _best_column(schema_list, question, {"birth_year"}, min_score=60)
+        dob_col = _best_column(schema_list, question, {"date_of_birth"}, min_score=60)
+
+        if name_col is None:
+            name_candidates = _semantic_columns(schema_list, {"person_name"})
+            name_col = name_candidates[0] if name_candidates else None
+
+        filter_terms = _filter_keywords_for_question(question)
+        where_clause = ""
+        if filter_terms:
+            where_clause = "WHERE " + _search_text_conditions(filter_terms)
+
+        if age_col is not None:
+            sql = (
+                f'SELECT * FROM "{table.table_name}" {where_clause} '
+                f'ORDER BY {_sql_quote_identifier(age_col["name"])} IS NULL ASC, '
+                f'{_sql_quote_identifier(age_col["name"])} ASC LIMIT 1'
+            )
+            result = self._execute(sql, db)
+            if result and result[0]:
+                return self._format_result(result)
+
+        if birth_year_col is not None and birth_year_col.get("dtype") in {"INTEGER", "REAL"}:
+            sql = (
+                f'SELECT * FROM "{table.table_name}" {where_clause} '
+                f'ORDER BY {_sql_quote_identifier(birth_year_col["name"])} IS NULL ASC, '
+                f'{_sql_quote_identifier(birth_year_col["name"])} DESC LIMIT 1'
+            )
+            result = self._execute(sql, db)
+            if result and result[0]:
+                return self._format_result(result)
+
+        date_like_col = dob_col or birth_year_col
+        if date_like_col is None:
+            logger.info("excel_query_youngest: no age/date/year column resolved for table=%s", table.table_name)
+            return None
+
+        sql = (
+            f'SELECT * FROM "{table.table_name}" {where_clause} '
+            f'ORDER BY "_row_idx" LIMIT {SQL_MAX_ROWS}'
+        )
+        result = self._execute(sql, db)
+        if not result or not result[0]:
+            return None
+        rows, col_keys = result
+        col_index = col_keys.index(date_like_col["name"])
+        selected = None
+        selected_key = None
+        for row in rows:
+            value = row[col_index]
+            if date_like_col.get("semantic_type") == "birth_year":
+                key = _to_float(value)
+                if key is None:
+                    continue
+            else:
+                parsed = _parse_date_value(value)
+                if parsed is None:
+                    continue
+                key = parsed.timestamp()
+            if selected is None or key > selected_key:
+                selected = row
+                selected_key = key
+
+        if selected is None:
+            return None
+        return self._format_result(([selected], col_keys))
+
+    def _resolve_hint_column(
+        self,
+        schema_list: list[dict],
+        hint: str | None,
+        *,
+        require_numeric: bool = False,
+        min_score: int = 45,
+    ) -> dict | None:
+        hint = (hint or "").strip()
+        if not hint:
+            return None
+        candidates = [
+            col for col in schema_list
+            if not require_numeric or col.get("dtype") in ("INTEGER", "REAL")
+        ]
+        ranked = sorted(
+            ((col, _score_column(col, hint, None)) for col in candidates),
+            key=lambda item: item[1],
+            reverse=True,
+        )
+        if ranked and ranked[0][1] >= min_score:
+            return ranked[0][0]
+
+        hint_norm = normalize_text(hint)
+        for semantic in {
+            "gender", "degree", "education_level", "department", "course_code",
+            "course_name", "class_name", "credit", "quantity", "age",
+            "date_of_birth", "birth_year", "person_name", "teacher",
+        }:
+            semantic_text = normalize_text(" ".join([semantic, *([])]))
+            if semantic_text and semantic_text in hint_norm:
+                col = _best_column(schema_list, hint, {semantic}, require_numeric=require_numeric, min_score=50)
+                if col is not None:
+                    return col
+        return None
+
+    def _where_clause_for_filters(self, schema_list: list[dict], filters: list[dict[str, Any]] | None) -> str:
+        conditions: list[str] = []
+        for filter_item in filters or []:
+            value = str(filter_item.get("value") or "").strip()
+            if not value:
+                continue
+            col = self._resolve_hint_column(schema_list, filter_item.get("field_hint"), min_score=45)
+            expr = _sql_quote_identifier(col["name"]) if col is not None else "search_text"
+            op = filter_item.get("op") or "contains"
+            if op == "contains":
+                conditions.append(_contains_expr(expr, value))
+            elif op == "equals":
+                conditions.append(f"LOWER(CAST({expr} AS TEXT)) = LOWER({_like_pattern(value).replace('%', '')})")
+            elif op in {"gt", "lt", "gte", "lte"}:
+                operator = {"gt": ">", "lt": "<", "gte": ">=", "lte": "<="}[op]
+                if col is not None and col.get("dtype") in {"INTEGER", "REAL"}:
+                    number = _to_float(value)
+                    if number is not None:
+                        conditions.append(f'{expr} {operator} {number}')
+            elif op == "between":
+                # Keep fallback conservative; unsupported range values are ignored.
+                continue
+        return " WHERE " + " AND ".join(conditions) if conditions else ""
+
+    def _query_basic_aggregate(
+        self,
+        table: ExcelTableRecord,
+        db: Session,
+        schema_list: list[dict],
+        task: PlannedTask,
+    ) -> str | None:
+        keywords = _filter_keywords_for_question(task.text)
+        search_keywords = _select_search_keywords(keywords)
+        where_clause = ""
+        if search_keywords:
+            where_clause = " WHERE " + _search_text_conditions(search_keywords)
+
+        if task.kind == "count":
+            value_count = self._query_value_count(table, db, schema_list, task.text)
+            if value_count is not None:
+                return value_count
+            if search_keywords and not _has_code_like_token(search_keywords):
+                logger.info("excel_query_count: no categorical value resolved for table=%s", table.table_name)
+                return None
+            result = self._execute(
+                f'SELECT COUNT(*) AS "Số lượng" FROM "{table.table_name}"{where_clause}',
+                db,
+            )
+            if result and result[0] and result[0][0][0] == 0:
+                return None
+            return self._format_result(result) if result else None
+
+        fn_map = {"sum": "SUM", "avg": "AVG", "max": "MAX", "min": "MIN"}
+        label_map = {"sum": "Tổng", "avg": "Trung bình", "max": "Cao nhất", "min": "Thấp nhất"}
+        col = _best_column(
+            schema_list,
+            task.text,
+            {"age", "credit", "quantity", "generic_number"},
+            require_numeric=True,
+            min_score=70,
+        )
+        if col is None:
+            logger.info("excel_query_%s: no metric column resolved for table=%s", task.kind, table.table_name)
+            return None
+
+        fn = fn_map[task.kind]
+        label = label_map[task.kind]
+        quoted_col = _sql_quote_identifier(col["name"])
+        result = self._execute(
+            f'SELECT {fn}({quoted_col}) AS "{col["name"]}_{label}" '
+            f'FROM "{table.table_name}"{where_clause}',
+            db,
+        )
+        if result and result[0] and all(value is None for value in result[0][0]):
+            return None
+        return self._format_result(result) if result else None
+
+    def _query_value_count(
+        self,
+        table: ExcelTableRecord,
+        db: Session,
+        schema_list: list[dict],
+        question: str,
+    ) -> str | None:
+        q_norm = normalize_text(question)
+        if not q_norm:
+            return None
+
+        best: tuple[float, dict, str, int] | None = None
+        for col in schema_list:
+            if col.get("dtype") not in {"TEXT", "BOOLEAN"}:
+                continue
+            col_name = col.get("name")
+            if not col_name:
+                continue
+            quoted_col = _sql_quote_identifier(col_name)
+            result = self._execute(
+                f'SELECT CAST({quoted_col} AS TEXT) AS "value", COUNT(*) AS "n" '
+                f'FROM "{table.table_name}" '
+                f'WHERE {quoted_col} IS NOT NULL AND CAST({quoted_col} AS TEXT) != \'\' '
+                f'GROUP BY CAST({quoted_col} AS TEXT) '
+                f'ORDER BY "n" DESC LIMIT 200',
+                db,
+            )
+            if not result or not result[0]:
+                continue
+            for value, count in result[0]:
+                value_text = str(value or "").strip()
+                value_norm = normalize_text(value_text)
+                if not value_norm:
+                    continue
+                value_tokens = set(value_norm.split())
+                q_tokens = set(q_norm.split())
+                if value_norm in q_norm:
+                    score = 1.0
+                elif value_tokens and value_tokens.issubset(q_tokens):
+                    score = 0.96
+                elif len(value_tokens) == 1 and value_norm in q_tokens:
+                    score = 0.94
+                else:
+                    score = _fuzzy_score(value_norm, q_norm)
+
+                score += min(float(col.get("semantic_confidence") or 0.0), 1.0) * 0.05
+                if col.get("semantic_type") in {"gender", "degree", "education_level", "department", "class_name"}:
+                    score += 0.04
+
+                if score >= 0.9 and (best is None or score > best[0]):
+                    best = (score, col, value_text, int(count or 0))
+
+        if best is None:
+            return None
+        _, col, value_text, _count = best
+        quoted_col = _sql_quote_identifier(col["name"])
+        result = self._execute(
+            f'SELECT COUNT(*) AS "Số lượng" FROM "{table.table_name}" '
+            f'WHERE LOWER(CAST({quoted_col} AS TEXT)) = LOWER({_like_pattern(value_text).replace("%", "")})',
+            db,
+        )
+        if not result or not result[0] or result[0][0][0] == 0:
+            return None
+        return self._format_result(result)
+
+    def _query_group_count(
+        self,
+        table: ExcelTableRecord,
+        db: Session,
+        schema_list: list[dict],
+        task: PlannedTask,
+    ) -> str | None:
+        group_col = self._resolve_hint_column(schema_list, task.group_by_hint, min_score=40)
+        if group_col is None:
+            return None
+        group_expr = _sql_quote_identifier(group_col["name"])
+        where_clause = self._where_clause_for_filters(schema_list, task.filters)
+        sql = (
+            f'SELECT {group_expr} AS "{group_col["name"]}", COUNT(*) AS "Số lượng" '
+            f'FROM "{table.table_name}"{where_clause} '
+            f'WHERE {group_expr} IS NOT NULL ' if not where_clause else
+            f'SELECT {group_expr} AS "{group_col["name"]}", COUNT(*) AS "Số lượng" '
+            f'FROM "{table.table_name}"{where_clause} AND {group_expr} IS NOT NULL '
+        )
+        sql += f'GROUP BY {group_expr} ORDER BY "Số lượng" DESC, {group_expr} LIMIT {SQL_MAX_ROWS}'
+        result = self._execute(sql, db)
+        if not result or not result[0]:
+            return None
+        return self._format_result(result)
+
+    def _query_generic_aggregate(
+        self,
+        table: ExcelTableRecord,
+        db: Session,
+        schema_list: list[dict],
+        task: PlannedTask,
+    ) -> str | None:
+        if task.op == "count":
+            result = self._execute(
+                f'SELECT COUNT(*) AS "Số lượng" FROM "{table.table_name}"'
+                f'{self._where_clause_for_filters(schema_list, task.filters)}',
+                db,
+            )
+            return self._format_result(result) if result else None
+
+        metric_col = self._resolve_hint_column(schema_list, task.metric_hint, require_numeric=True, min_score=45)
+        if metric_col is None:
+            return None
+        fn = (task.op or "").upper()
+        if fn not in {"SUM", "AVG", "MIN", "MAX"}:
+            return None
+        quoted_col = _sql_quote_identifier(metric_col["name"])
+        where_clause = self._where_clause_for_filters(schema_list, task.filters)
+        result = self._execute(
+            f'SELECT {fn}({quoted_col}) AS "{metric_col["name"]}_{fn}" '
+            f'FROM "{table.table_name}"{where_clause}',
+            db,
+        )
+        if result and result[0] and all(value is None for value in result[0][0]):
+            return None
+        return self._format_result(result) if result else None
+
+    def _query_generic_extreme(
+        self,
+        table: ExcelTableRecord,
+        db: Session,
+        schema_list: list[dict],
+        task: PlannedTask,
+    ) -> str | None:
+        metric_hint = task.metric_hint or ""
+        metric_norm = normalize_text(metric_hint)
+        if any(token in metric_norm for token in ("tuoi", "sinh", "birth", "age")):
+            if task.direction == "max":
+                return self._query_oldest_person(table, db, schema_list, metric_hint + " " + " ".join(str(f.get("value", "")) for f in task.filters or []))
+            return self._query_youngest_person(table, db, schema_list, metric_hint + " " + " ".join(str(f.get("value", "")) for f in task.filters or []))
+
+        metric_col = self._resolve_hint_column(schema_list, metric_hint, require_numeric=True, min_score=45)
+        if metric_col is None:
+            return None
+        direction = "DESC" if task.direction == "max" else "ASC"
+        quoted_col = _sql_quote_identifier(metric_col["name"])
+        where_clause = self._where_clause_for_filters(schema_list, task.filters)
+        result = self._execute(
+            f'SELECT * FROM "{table.table_name}"{where_clause} '
+            f'ORDER BY {quoted_col} IS NULL ASC, {quoted_col} {direction} LIMIT 1',
+            db,
+        )
+        if not result or not result[0]:
+            return None
+        return self._format_result(result)
+
+    def _query_gender_count(
+        self,
+        table: ExcelTableRecord,
+        db: Session,
+        schema_list: list[dict],
+    ) -> str | None:
+        gender_col = _best_column(schema_list, "giới tính nam nữ", {"gender"}, min_score=60)
+        if gender_col is None:
+            return None
+        col = _sql_quote_identifier(gender_col["name"])
+        sql = (
+            'SELECT '
+            f"SUM(CASE WHEN LOWER(CAST({col} AS TEXT)) IN ('nam', 'male', 'm') THEN 1 ELSE 0 END) AS \"Nam\", "
+            f"SUM(CASE WHEN CAST({col} AS TEXT) IN ('Nữ', 'nữ', 'Nu', 'nu', 'NU', 'Female', 'female', 'F', 'f') "
+            f"THEN 1 ELSE 0 END) AS \"Nữ\" "
+            f'FROM "{table.table_name}"'
+        )
+        result = self._execute(sql, db)
+        if not result:
+            return None
+        return self._format_result(result)
 
     # ── RETAS queries (deterministic, no LLM) ────────────────────
     def _query_retas(
@@ -337,11 +1449,12 @@ class ExcelQueryService:
         
         # Check if search_text column exists
         col_names = {c['name'] for c in schema}
-        has_search_text = 'search_text' in col_names
+        has_search_text = True
+        search_keywords = _select_search_keywords(keywords)
         
         if has_search_text:
             # Normal path: use search_text
-            conditions = ' AND '.join(f"search_text LIKE '%{kw}%'" for kw in keywords)
+            conditions = _search_text_conditions(search_keywords)
             return (
                 f'SELECT * FROM "{table.table_name}" '
                 f'WHERE search_text IS NOT NULL '
@@ -353,11 +1466,11 @@ class ExcelQueryService:
             text_cols = [f'"{c["name"]}"' for c in schema if c['dtype'] == 'TEXT']
             if not text_cols:
                 return None
-            # Build: WHERE (col1 LIKE %kw1% OR col2 LIKE %kw1% OR ...) 
-            #    AND (col1 LIKE %kw2% OR col2 LIKE %kw2% OR ...)
+            # Build: WHERE (LOWER(col1) LIKE LOWER(%kw1%) OR LOWER(col2) LIKE LOWER(%kw1%) OR ...) 
+            #    AND (LOWER(col1) LIKE LOWER(%kw2%) OR LOWER(col2) LIKE LOWER(%kw2%) OR ...)
             conditions = []
-            for kw in keywords:
-                or_parts = [f'{col} LIKE \'%{kw}%\'' for col in text_cols]
+            for kw in search_keywords:
+                or_parts = [_contains_expr(col, kw) for col in text_cols]
                 conditions.append(f'({" OR ".join(or_parts)})')
             where_clause = ' AND '.join(conditions)
             return (
@@ -371,7 +1484,8 @@ class ExcelQueryService:
     ) -> str:
         # Check if search_text column exists (added in later version)
         col_names = {c['name'] for c in schema}
-        has_search_text = 'search_text' in col_names
+        has_search_text = True
+        search_keywords = _select_search_keywords(keywords)
         
         if not keywords:
             return f'SELECT COUNT(*) AS "Số lượng" FROM "{table.table_name}"'
@@ -382,17 +1496,17 @@ class ExcelQueryService:
             if not text_cols:
                 # No text columns → just count all
                 return f'SELECT COUNT(*) AS "Số lượng" FROM "{table.table_name}"'
-            # Build: WHERE (col1 LIKE %kw1% OR col2 LIKE %kw1% OR ...) 
-            #    AND (col1 LIKE %kw2% OR col2 LIKE %kw2% OR ...)
+            # Build: WHERE (LOWER(col1) LIKE LOWER(%kw1%) OR LOWER(col2) LIKE LOWER(%kw1%) OR ...) 
+            #    AND (LOWER(col1) LIKE LOWER(%kw2%) OR LOWER(col2) LIKE LOWER(%kw2%) OR ...)
             conditions = []
-            for kw in keywords:
-                or_parts = [f'{col} LIKE \'%{kw}%\'' for col in text_cols]
+            for kw in search_keywords:
+                or_parts = [_contains_expr(col, kw) for col in text_cols]
                 conditions.append(f'({" OR ".join(or_parts)})')
             where_clause = ' AND '.join(conditions)
             return f'SELECT COUNT(*) AS "Số lượng" FROM "{table.table_name}" WHERE {where_clause}'
         
         # Normal path: search_text exists
-        conditions = ' AND '.join(f"search_text LIKE '%{kw}%'" for kw in keywords)
+        conditions = _search_text_conditions(search_keywords)
         return (
             f'SELECT COUNT(*) AS "Số lượng" FROM "{table.table_name}" '
             f'WHERE search_text IS NOT NULL '
@@ -418,11 +1532,12 @@ class ExcelQueryService:
 
         # Check if search_text column exists
         col_names = {c['name'] for c in schema}
-        has_search_text = 'search_text' in col_names
+        has_search_text = True
+        search_keywords = _select_search_keywords(keywords)
         
         if has_search_text:
             # Normal path: use search_text
-            conditions = ' AND '.join(f"search_text LIKE '%{kw}%'" for kw in keywords)
+            conditions = _search_text_conditions(search_keywords)
             return (
                 f'SELECT {col_list} FROM "{table.table_name}" '
                 f'WHERE search_text IS NOT NULL '
@@ -434,11 +1549,11 @@ class ExcelQueryService:
             if not text_cols:
                 # No text columns → no filtering
                 return f'SELECT {col_list} FROM "{table.table_name}"'
-            # Build: WHERE (col1 LIKE %kw1% OR col2 LIKE %kw1% OR ...) 
-            #    AND (col1 LIKE %kw2% OR col2 LIKE %kw2% OR ...)
+            # Build: WHERE (LOWER(col1) LIKE LOWER(%kw1%) OR LOWER(col2) LIKE LOWER(%kw1%) OR ...) 
+            #    AND (LOWER(col1) LIKE LOWER(%kw2%) OR LOWER(col2) LIKE LOWER(%kw2%) OR ...)
             conditions = []
-            for kw in keywords:
-                or_parts = [f'{col} LIKE \'%{kw}%\'' for col in text_cols]
+            for kw in search_keywords:
+                or_parts = [_contains_expr(col, kw) for col in text_cols]
                 conditions.append(f'({" OR ".join(or_parts)})')
             where_clause = ' AND '.join(conditions)
             return f'SELECT {col_list} FROM "{table.table_name}" WHERE {where_clause}'

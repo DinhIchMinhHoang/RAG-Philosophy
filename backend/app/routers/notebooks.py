@@ -294,19 +294,16 @@ def latest_notebook_conversation(
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(database.get_db),
 ):
-    nb = db.query(models.Notebook).filter(models.Notebook.id == notebook_id).first()
-    if not nb:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Notebook not found")
-    if nb.owner_id != current_user.id and not nb.is_community:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
+    _get_visible_notebook(db, notebook_id, current_user.id)
 
     conversation = (
         db.query(models.Conversation)
         .filter(
             models.Conversation.notebook_id == notebook_id,
             models.Conversation.owner_id == current_user.id,
+            models.Conversation.archived_at.is_(None),
         )
-        .order_by(models.Conversation.created_at.desc())
+        .order_by(models.Conversation.updated_at.desc(), models.Conversation.created_at.desc())
         .first()
     )
 
@@ -318,18 +315,24 @@ def latest_notebook_conversation(
             limit=limit,
         )
 
-    messages = (
+    recent_messages = (
         db.query(models.ChatMessage)
         .filter(models.ChatMessage.conversation_id == conversation.id)
-        .order_by(models.ChatMessage.created_at.asc())
+        .order_by(
+            models.ChatMessage.created_at.desc(),
+            models.ChatMessage.id.desc(),
+        )
         .limit(limit)
         .all()
     )
+    messages = list(reversed(recent_messages))
 
     return LatestConversationResponse(
         has_conversation=True,
         conversation={
             "id": conversation.id,
+            "notebook_id": conversation.notebook_id,
+            "owner_id": conversation.owner_id,
             "created_at": conversation.created_at.isoformat(),
             "updated_at": conversation.updated_at.isoformat(),
         },
@@ -346,6 +349,60 @@ def latest_notebook_conversation(
         ],
         limit=limit,
     )
+
+
+@router.post("/{notebook_id}/notes", status_code=status.HTTP_201_CREATED, response_model=SavedNotebookItemResponse)
+def save_notebook_item(
+    notebook_id: int,
+    payload: SavedNotebookItemCreate,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(database.get_db),
+):
+    notebook = db.query(models.Notebook).filter(
+        models.Notebook.id == notebook_id,
+        models.Notebook.owner_id == current_user.id,
+    ).first()
+    if notebook is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Notebook not found")
+
+    if payload.conversation_id:
+        conversation = db.query(models.Conversation).filter(
+            models.Conversation.id == payload.conversation_id,
+            models.Conversation.owner_id == current_user.id,
+            models.Conversation.notebook_id == notebook_id,
+        ).first()
+        if conversation is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+
+    if payload.message_id:
+        message = (
+            db.query(models.ChatMessage)
+            .join(models.Conversation, models.Conversation.id == models.ChatMessage.conversation_id)
+            .filter(
+                models.ChatMessage.id == payload.message_id,
+                models.Conversation.owner_id == current_user.id,
+                models.Conversation.notebook_id == notebook_id,
+            )
+            .first()
+        )
+        if message is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Message not found")
+
+    item = models.SavedNotebookItem(
+        id=str(uuid.uuid4()),
+        owner_id=current_user.id,
+        notebook_id=notebook.id,
+        kind=payload.kind,
+        title=payload.title,
+        content=payload.content,
+        conversation_id=payload.conversation_id,
+        message_id=payload.message_id,
+        sources_used=payload.sources_used,
+    )
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    return _saved_item_response(item)
 
 
 @router.patch("/{notebook_id}", response_model=NotebookResponse)

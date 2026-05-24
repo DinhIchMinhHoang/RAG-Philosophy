@@ -16,6 +16,7 @@ class Settings:
     celery_ingest_queue: str
     celery_max_retries: int
     celery_retry_backoff_max: int
+    sync_ingest_when_queue_idle: bool
     pipeline_version: str
     service_name: str
     api_service_name: str
@@ -54,7 +55,7 @@ def _parse_bool(value: Optional[str], default: bool = False) -> bool:
 
 
 _ROOT_DIR = Path(__file__).resolve().parents[3]
-load_dotenv(dotenv_path=_ROOT_DIR / ".env", override=True)
+load_dotenv(dotenv_path=_ROOT_DIR / ".env", override=False)
 
 
 def load_settings() -> Settings:
@@ -71,6 +72,7 @@ def load_settings() -> Settings:
         celery_ingest_queue=os.getenv("CELERY_INGEST_QUEUE", "ingest"),
         celery_max_retries=int(os.getenv("CELERY_MAX_RETRIES", "5")),
         celery_retry_backoff_max=int(os.getenv("CELERY_RETRY_BACKOFF_MAX", "300")),
+        sync_ingest_when_queue_idle=_parse_bool(os.getenv("SYNC_INGEST_WHEN_QUEUE_IDLE"), default=False),
         pipeline_version=pipeline_version,
         service_name=os.getenv("SERVICE_NAME", "ingest-worker").strip(),
         api_service_name=os.getenv("API_SERVICE_NAME", "backend-api").strip(),

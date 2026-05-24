@@ -1,4 +1,12 @@
-export const BASE_URL = '/api';
+const browserBaseUrl =
+    typeof window !== 'undefined' && window.location?.hostname === '127.0.0.1' && window.location?.port === '5500'
+        ? 'http://127.0.0.1:8000/api'
+        : '/api';
+
+export const BASE_URL =
+    typeof window !== 'undefined' && window.LUMINA_API_BASE
+        ? window.LUMINA_API_BASE
+        : browserBaseUrl;
 
 export function getToken() {
     return localStorage.getItem('accessToken');

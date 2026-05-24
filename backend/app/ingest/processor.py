@@ -325,15 +325,7 @@ def run_ingest_job(
     def _mark_stage(stage: str, ratio: float, detail: str) -> None:
         updater.advance_stage(job_id, stage, ratio=ratio, stage_detail=detail)
 
-    updater.set_state(
-        job_id,
-        status="running",
-        stage="fetching_object",
-        progress_pct=0,
-        pipeline_version=pipeline_version,
-        stage_detail="starting",
-        error_message=None,
-    )
+    updater.start_run(job_id, pipeline_version=pipeline_version)
 
     stage_started = time.perf_counter()
     _mark_stage("fetching_object", 0.1, "fetch_started")
@@ -465,15 +457,7 @@ def run_url_ingest_job(
     def _mark_stage(stage: str, ratio: float, detail: str) -> None:
         updater.advance_stage(job_id, stage, ratio=ratio, stage_detail=detail)
 
-    updater.set_state(
-        job_id,
-        status="running",
-        stage="fetching_object",
-        progress_pct=0,
-        pipeline_version=pipeline_version,
-        stage_detail="starting",
-        error_message=None,
-    )
+    updater.start_run(job_id, pipeline_version=pipeline_version)
 
     stage_started = time.perf_counter()
     _mark_stage("fetching_object", 0.1, "url_fetch_started")

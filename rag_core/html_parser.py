@@ -339,6 +339,22 @@ def parse_html_bytes(
     except Exception as exc:
         logger.warning("[HtmlParser] Readability pipeline failed: %s", exc)
 
+    # Fallback: preserve headings/tables with BeautifulSoup even when
+    # readability-lxml is unavailable or cannot extract a main article.
+    try:
+        soup = BeautifulSoup(html, 'lxml')
+        for tag in soup(['script', 'style', 'nav', 'footer', 'header', 'aside']):
+            tag.decompose()
+        markdown = _html_to_markdown(soup)
+        if markdown:
+            logger.info("[HtmlParser] BeautifulSoup Markdown fallback success: %d chars", len(markdown))
+            return _sanitize_and_split(
+                markdown, source, document_id, pipeline_version,
+                namespace=NAMESPACE_HTML, skip_sanitize=True,
+            )
+    except Exception as exc:
+        logger.warning("[HtmlParser] BeautifulSoup Markdown fallback failed: %s", exc)
+
     # Last resort: BSoup raw text extraction
     raw_text = _extract_raw_text(html)
     if raw_text:

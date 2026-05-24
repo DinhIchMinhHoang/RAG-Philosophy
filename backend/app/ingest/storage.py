@@ -120,13 +120,19 @@ class MinioStorageClient:
             secret_key=settings.minio_secret_key,
             secure=settings.minio_secure,
         )
+        self._bucket_checked = False
 
+    def _ensure_bucket(self) -> None:
+        if self._bucket_checked:
+            return
         if not self.client.bucket_exists(self.bucket):
             self.client.make_bucket(self.bucket)
+        self._bucket_checked = True
 
     def put_bytes(self, object_key: str, content: bytes, content_type: str) -> None:
         from io import BytesIO
 
+        self._ensure_bucket()
         payload = BytesIO(content)
         self.client.put_object(
             bucket_name=self.bucket,

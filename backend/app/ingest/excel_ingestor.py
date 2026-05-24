@@ -11,6 +11,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from ..models import ExcelTableRecord
+from ..services.excel_schema import build_column_profile
 from .constants import (
     BATCH_SIZE,
     HEADER_CHECK_ROWS,
@@ -89,6 +90,10 @@ def _ingest_dataframe(
     sheet_name: str,
     table_name: str,
 ) -> ExcelTableRecord:
+    engine = db.get_bind()
+    if engine is None:
+        raise RuntimeError("Database session is not bound to an engine")
+
     if df.empty:
         raise ValueError(f"Empty sheet: {sheet_name}")
 
@@ -119,11 +124,13 @@ def _ingest_dataframe(
         ensure_ascii=False, default=str
     )
 
+    db.query(ExcelTableRecord).filter(
+        ExcelTableRecord.document_id == document_id,
+        ExcelTableRecord.table_name == table_name,
+    ).delete(synchronize_session=False)
+    db.flush()
+
     with engine.connect() as conn:
-        conn.execute(
-            text('DELETE FROM excel_table_records WHERE document_id = :doc_id AND table_name = :tbl'),
-            {"doc_id": document_id, "tbl": table_name},
-        )
         conn.execute(text(f'DROP TABLE IF EXISTS "{table_name}"'))
         conn.execute(text(_create_table_ddl(table_name, final_cols, dtypes)))
         conn.execute(text(f'CREATE INDEX IF NOT EXISTS "ix_{table_name}_row" ON "{table_name}" (_row_idx)'))
@@ -143,7 +150,15 @@ def _ingest_dataframe(
 
     data_df.to_sql(table_name, engine, if_exists='append', index=False, method='multi', chunksize=BATCH_SIZE)
 
-    col_schema = [{"name": c, "dtype": d} for c, d in zip(final_cols, dtypes)]
+    col_schema = [
+        build_column_profile(
+            original_name=raw,
+            safe_name=col,
+            dtype=dtype,
+            values=data_df[col].head(200).tolist(),
+        )
+        for raw, col, dtype in zip(raw_cols, final_cols, dtypes)
+    ]
     return ExcelTableRecord(
         id=str(uuid.uuid4()),
         document_id=document_id,
@@ -168,7 +183,9 @@ def ingest_excel_to_sql(
     if size_mb > MAX_FILE_SIZE_MB:
         raise ValueError(f"File {size_mb:.1f}MB > {MAX_FILE_SIZE_MB}MB limit")
 
-    engine = db.bind
+    engine = db.get_bind()
+    if engine is None:
+        raise RuntimeError("Database session is not bound to an engine")
     results: list[ExcelTableRecord] = []
 
     try:

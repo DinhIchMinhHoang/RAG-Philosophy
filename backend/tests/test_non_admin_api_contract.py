@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import unittest
+import tempfile
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, patch
 
@@ -13,6 +14,7 @@ from sqlalchemy.pool import StaticPool
 from sqlalchemy.orm import sessionmaker
 
 from backend.app import database, models
+from backend.app.ingest.storage import LocalStorageClient
 from backend.app.routers import auth, chat, documents, ingest, notebooks
 from backend.app.services.chat_runtime import RetrievedContext
 
@@ -31,9 +33,15 @@ class NonAdminApiContractTests(unittest.TestCase):
         )
         self.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=self.engine)
         models.Base.metadata.create_all(self.engine)
+        self._storage_tmpdir = tempfile.TemporaryDirectory()
+        self._storage_client = LocalStorageClient(self._storage_tmpdir.name)
 
         self._orig_ingest_session_local = ingest.SessionLocal
+        self._orig_ingest_storage_client = ingest.storage_client
+        self._orig_documents_storage_client = documents.storage_client
         ingest.SessionLocal = self.SessionLocal
+        ingest.storage_client = self._storage_client
+        documents.storage_client = self._storage_client
 
         app = FastAPI()
         app.include_router(auth.router)
@@ -57,6 +65,9 @@ class NonAdminApiContractTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         ingest.SessionLocal = self._orig_ingest_session_local
+        ingest.storage_client = self._orig_ingest_storage_client
+        documents.storage_client = self._orig_documents_storage_client
+        self._storage_tmpdir.cleanup()
         self.engine.dispose()
 
     def _signup_and_get_token(self, username: str = "tester", email: str = "tester@gmail.com") -> str:

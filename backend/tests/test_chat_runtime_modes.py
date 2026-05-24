@@ -291,6 +291,64 @@ class ChatRuntimeModeTests(unittest.TestCase):
 
         self.assertEqual(self.service.filter_citations_for_answer("Không có marker.", citations), [])
 
+    def test_answer_falls_back_to_local_llm_when_primary_fails_before_tokens(self) -> None:
+        fake_settings = SimpleNamespace(
+            llm_mode="gemini",
+            retrieval_mode="dense",
+            retrieval_top_k=5,
+            qdrant_collection="rag",
+            local_llm_base_url="http://localhost:11434",
+            local_llm_model="llama3.1:8b",
+        )
+
+        with patch.object(chat_runtime, "settings", fake_settings), patch.object(
+            self.service,
+            "_append_excel_context",
+            return_value="[Excel Query Result — không có citation marker]\n| Số lượng |\n| --- |\n| 3 |",
+        ), patch.object(
+            self.service,
+            "_invoke_provider",
+            new=AsyncMock(side_effect=[RuntimeError("llm down"), "LLM diễn đạt tự nhiên"]),
+        ):
+            answer, provider = asyncio.run(self.service.answer("q", self.contexts))
+
+        self.assertEqual(provider, "local")
+        self.assertEqual(answer, "LLM diễn đạt tự nhiên")
+
+    def test_stream_falls_back_to_local_llm_when_primary_fails_before_tokens(self) -> None:
+        fake_settings = SimpleNamespace(
+            llm_mode="gemini",
+            retrieval_mode="dense",
+            retrieval_top_k=5,
+            qdrant_collection="rag",
+            local_llm_base_url="http://localhost:11434",
+            local_llm_model="llama3.1:8b",
+        )
+
+        async def collect():
+            chunks = []
+            async for token in self.service.stream_answer("q", self.contexts):
+                chunks.append(token)
+            return chunks
+
+        with patch.object(chat_runtime, "settings", fake_settings), patch.object(
+            self.service,
+            "_append_excel_context",
+            return_value="[Excel Query Result — không có citation marker]\n| Số lượng |\n| --- |\n| 3 |",
+        ), patch.object(
+            self.service,
+            "_stream_provider",
+            side_effect=RuntimeError("llm down"),
+        ), patch.object(
+            self.service,
+            "_invoke_provider",
+            new=AsyncMock(return_value="LLM diễn đạt tự nhiên"),
+        ):
+            chunks = asyncio.run(collect())
+
+        self.assertEqual(len(chunks), 1)
+        self.assertEqual(chunks[0], "LLM diễn đạt tự nhiên")
+
 
 if __name__ == "__main__":
     unittest.main()

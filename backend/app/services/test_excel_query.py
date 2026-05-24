@@ -375,7 +375,7 @@ class TestExcelQueryService(unittest.TestCase):
         result = self.service._format_result(([], ["Ma_HP"]))
         self.assertEqual(result, "Không có kết quả phù hợp.")
 
-     def test_run_analysis(self):
+    def test_run_analysis(self):
         """Analysis should execute multiple queries and return formatted result."""
         call_log: list[str] = []
 

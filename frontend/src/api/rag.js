@@ -71,6 +71,7 @@ export function chatStream(message, { conversationId, notebookId, onToken, onDon
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
             let buffer = '';
+            let finalPayload = null;
             while (true) {
                 const { done, value } = await reader.read();
                 if (done) break;
@@ -80,14 +81,23 @@ export function chatStream(message, { conversationId, notebookId, onToken, onDon
                 for (const line of lines) {
                     const trimmed = line.trim();
                     if (!trimmed || !trimmed.startsWith('data: ')) continue;
+                    let streamPayload;
                     try {
-                        const payload = JSON.parse(trimmed.slice(6));
-                        if (payload.done) { if (onDone) onDone(payload); return; }
-                        if (payload.token && onToken) onToken(payload.token);
+                        streamPayload = JSON.parse(trimmed.slice(6));
                     } catch (e) { /* skip malformed */ }
+                    if (!streamPayload) continue;
+                    if (streamPayload.type === 'error' || streamPayload.error) {
+                        throw new Error(streamPayload.error || 'Chat stream failed');
+                    }
+                    if (streamPayload.done) {
+                        finalPayload = streamPayload;
+                        if (onDone) onDone(streamPayload);
+                        return;
+                    }
+                    if (streamPayload.token && onToken) onToken(streamPayload.token);
                 }
             }
-            if (onDone) onDone(payload);
+            if (onDone) onDone(finalPayload);
         })
         .catch((err) => {
             if (err.name === 'AbortError') return;

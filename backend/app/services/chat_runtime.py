@@ -44,11 +44,17 @@ _SYSTEM_PROMPT = (
     "   - Mọi nhận định dựa trên tài liệu phải kèm marker citation inline như [C1] hoặc [C2].\n"
     "   - Chỉ dùng các marker xuất hiện ở đầu block Context. Không tạo marker mới.\n"
     "   - Nếu Context không có đáp án, hãy nói rõ là tài liệu không đề cập và không gắn citation giả.\n\n"
+    "3. Nếu Context có khối bắt đầu bằng `[Excel Query Result`:\n"
+    "   - Hãy xem đó là dữ liệu bảng trung gian do hệ thống truy xuất được.\n"
+    "   - Diễn đạt lại kết quả tự nhiên bằng tiếng Việt, không chép nguyên văn bảng nếu không cần.\n"
+    "   - Không tạo citation cho khối Excel này.\n"
+    "   - Nếu câu hỏi có nhiều ý, hãy trả lời đủ từng ý theo dữ liệu bảng.\n\n"
     "Context:\n{context}"
 )
 
 _CITATION_MARKER_RE = re.compile(r"\[(C\d+)\]", re.IGNORECASE)
 _CITATION_GROUP_RE = re.compile(r"\[((?:\s*C\d+\s*(?:,\s*)?)+)\]", re.IGNORECASE)
+_EXCEL_CONTEXT_PREFIX = "[Excel Query Result"
 
 
 @dataclass
@@ -424,6 +430,16 @@ class ChatRuntimeService:
             db.rollback()
         return context_text
 
+    def _excel_context_text(self, context_text: str) -> str | None:
+        if not context_text.startswith(_EXCEL_CONTEXT_PREFIX):
+            return None
+        block = context_text.split("\n\n---\n\n", 1)[0]
+        lines = block.splitlines()
+        result = "\n".join(lines[1:]).strip()
+        if not result:
+            return None
+        return result
+
     async def answer(
         self,
         question: str,
@@ -440,9 +456,17 @@ class ChatRuntimeService:
 
         if mode in {"gemini", "opencode"}:
             cloud_provider = infer_llm_provider(RagConfig.LLM_MODEL, None if mode == "gemini" else mode)
-            return await self._invoke_provider(mode, question, context_text, chat_history_text), cloud_provider
+            try:
+                return await self._invoke_provider(mode, question, context_text, chat_history_text), cloud_provider
+            except Exception as exc:
+                logger.warning("llm_failed_falling_back_to_local: %s", str(exc)[:200])
+                return await self._invoke_provider("local", question, context_text, chat_history_text), "local"
+                raise
         if mode == "local":
-            return await self._invoke_provider("local", question, context_text, chat_history_text), "local"
+            try:
+                return await self._invoke_provider("local", question, context_text, chat_history_text), "local"
+            except Exception:
+                raise
 
         # auto mode
         cloud_provider = infer_llm_provider(RagConfig.LLM_MODEL)
@@ -467,13 +491,29 @@ class ChatRuntimeService:
         chat_history_text = self._build_history(recent_history)
 
         if mode in {"gemini", "opencode"}:
-            async for token in self._stream_provider(mode, question, context_text, chat_history_text):
-                yield token
+            emitted = False
+            try:
+                async for token in self._stream_provider(mode, question, context_text, chat_history_text):
+                    emitted = True
+                    yield token
+            except Exception as exc:
+                if emitted:
+                    raise
+                logger.warning("llm_stream_failed_falling_back_to_local: %s", str(exc)[:200])
+                fallback = await self._invoke_provider("local", question, context_text, chat_history_text)
+                yield fallback
             return
 
         if mode == "local":
-            async for token in self._stream_provider("local", question, context_text, chat_history_text):
-                yield token
+            emitted = False
+            try:
+                async for token in self._stream_provider("local", question, context_text, chat_history_text):
+                    emitted = True
+                    yield token
+            except Exception:
+                if emitted:
+                    raise
+                raise
             return
 
         # auto mode
@@ -487,8 +527,12 @@ class ChatRuntimeService:
             if emitted:
                 raise
             logger.warning("llm_auto_stream_fallback_to_local: %s unavailable: %s", cloud_provider, str(exc))
-            async for token in self._stream_provider("local", question, context_text, chat_history_text):
-                yield token
+            try:
+                async for token in self._stream_provider("local", question, context_text, chat_history_text):
+                    yield token
+            except Exception:
+                fallback = await self._invoke_provider("local", question, context_text, chat_history_text)
+                yield fallback
 
     async def _stream_provider(self, provider: str, question: str, context_text: str, chat_history_text: str):
         chain = self._build_llm_chain(provider)
