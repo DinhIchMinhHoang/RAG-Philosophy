@@ -274,9 +274,45 @@ The JSON body is required, but `pipeline_version` is optional when the backend d
 
 ---
 
+### GET /api/documents/{document_id}/file
+
+Stream the original stored source file for the Source Viewer.
+
+**Headers:**
+```
+Authorization: Bearer <JWT_TOKEN>
+Range: bytes=0-99
+```
+
+The browser viewer may also authenticate with `?token=<JWT_TOKEN>` because iframe requests cannot attach custom headers.
+
+**Response (200):**
+- `Content-Type`: document `mime_type`
+- `Content-Disposition`: `inline`
+- `Accept-Ranges`: `bytes`
+- Body: full source bytes
+
+**Response (206):**
+- `Content-Range`: requested byte range
+- Body: requested byte range only
+
+**Errors:**
+- 404: File not found or not owned by the current user
+- 416: Invalid or out-of-bounds range
+
+PDF citation jumps use the browser PDF viewer fragment:
+
+```
+/api/documents/{document_id}/file?token=<JWT_TOKEN>#page=12
+```
+
+---
+
 ### GET /api/documents/{document_id}/page-image/{page_number}
 
 Get a rendered page from a PDF as PNG.
+
+Legacy-only preview path. The Source Viewer should use `/api/documents/{document_id}/file` and must not call this endpoint for citation clicks.
 
 **Response (200):**
 - Content-Type: image/png

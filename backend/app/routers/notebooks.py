@@ -6,8 +6,8 @@ from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Query, Session
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy.orm import Session
 
 from .. import database, models
 from ..core.dependencies import get_current_user
@@ -271,97 +271,81 @@ def create_notebook(
     return _notebook_response(nb)
 
 
+class MessageResponse(BaseModel):
+    id: str
+    role: str
+    content: str
+    sources_used: list[dict] | None
+    rewritten_query: str | None
+    created_at: str
+
+
+class LatestConversationResponse(BaseModel):
+    has_conversation: bool
+    conversation: dict | None
+    messages: list[MessageResponse]
+    limit: int
+
+
 @router.get("/{notebook_id}/conversations/latest", response_model=LatestConversationResponse)
-def get_latest_notebook_conversation(
+def latest_notebook_conversation(
     notebook_id: int,
-    limit: int = 50,
+    limit: int = Query(50, ge=1, le=200),
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(database.get_db),
 ):
-    _get_visible_notebook(db, notebook_id, current_user.id)
-    limit = max(1, min(limit, 100))
+    nb = db.query(models.Notebook).filter(models.Notebook.id == notebook_id).first()
+    if not nb:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Notebook not found")
+    if nb.owner_id != current_user.id and not nb.is_community:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
+
     conversation = (
         db.query(models.Conversation)
         .filter(
-            models.Conversation.owner_id == current_user.id,
             models.Conversation.notebook_id == notebook_id,
-            models.Conversation.archived_at.is_(None),
+            models.Conversation.owner_id == current_user.id,
         )
-        .order_by(models.Conversation.updated_at.desc(), models.Conversation.created_at.desc())
+        .order_by(models.Conversation.created_at.desc())
         .first()
     )
-    if conversation is None:
-        return LatestConversationResponse(conversation=None, messages=[], has_conversation=False, limit=limit)
 
-    rows = (
+    if not conversation:
+        return LatestConversationResponse(
+            has_conversation=False,
+            conversation=None,
+            messages=[],
+            limit=limit,
+        )
+
+    messages = (
         db.query(models.ChatMessage)
         .filter(models.ChatMessage.conversation_id == conversation.id)
-        .order_by(models.ChatMessage.created_at.desc(), models.ChatMessage.id.desc())
+        .order_by(models.ChatMessage.created_at.asc())
         .limit(limit)
         .all()
     )
-    messages = [_message_response(message) for message in reversed(rows)]
+
     return LatestConversationResponse(
-        conversation=_conversation_response(conversation),
-        messages=messages,
         has_conversation=True,
+        conversation={
+            "id": conversation.id,
+            "created_at": conversation.created_at.isoformat(),
+            "updated_at": conversation.updated_at.isoformat(),
+        },
+        messages=[
+            MessageResponse(
+                id=msg.id,
+                role=msg.role,
+                content=msg.content,
+                sources_used=msg.sources_used,
+                rewritten_query=msg.rewritten_query,
+                created_at=msg.created_at.isoformat(),
+            )
+            for msg in messages
+        ],
         limit=limit,
     )
-
-
-@router.post("/{notebook_id}/notes", status_code=status.HTTP_201_CREATED, response_model=SavedNotebookItemResponse)
-def create_saved_notebook_item(
-    notebook_id: int,
-    payload: SavedNotebookItemCreate,
-    current_user: models.User = Depends(get_current_user),
-    db: Session = Depends(database.get_db),
-):
-    _get_visible_notebook(db, notebook_id, current_user.id)
-    content = payload.content.strip()
-    if not content:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Saved item content cannot be empty")
-
-    if payload.conversation_id is not None:
-        conversation = (
-            db.query(models.Conversation)
-            .filter(
-                models.Conversation.id == payload.conversation_id,
-                models.Conversation.owner_id == current_user.id,
-                models.Conversation.notebook_id == notebook_id,
-            )
-            .first()
-        )
-        if conversation is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
-
-    if payload.message_id is not None:
-        message = (
-            db.query(models.ChatMessage)
-            .join(models.Conversation, models.Conversation.id == models.ChatMessage.conversation_id)
-            .filter(
-                models.ChatMessage.id == payload.message_id,
-                models.Conversation.owner_id == current_user.id,
-                models.Conversation.notebook_id == notebook_id,
-            )
-            .first()
-        )
-        if message is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Message not found")
-
-    item = models.SavedNotebookItem(
-        owner_id=current_user.id,
-        notebook_id=notebook_id,
-        conversation_id=payload.conversation_id,
-        message_id=payload.message_id,
-        kind=payload.kind,
-        title=payload.title,
-        content=content,
-        sources_used=payload.sources_used,
-    )
-    db.add(item)
-    db.commit()
-    db.refresh(item)
-    return _saved_item_response(item)
 
 
 @router.patch("/{notebook_id}", response_model=NotebookResponse)
@@ -518,6 +502,11 @@ def delete_notebook(
                     delete_vectors_for_document(qdrant_client, doc.id)
                 except Exception:
                     pass
+            try:
+                from ..ingest.excel_ingestor import drop_excel_tables
+                drop_excel_tables(db, doc.id)
+            except Exception:
+                pass
 
         if doc_ids:
             db.query(models.IngestJob).filter(models.IngestJob.document_id.in_(doc_ids)).delete(synchronize_session=False)
@@ -671,6 +660,10 @@ def delete_file(
     except Exception:
         # don't fail the whole op if qdrant not configured or delete fails
         errors.append("qdrant: failed or not configured")
+
+    # Drop Excel SQL tables if this is an Excel document
+    from ..ingest.excel_ingestor import drop_excel_tables
+    drop_excel_tables(db, document.id)
 
     # delete DB rows
     try:

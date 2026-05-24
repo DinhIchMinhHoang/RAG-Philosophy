@@ -186,6 +186,7 @@ async def _chat_non_stream_impl(db: Session, request: ChatRequest, current_user:
         logger.error("chat_non_stream_failed: %s", str(exc), exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to generate answer")
 
+    answer = chat_runtime_service.normalize_citation_markers(answer, turn.available_citations)
     used_citations = chat_runtime_service.filter_citations_for_answer(answer, turn.available_citations)
     assistant_message = save_chat_message(
         db,
@@ -340,6 +341,7 @@ async def _chat_stream_impl(db: Session, request: ChatRequest, current_user: Use
                 yield _sse_payload({"type": "token", "token": token, "done": False})
 
             answer = "".join(answer_parts)
+            answer = chat_runtime_service.normalize_citation_markers(answer, turn.available_citations)
             timings.error_stage = "save_assistant"
             used_citations = chat_runtime_service.filter_citations_for_answer(answer, turn.available_citations)
             assistant_message = save_chat_message(

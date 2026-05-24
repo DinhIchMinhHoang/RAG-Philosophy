@@ -203,8 +203,9 @@ function setupMoreMenu(transitionManager) {
                         cover_color: currentTarget.dataset.coverColor || null,
                     }).catch(err => console.error('[Dashboard] Rename failed', err));
                 }
-                if (currentTarget === lastFakeTarget) {
-                    const chatTitleEl = document.querySelector('#scene-chat .chat-title');
+                const chatScene = document.getElementById('scene-chat');
+                if (chatScene && nbId && chatScene.dataset.notebookId === nbId) {
+                    const chatTitleEl = chatScene.querySelector('.chat-title');
                     if (chatTitleEl) chatTitleEl.textContent = newTitle;
                 }
             }
@@ -214,9 +215,15 @@ function setupMoreMenu(transitionManager) {
         } else if (action === 'delete') {
             if (confirm('Delete this notebook?')) {
                 const nbId = currentTarget.dataset.notebookId;
+                const chatScene = document.getElementById('scene-chat');
+                const isDeletingCurrentChat = chatScene && nbId && chatScene.dataset.notebookId === nbId;
                 if (nbId) deleteNotebook(nbId).catch(err => console.error('[Dashboard] Delete failed', err));
                 const parent = currentTarget.parentElement;
                 if (parent) parent.removeChild(currentTarget);
+                if (isDeletingCurrentChat) {
+                    delete chatScene.dataset.notebookId;
+                    transitionManager.transitionTo('dashboard');
+                }
             }
         } else if (action === 'copy') {
             const nbId = currentTarget.dataset.notebookId;
@@ -254,6 +261,12 @@ export function initDashboardScene(transitionManager) {
             e.preventDefault();
             try {
                 const nb = await createNotebook({ title: 'Untitled notebook', is_community: false });
+                const myGrid = document.querySelector('.my-grid');
+                if (myGrid) {
+                    const empty = myGrid.querySelector('.notebook-empty-state');
+                    if (empty) empty.remove();
+                    myGrid.prepend(buildNotebookItem(nb));
+                }
                 transitionManager.openNotebook(nb.title, nb.id, null, 'false');
             } catch (err) {
                 console.error('[Dashboard] Failed to create notebook', err);
@@ -336,6 +349,16 @@ export function initDashboardScene(transitionManager) {
         });
         if (shouldLoadNotebooks()) loadNotebooks();
 
+        let wasDashboardHidden = true;
+        const dashboardObserver = new MutationObserver(() => {
+            const isHidden = dashboard.style.display === 'none';
+            if (wasDashboardHidden && !isHidden && shouldLoadNotebooks()) {
+                loadNotebooks();
+            }
+            wasDashboardHidden = isHidden;
+        });
+        dashboardObserver.observe(dashboard, { attributes: true, attributeFilter: ['style'] });
+
         document.addEventListener('click', (ev) => {
             const item = ev.target.closest('.notebook-item');
             if (!item) return;
@@ -414,15 +437,22 @@ export function initDashboardScene(transitionManager) {
             if (settingsBtn) {
                 settingsBtn.addEventListener('click', (ev) => {
                     ev.stopPropagation();
+                    const notebookId = chatScene.dataset.notebookId;
+                    if (!notebookId) return;
                     const chatTitle = chatScene.querySelector('.chat-title')?.textContent || 'Untitled notebook';
-                    const fake = document.createElement('div');
-                    fake.className = 'notebook-item';
-                    fake.style.position = 'absolute'; fake.style.left = '-9999px'; fake.style.top = '-9999px';
-                    if (chatScene.dataset.notebookId) fake.dataset.notebookId = chatScene.dataset.notebookId;
-                    fake.innerHTML = `<div class="cover" style="background: transparent;"></div><div class="item-title">${chatTitle}</div>`;
-                    document.body.appendChild(fake);
-                    setLastFake(fake);
-                    showMenu(fake, settingsBtn);
+                    const item = document.createElement('div');
+                    item.className = 'notebook-item';
+                    item.dataset.notebookId = notebookId;
+                    item.dataset.title = chatTitle;
+                    if (chatScene.dataset.notebookOwnerId) item.dataset.ownerId = chatScene.dataset.notebookOwnerId;
+                    if (chatScene.dataset.isCommunity) item.dataset.isCommunity = chatScene.dataset.isCommunity;
+                    item.style.position = 'absolute';
+                    item.style.left = '-9999px';
+                    item.style.top = '-9999px';
+                    item.innerHTML = `<div class="cover" style="background: transparent;"></div><div class="item-title">${chatTitle}</div>`;
+                    document.body.appendChild(item);
+                    setLastFake(item);
+                    showMenu(item, settingsBtn);
                 });
             }
         }

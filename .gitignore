@@ -39,6 +39,7 @@ test_step1_step2.py
 # ===== Worktrees =====
 .worktrees/
 
+.playwright-mcp/
 .opencode/
 .context/
 e2e-artifacts/

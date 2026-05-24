@@ -42,6 +42,22 @@ class ChunkDraft:
     pipeline_version: str
 
 
+def _strip_nul_chars(value: str) -> str:
+    return value.replace("\x00", "")
+
+
+def _clean_required_metadata(doc: Document, key: str) -> str:
+    value = _strip_nul_chars(str(doc.metadata[key]))
+    if not value:
+        raise ValueError(f"Document metadata field is empty after sanitization: {key}")
+    return value
+
+
+def _clean_page_content(doc: Document) -> str:
+    return _strip_nul_chars(doc.page_content or "")
+
+
+
 def _draft_to_model(draft: ChunkDraft) -> DocumentChunk:
     return DocumentChunk(
         id=draft.id,
@@ -80,7 +96,7 @@ def _build_chunk_drafts(
 
     for idx, parent_doc in enumerate(parent_docs):
         parent_id = str(uuid.uuid4())
-        doc_id = str(parent_doc.metadata["doc_id"])
+        doc_id = _clean_required_metadata(parent_doc, "doc_id")
         parent_by_doc_id[doc_id] = parent_id
         parent_drafts.append(
             ChunkDraft(
@@ -92,8 +108,8 @@ def _build_chunk_drafts(
                 kind="parent",
                 parent_chunk_id=None,
                 chunk_order=idx,
-                text=parent_doc.page_content,
-                source=str(parent_doc.metadata["source"]),
+                text=_clean_page_content(parent_doc),
+                source=_clean_required_metadata(parent_doc, "source"),
                 page=int(parent_doc.metadata["page"]),
                 doc_id=doc_id,
                 pipeline_version=pipeline_version,
@@ -102,7 +118,7 @@ def _build_chunk_drafts(
 
     child_drafts: list[ChunkDraft] = []
     for idx, child_doc in enumerate(child_docs):
-        doc_id = str(child_doc.metadata["doc_id"])
+        doc_id = _clean_required_metadata(child_doc, "doc_id")
         parent_chunk_id = parent_by_doc_id.get(doc_id)
         if not parent_chunk_id:
             raise ValueError(f"Child missing parent mapping for doc_id={doc_id}")
@@ -117,8 +133,8 @@ def _build_chunk_drafts(
                 kind="child",
                 parent_chunk_id=parent_chunk_id,
                 chunk_order=idx,
-                text=child_doc.page_content,
-                source=str(child_doc.metadata["source"]),
+                text=_clean_page_content(child_doc),
+                source=_clean_required_metadata(child_doc, "source"),
                 page=int(child_doc.metadata["page"]),
                 doc_id=doc_id,
                 pipeline_version=pipeline_version,

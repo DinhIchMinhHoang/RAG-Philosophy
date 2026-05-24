@@ -4,6 +4,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
+from dotenv import load_dotenv
 
 
 @dataclass(frozen=True)
@@ -36,6 +37,12 @@ class Settings:
     llm_mode: str
     local_llm_model: str
     local_llm_base_url: str
+    smtp_host: str
+    smtp_port: int
+    smtp_user: str
+    smtp_password: str
+    smtp_use_tls: bool
+    email_from: str
 
 
 
@@ -44,6 +51,10 @@ def _parse_bool(value: Optional[str], default: bool = False) -> bool:
         return default
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
+
+
+_ROOT_DIR = Path(__file__).resolve().parents[3]
+load_dotenv(dotenv_path=_ROOT_DIR / ".env", override=True)
 
 
 def load_settings() -> Settings:
@@ -81,6 +92,12 @@ def load_settings() -> Settings:
         llm_mode=os.getenv("LLM_MODE", "auto").strip().lower(),
         local_llm_model=os.getenv("LOCAL_LLM_MODEL", os.getenv("OLLAMA_MODEL_NAME", "llama3.1:8b")).strip(),
         local_llm_base_url=os.getenv("LOCAL_LLM_BASE_URL", os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")).strip(),
+        smtp_host=os.getenv("SMTP_HOST", "").strip(),
+        smtp_port=int(os.getenv("SMTP_PORT", "587")),
+        smtp_user=os.getenv("SMTP_USER", "").strip(),
+        smtp_password=os.getenv("SMTP_PASSWORD", ""),
+        smtp_use_tls=_parse_bool(os.getenv("SMTP_USE_TLS"), default=True),
+        email_from=os.getenv("EMAIL_FROM", "").strip(),
     )
 
 

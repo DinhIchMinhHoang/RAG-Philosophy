@@ -47,8 +47,8 @@ _SYSTEM_PROMPT = (
     "Context:\n{context}"
 )
 
-_CITATION_ID_RE = re.compile(r"C\d+", re.IGNORECASE)
-_CITATION_GROUP_RE = re.compile(r"\[([Cc]\d+(?:\s*,\s*[Cc]\d+)*)\]")
+_CITATION_MARKER_RE = re.compile(r"\[(C\d+)\]", re.IGNORECASE)
+_CITATION_GROUP_RE = re.compile(r"\[((?:\s*C\d+\s*(?:,\s*)?)+)\]", re.IGNORECASE)
 
 
 @dataclass
@@ -137,20 +137,39 @@ class ChatRuntimeService:
     def citations_from_context(self, contexts: list[RetrievedContext]) -> list[dict]:
         return self._citations_from_context(contexts)
 
+    def normalize_citation_markers(self, answer: str, citations: list[dict] | None = None) -> str:
+        valid_ids = {
+            str(item.get("citation_id", "")).upper()
+            for item in (citations or [])
+            if item.get("citation_id")
+        }
+
+        def replace_group(match: re.Match[str]) -> str:
+            ids = [item.upper() for item in re.findall(r"C\d+", match.group(1), flags=re.IGNORECASE)]
+            if not ids:
+                return match.group(0)
+            for citation_id in ids:
+                if not valid_ids or citation_id in valid_ids:
+                    return f"[{citation_id}]"
+            return f"[{ids[0]}]"
+
+        return _CITATION_GROUP_RE.sub(replace_group, answer or "")
+
     def cited_ids_from_answer(self, answer: str) -> list[str]:
         cited_ids: list[str] = []
         seen: set[str] = set()
-        for group_match in _CITATION_GROUP_RE.finditer(answer or ""):
-            for id_match in _CITATION_ID_RE.finditer(group_match.group(1)):
-                citation_id = id_match.group(0).upper()
-                if citation_id in seen:
-                    continue
-                seen.add(citation_id)
-                cited_ids.append(citation_id)
+        normalized_answer = self.normalize_citation_markers(answer)
+        for match in _CITATION_MARKER_RE.finditer(normalized_answer):
+            citation_id = match.group(1).upper()
+            if citation_id in seen:
+                continue
+            seen.add(citation_id)
+            cited_ids.append(citation_id)
         return cited_ids
 
     def filter_citations_for_answer(self, answer: str, citations: list[dict]) -> list[dict]:
-        cited_ids = set(self.cited_ids_from_answer(answer))
+        normalized_answer = self.normalize_citation_markers(answer, citations)
+        cited_ids = set(self.cited_ids_from_answer(normalized_answer))
         if not cited_ids:
             if citations:
                 logger.warning("answer_missing_citation_markers")
@@ -395,12 +414,14 @@ class ChatRuntimeService:
             if result:
                 logger.info("excel_query_result: %d chars", len(result))
                 block = (
-                    "[Excel Data — citation marker không áp dụng]\n"
+                    "[Excel Query Result — không có citation marker, "
+                    "không cần gắn Trang cho dữ liệu này]\n"
                     f"{result}"
                 )
                 return f"{block}\n\n---\n\n{context_text}" if context_text else block
         except Exception as exc:
             logger.warning("excel_query_failed: %s", str(exc))
+            db.rollback()
         return context_text
 
     async def answer(

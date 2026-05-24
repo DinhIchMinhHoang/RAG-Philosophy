@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import hashlib
 import os
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Protocol
 
@@ -19,6 +21,18 @@ class StorageClient(Protocol):
         ...
 
     def get_bytes(self, object_key: str) -> bytes:
+        ...
+
+    def get_size(self, object_key: str) -> int:
+        ...
+
+    def iter_bytes(
+        self,
+        object_key: str,
+        start: int = 0,
+        length: int | None = None,
+        chunk_size: int = 1024 * 1024,
+    ) -> Iterator[bytes]:
         ...
 
     def delete(self, object_key: str) -> None:
@@ -46,6 +60,35 @@ class LocalStorageClient:
         if not path.exists():
             raise FileNotFoundError(f"Object not found: {object_key}")
         return path.read_bytes()
+
+    def get_size(self, object_key: str) -> int:
+        path = self._resolve_key(object_key)
+        if not path.exists():
+            raise FileNotFoundError(f"Object not found: {object_key}")
+        return path.stat().st_size
+
+    def iter_bytes(
+        self,
+        object_key: str,
+        start: int = 0,
+        length: int | None = None,
+        chunk_size: int = 1024 * 1024,
+    ) -> Iterator[bytes]:
+        path = self._resolve_key(object_key)
+        if not path.exists():
+            raise FileNotFoundError(f"Object not found: {object_key}")
+
+        with path.open("rb") as handle:
+            handle.seek(start)
+            remaining = length
+            while remaining is None or remaining > 0:
+                read_size = chunk_size if remaining is None else min(chunk_size, remaining)
+                chunk = handle.read(read_size)
+                if not chunk:
+                    break
+                yield chunk
+                if remaining is not None:
+                    remaining -= len(chunk)
 
     def delete(self, object_key: str) -> None:
         path = self._resolve_key(object_key)
@@ -101,13 +144,30 @@ class MinioStorageClient:
             response.close()
             response.release_conn()
 
+    def get_size(self, object_key: str) -> int:
+        stat = self.client.stat_object(self.bucket, object_key)
+        return int(stat.size)
+
+    def iter_bytes(
+        self,
+        object_key: str,
+        start: int = 0,
+        length: int | None = None,
+        chunk_size: int = 1024 * 1024,
+    ) -> Iterator[bytes]:
+        response = self.client.get_object(self.bucket, object_key, offset=start, length=length)
+        try:
+            yield from response.stream(chunk_size)
+        finally:
+            response.close()
+            response.release_conn()
+
     def delete(self, object_key: str) -> None:
         try:
             self.client.remove_object(self.bucket, object_key)
         except Exception:
             # Keep deletion idempotent for already removed objects.
             pass
-
 
 
 def build_storage_client() -> StorageClient:
@@ -122,12 +182,15 @@ def build_storage_client() -> StorageClient:
 storage_client = build_storage_client()
 
 
-
 def validate_file_bytes(object_key: str, payload: bytes) -> str:
     ext = Path(object_key).suffix.lower()
 
     if ext not in {'.pdf', '.xlsx', '.xls', '.csv', '.docx', '.html', '.htm', '.md'}:
         raise ValueError(f"Unsupported format: {ext}")
+
+    size_limit_bytes = settings.max_pdf_size_mb * 1024 * 1024
+    if len(payload) > size_limit_bytes:
+        raise ValueError(f"PDF too large (>{settings.max_pdf_size_mb} MB)")
 
     if ext == '.pdf':
         max_bytes = MAX_PDF_SIZE_MB * 1024 * 1024
@@ -179,5 +242,6 @@ def validate_file_bytes(object_key: str, payload: bytes) -> str:
 
     return ext
 
-
-
+def compute_content_hash(file_bytes: bytes) -> str:
+    """Compute SHA-256 hex digest of file bytes for deduplication."""
+    return hashlib.sha256(file_bytes).hexdigest()

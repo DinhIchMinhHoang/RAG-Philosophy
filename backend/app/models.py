@@ -52,6 +52,7 @@ class DocumentRecord(Base):
     object_key: Mapped[str] = mapped_column(String(1024), nullable=False, unique=True)
     mime_type: Mapped[str] = mapped_column(String(128), nullable=False)
     size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
@@ -114,7 +115,7 @@ class ExcelTableRecord(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     __table_args__ = (
-        UniqueConstraint("user_id", "document_id", name="uq_user_doc_excel"),
+        UniqueConstraint("user_id", "document_id", "table_name", name="uq_user_doc_excel"),
         Index("ix_etl_doc_id", "document_id"),
     )
 

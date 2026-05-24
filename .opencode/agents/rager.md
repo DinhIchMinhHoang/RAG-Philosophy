@@ -1,7 +1,7 @@
 ---
 description: Manages the RAG pipeline in rag_core/: PDF parsing, chunking, embedding, storage, and config. Use for data ingestion issues, retrieval quality, or pipeline component updates.
 mode: subagent
-model: opencode/minimax-m2.5-free
+model: opencode-go/deepseek-v4-flash
 temperature: 0.2
 permission:
   edit:

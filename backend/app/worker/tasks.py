@@ -29,6 +29,31 @@ def _is_retryable(exc: Exception) -> bool:
     return isinstance(exc, retryable_types)
 
 
+def _mark_failed_after_exception(db: Any, job_id: str, exc: Exception) -> None:
+    try:
+        db.rollback()
+    except Exception as rollback_exc:
+        log_event(
+            "warning",
+            "job_rollback_failed",
+            job_id=job_id,
+            stage="failed",
+            error_message=_safe_error_message(rollback_exc),
+        )
+
+    try:
+        updater = JobUpdater(db)
+        updater.fail(job_id, _safe_error_message(exc))
+    except Exception as fail_exc:
+        log_event(
+            "error",
+            "job_mark_failed_failed",
+            job_id=job_id,
+            stage="failed",
+            error_message=_safe_error_message(fail_exc),
+        )
+
+
 
 def _payload_from_call(args: tuple[Any, ...], kwargs: dict[str, Any]) -> dict[str, Any]:
     if kwargs:
@@ -214,8 +239,7 @@ def process_url_ingest_job(
         if _is_retryable(exc):
             raise RetryableIngestError(str(exc)) from exc
 
-        updater = JobUpdater(db)
-        updater.fail(job_id, _safe_error_message(exc))
+        _mark_failed_after_exception(db, job_id, exc)
         raise
     finally:
         db.close()

@@ -82,7 +82,7 @@ def _create_table_ddl(table_name: str, columns: list[str], dtypes: list[str]) ->
 
 
 def _ingest_dataframe(
-    engine,
+    db: Session,
     df: pd.DataFrame,
     document_id: str,
     user_id: str,
@@ -175,7 +175,7 @@ def ingest_excel_to_sql(
         if file_ext == '.csv':
             df = pd.read_csv(BytesIO(file_bytes))
             table_name = _safe_table_name(document_id, "csv")
-            rec = _ingest_dataframe(engine, df, document_id, user_id, "csv", table_name)
+            rec = _ingest_dataframe(db, df, document_id, user_id, "csv", table_name)
             db.add(rec)
             results.append(rec)
         else:
@@ -183,7 +183,7 @@ def ingest_excel_to_sql(
             for sheet_name in xls.sheet_names:
                 df = pd.read_excel(xls, sheet_name=sheet_name, header=None)
                 table_name = _safe_table_name(document_id, sheet_name)
-                rec = _ingest_dataframe(engine, df, document_id, user_id, sheet_name, table_name)
+                rec = _ingest_dataframe(db, df, document_id, user_id, sheet_name, table_name)
                 db.add(rec)
                 results.append(rec)
 

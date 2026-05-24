@@ -272,17 +272,19 @@ class ChatRuntimeModeTests(unittest.TestCase):
 
         self.assertEqual([item["citation_id"] for item in filtered], ["C1", "C3"])
 
-    def test_filter_citations_for_answer_supports_grouped_markers(self) -> None:
+    def test_grouped_citation_markers_are_normalized_to_one_marker(self) -> None:
         citations = [
             {"citation_id": "C1", "source": "one.pdf"},
             {"citation_id": "C2", "source": "two.pdf"},
-            {"citation_id": "C3", "source": "three.pdf"},
-            {"citation_id": "C4", "source": "four.pdf"},
+            {"citation_id": "C5", "source": "five.pdf"},
         ]
 
-        filtered = self.service.filter_citations_for_answer("Điểm BLEU là 34.81 [C2, C4].", citations)
+        answer = "Phu thuoc ngan han [C2, C5]. Ket luan khac [C1, C5]."
+        normalized = self.service.normalize_citation_markers(answer, citations)
+        filtered = self.service.filter_citations_for_answer(normalized, citations)
 
-        self.assertEqual([item["citation_id"] for item in filtered], ["C2", "C4"])
+        self.assertEqual(normalized, "Phu thuoc ngan han [C2]. Ket luan khac [C1].")
+        self.assertEqual([item["citation_id"] for item in filtered], ["C1", "C2"])
 
     def test_filter_citations_for_answer_does_not_guess_when_answer_has_no_markers(self) -> None:
         citations = [{"citation_id": "C1", "source": "one.pdf"}]

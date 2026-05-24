@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from .. import database, models, schemas
+from ..core.email_sender import send_email
 from ..core.security import get_password_hash
 
 router = APIRouter(tags=["Authentication"])
@@ -36,8 +37,14 @@ def request_password_reset(req: schemas.PasswordForgotRequest, db: Session = Dep
     db.add(pr)
     db.commit()
 
-    # Mock SMTP: print to console
-    print(f"[MOCK SMTP] To: {req.email} - Your verification code is: {code}")
+    body = f"Your verification code is: {code}"
+    try:
+        send_email(to=req.email, subject="Your password reset code", body=body)
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(exc),
+        )
 
     return {"message": "If an account exists for this email, a verification code has been sent."}
 

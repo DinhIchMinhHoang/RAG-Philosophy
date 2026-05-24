@@ -72,15 +72,34 @@ class IngestProcessorRetryTests(unittest.TestCase):
         self.assertIsNone(job.error_message)
         self.assertEqual(job.pipeline_version, "1.0.1")
 
-    def test_parsed_page_sources_use_original_filename(self) -> None:
-        pages = [
-            Document(page_content="one", metadata={"source": "tmpabc.pdf", "page": 1}),
-            Document(page_content="two", metadata={"source": "tmpabc.pdf", "page": 2}),
-        ]
+    def test_chunk_drafts_strip_nul_characters_before_persistence(self) -> None:
+        parent_doc = Document(
+            page_content="parent\x00 text",
+            metadata={"source": "test\x00.pdf", "page": 1, "doc_id": "doc\x00-a"},
+        )
+        child_doc = Document(
+            page_content="child\x00 text",
+            metadata={"source": "test\x00.pdf", "page": 1, "doc_id": "doc\x00-a"},
+        )
 
-        processor._normalize_parsed_page_sources(pages, "original.pdf")
+        parent_drafts, child_drafts = processor._build_chunk_drafts(
+            document_id=self.document.id,
+            owner_id=None,
+            notebook_id=None,
+            job_id=self.job.id,
+            pipeline_version="1.0.0",
+            parent_docs=[parent_doc],
+            child_docs=[child_doc],
+        )
 
-        self.assertEqual([page.metadata["source"] for page in pages], ["original.pdf", "original.pdf"])
+        for draft in parent_drafts + child_drafts:
+            self.assertNotIn("\x00", draft.text)
+            self.assertNotIn("\x00", draft.source)
+            self.assertNotIn("\x00", draft.doc_id)
+        self.assertEqual(parent_drafts[0].text, "parent text")
+        self.assertEqual(child_drafts[0].text, "child text")
+        self.assertEqual(parent_drafts[0].source, "test.pdf")
+        self.assertEqual(parent_drafts[0].doc_id, "doc-a")
 
 
 if __name__ == "__main__":

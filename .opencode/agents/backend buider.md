@@ -1,7 +1,7 @@
 ---
 description: Manages the FastAPI backend in backend/app/: endpoints, services, auth, and RAG integration. Use for API changes, authentication issues, or backend-pipeline integration.
 mode: subagent
-model: opencode/minimax-m2.5-free
+model: opencode-go/deepseek-v4-flash
 temperature: 0.2
 permission:
   edit:
