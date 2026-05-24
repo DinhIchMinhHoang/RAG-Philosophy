@@ -16,6 +16,7 @@ from .constants import (
     HEADER_CHECK_ROWS,
     HEADER_MIN_NONEMPTY_RATIO,
     MAX_FILE_SIZE_MB,
+    SAMPLE_ROW_COUNT,
     TABLE_NAME_MAX_LEN,
     TABLE_PREFIX,
 )
@@ -50,6 +51,22 @@ def _infer_sql_dtype(series: pd.Series) -> str:
     return "TEXT"
 
 
+def _clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+    """Generic cleaning: drop empty/summary rows, cast numeric columns."""
+    df = df.dropna(how='all').fillna("")
+    if df.empty:
+        return df
+    min_cells = max(1, int(len(df.columns) * 0.3))
+    df = df[df.astype(str).apply(
+        lambda r: (r != "").sum(), axis=1
+    ) >= min_cells]
+    for col in df.columns:
+        numeric_ratio = df[col].astype(str).str.match(r'^\d+(\.\d+)?$').mean()
+        if numeric_ratio > 0.8:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+    return df.reset_index(drop=True)
+
+
 def _safe_table_name(document_id: str, sheet_name: str) -> str:
     safe = re.sub(r'[^a-zA-Z0-9]', '_', sheet_name.strip())[:TABLE_NAME_MAX_LEN - 12]
     safe = re.sub(r'_+', '_', safe).strip('_')
@@ -60,6 +77,7 @@ def _create_table_ddl(table_name: str, columns: list[str], dtypes: list[str]) ->
     cols = ['_row_idx INTEGER']
     for col, dtype in zip(columns, dtypes):
         cols.append(f'"{col}" {dtype}')
+    cols.append('search_text TEXT')
     return f'CREATE TABLE "{table_name}" ({", ".join(cols)})'
 
 
@@ -89,11 +107,19 @@ def _ingest_dataframe(
         seen[c] = seen.get(c, 0) + 1
         final_cols.append(c)
 
-    sample_rows = header_df.iloc[1:min(6, len(header_df))]
-    dtypes = [_infer_sql_dtype(sample_rows.iloc[:, i]) for i in range(len(final_cols))]
+    data_df = header_df.iloc[1:].reset_index(drop=True)
+    data_df = _clean_dataframe(data_df)
+    if data_df.empty:
+        raise ValueError(f"No valid data after cleaning: {sheet_name}")
+
+    dtypes = [_infer_sql_dtype(data_df.iloc[:, i]) for i in range(len(final_cols))]
+
+    sample_data = json.dumps(
+        data_df.head(SAMPLE_ROW_COUNT).to_dict(orient='records'),
+        ensure_ascii=False, default=str
+    )
 
     with engine.connect() as conn:
-        # Xoá ExcelTableRecord cũ trước — tránh unique constraint violation khi re-index
         conn.execute(
             text('DELETE FROM excel_table_records WHERE document_id = :doc_id AND table_name = :tbl'),
             {"doc_id": document_id, "tbl": table_name},
@@ -103,9 +129,17 @@ def _ingest_dataframe(
         conn.execute(text(f'CREATE INDEX IF NOT EXISTS "ix_{table_name}_row" ON "{table_name}" (_row_idx)'))
         conn.commit()
 
-    data_df = header_df.iloc[1:].reset_index(drop=True)
     data_df.insert(0, '_row_idx', range(1, len(data_df) + 1))
     data_df.columns = ['_row_idx'] + final_cols
+
+    # Build search_text = CONCAT_WS of all data columns
+    data_df['search_text'] = data_df[final_cols].astype(str).apply(
+        lambda row: ' '.join(
+            v.strip() for v in row
+            if v.strip() and v.strip().lower() != 'nan'
+        ),
+        axis=1
+    )
 
     data_df.to_sql(table_name, engine, if_exists='append', index=False, method='multi', chunksize=BATCH_SIZE)
 
@@ -117,6 +151,7 @@ def _ingest_dataframe(
         table_name=table_name,
         sheet_name=sheet_name,
         column_schema=json.dumps(col_schema),
+        sample_data=sample_data,
         row_count=len(data_df),
     )
 

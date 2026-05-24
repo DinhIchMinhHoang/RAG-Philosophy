@@ -109,6 +109,7 @@ class ExcelTableRecord(Base):
     table_name: Mapped[str] = mapped_column(String(256), nullable=False, unique=True)
     sheet_name: Mapped[str] = mapped_column(String(256), nullable=False)
     column_schema: Mapped[str] = mapped_column(Text, nullable=False)
+    sample_data: Mapped[str | None] = mapped_column(Text, nullable=True)
     row_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 

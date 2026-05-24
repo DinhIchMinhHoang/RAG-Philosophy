@@ -36,6 +36,9 @@ def ensure_runtime_schema(engine: Engine) -> None:
         "conversations": {
             "archived_at": "TIMESTAMP",
         },
+        "excel_table_records": {
+            "sample_data": "TEXT",
+        },
     }
 
     with engine.begin() as connection:

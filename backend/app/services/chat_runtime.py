@@ -393,10 +393,9 @@ class ChatRuntimeService:
             excel_service = _get_excel_query_service()
             result = excel_service.query(db, user_id, question)
             if result:
-                logger.info("excel_query_result: %d chars — %s", len(result), result[:120])
+                logger.info("excel_query_result: %d chars", len(result))
                 block = (
-                    "[Excel Query Result — không có citation marker, "
-                    "không cần gắn [C1] cho dữ liệu này]\n"
+                    "[Excel Data — citation marker không áp dụng]\n"
                     f"{result}"
                 )
                 return f"{block}\n\n---\n\n{context_text}" if context_text else block
