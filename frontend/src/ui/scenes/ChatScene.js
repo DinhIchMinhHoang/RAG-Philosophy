@@ -708,6 +708,10 @@ function formatDocumentStatus(doc) {
     return formatJobProgress(job);
 }
 
+function isActiveIngestJob(job) {
+    return Boolean(job) && !['succeeded', 'failed'].includes(job.status);
+}
+
 async function pollUploadJob(jobId, metaEl) {
     let delayMs = 1000;
 
@@ -1263,6 +1267,10 @@ export function initChatScene(transitionManager) {
         return SUPPORTED_EXTENSIONS.includes(ext);
     }
 
+    function refreshSourcesIfCurrent(notebookKey) {
+        if (getActiveNotebookKey() === notebookKey) loadNotebookSources();
+    }
+
     const handleFiles = async (files) => {
         const list = Array.from(files || []);
         const uploadNotebookKey = getActiveNotebookKey();
@@ -1293,15 +1301,20 @@ export function initChatScene(transitionManager) {
                     if (result.document_id) item.dataset.documentId = result.document_id;
                     if (result.pages !== undefined || result.chunks !== undefined) {
                         setSourceMeta(metaEl, `${result.pages ?? 0} pages, ${result.chunks ?? 0} chunks`, false);
+                        refreshSourcesIfCurrent(uploadNotebookKey);
                     } else if (result.job_id) {
                         setSourceMeta(metaEl, 'Queued for indexing', true);
-                        pollUploadJob(result.job_id, metaEl).catch((err) => {
-                            if (getActiveNotebookKey() !== uploadNotebookKey) return;
-                            console.error('[Upload job]', err);
-                            setSourceMeta(metaEl, `Error: ${err.message}`, false);
-                        });
+                        refreshSourcesIfCurrent(uploadNotebookKey);
+                        pollUploadJob(result.job_id, metaEl)
+                            .then(() => refreshSourcesIfCurrent(uploadNotebookKey))
+                            .catch((err) => {
+                                if (getActiveNotebookKey() !== uploadNotebookKey) return;
+                                console.error('[Upload job]', err);
+                                setSourceMeta(metaEl, `Error: ${err.message}`, false);
+                            });
                     } else {
                         setSourceMeta(metaEl, result.status || 'Upload accepted', false);
+                        refreshSourcesIfCurrent(uploadNotebookKey);
                     }
                     shouldRefreshSources = true;
                 } catch (err) {
@@ -1317,15 +1330,20 @@ export function initChatScene(transitionManager) {
                                 if (result.document_id) item.dataset.documentId = result.document_id;
                                 if (result.pages !== undefined || result.chunks !== undefined) {
                                     setSourceMeta(metaEl, `${result.pages ?? 0} pages, ${result.chunks ?? 0} chunks`, false);
+                                    refreshSourcesIfCurrent(uploadNotebookKey);
                                 } else if (result.job_id) {
                                     setSourceMeta(metaEl, 'Queued for indexing', true);
-                                    pollUploadJob(result.job_id, metaEl).catch((err2) => {
-                                        if (getActiveNotebookKey() !== uploadNotebookKey) return;
-                                        console.error('[Replace job]', err2);
-                                        setSourceMeta(metaEl, `Error: ${err2.message}`, false);
-                                    });
+                                    refreshSourcesIfCurrent(uploadNotebookKey);
+                                    pollUploadJob(result.job_id, metaEl)
+                                        .then(() => refreshSourcesIfCurrent(uploadNotebookKey))
+                                        .catch((err2) => {
+                                            if (getActiveNotebookKey() !== uploadNotebookKey) return;
+                                            console.error('[Replace job]', err2);
+                                            setSourceMeta(metaEl, `Error: ${err2.message}`, false);
+                                        });
                                 } else {
                                     setSourceMeta(metaEl, result.status || 'Replace accepted', false);
+                                    refreshSourcesIfCurrent(uploadNotebookKey);
                                 }
                                 shouldRefreshSources = true;
                             } catch (replaceErr) {
