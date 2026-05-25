@@ -408,19 +408,26 @@ class ChatRuntimeService:
         recent_history: list[dict[str, str]] | None = None,
     ):
 
+        import asyncio
         mode = settings.llm_mode
         context_text = self._build_context(contexts)
         chat_history_text = self._build_history(recent_history)
 
         if mode in {"gemini", "opencode"}:
-            async for token in self._stream_provider(mode, question, context_text, chat_history_text):
-                yield token
-            return
+            try:
+                async for token in self._stream_provider(mode, question, context_text, chat_history_text):
+                    yield token
+                return
+            except asyncio.CancelledError:
+                raise
 
         if mode == "local":
-            async for token in self._stream_provider("local", question, context_text, chat_history_text):
-                yield token
-            return
+            try:
+                async for token in self._stream_provider("local", question, context_text, chat_history_text):
+                    yield token
+                return
+            except asyncio.CancelledError:
+                raise
 
         # auto mode
         emitted = False
@@ -429,12 +436,17 @@ class ChatRuntimeService:
             async for token in self._stream_provider(cloud_provider, question, context_text, chat_history_text):
                 emitted = True
                 yield token
+        except asyncio.CancelledError:
+            raise
         except Exception as exc:
             if emitted:
                 raise
             logger.warning("llm_auto_stream_fallback_to_local: %s unavailable: %s", cloud_provider, str(exc))
-            async for token in self._stream_provider("local", question, context_text, chat_history_text):
-                yield token
+            try:
+                async for token in self._stream_provider("local", question, context_text, chat_history_text):
+                    yield token
+            except asyncio.CancelledError:
+                raise
 
     async def _stream_provider(self, provider: str, question: str, context_text: str, chat_history_text: str):
         chain = self._build_llm_chain(provider)
