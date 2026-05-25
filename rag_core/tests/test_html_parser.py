@@ -33,6 +33,7 @@ from langchain_core.documents import Document
 
 try:
     from rag_core.html_parser import (
+        Config,
         NAMESPACE_HTML,
         parse_html,
         parse_html_bytes,
@@ -44,6 +45,7 @@ try:
     )
 except ImportError:
     from html_parser import (
+        Config,
         NAMESPACE_HTML,
         parse_html,
         parse_html_bytes,
@@ -131,6 +133,18 @@ class TestHtmlParser(unittest.TestCase):
 
     DOCUMENT_ID = "test-doc-123"
     PIPELINE_VERSION = "v1"
+
+    def setUp(self) -> None:
+        self._patchers = [
+            mock.patch.object(Config, "OCR_HTML_ENABLED", False),
+            mock.patch.object(Config, "OCR_NONPDF_MODE", "primary"),
+        ]
+        for patcher in self._patchers:
+            patcher.start()
+
+    def tearDown(self) -> None:
+        for patcher in reversed(self._patchers):
+            patcher.stop()
 
     def _write_html(self, content: str, suffix: str = ".html") -> str:
         """Write HTML content to a temp file and return path."""
@@ -346,6 +360,19 @@ class TestHtmlParser(unittest.TestCase):
             k.startswith("Header-") for doc in docs for k in doc.metadata
         )
         self.assertTrue(has_heading_chain)
+
+    def test_primary_mode_falls_back_when_ocr_fails(self):
+        with mock.patch.object(Config, "OCR_HTML_ENABLED", True):
+            with mock.patch("rag_core.html_parser._parse_html_via_ocr", side_effect=RuntimeError("boom")):
+                docs = parse_html_bytes(VALID_HTML, "test.html", self.DOCUMENT_ID, self.PIPELINE_VERSION)
+        self.assertGreater(len(docs), 0)
+
+    def test_strict_mode_raises_when_ocr_fails(self):
+        with mock.patch.object(Config, "OCR_HTML_ENABLED", True):
+            with mock.patch.object(Config, "OCR_NONPDF_MODE", "strict"):
+                with mock.patch("rag_core.html_parser._parse_html_via_ocr", side_effect=RuntimeError("boom")):
+                    with self.assertRaises(ValueError):
+                        parse_html_bytes(VALID_HTML, "test.html", self.DOCUMENT_ID, self.PIPELINE_VERSION)
 
 
 if __name__ == "__main__":

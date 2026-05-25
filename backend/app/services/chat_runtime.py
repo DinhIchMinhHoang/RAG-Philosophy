@@ -180,6 +180,7 @@ class ChatRuntimeService:
         pipeline_version: str,
         user_id: int | None = None,
         notebook_id: int | None = None,
+        selected_source_ids: list[str] | None = None,
     ) -> list[RetrievedContext]:
         mode = settings.retrieval_mode
         if mode == "hybrid":
@@ -189,6 +190,7 @@ class ChatRuntimeService:
                 pipeline_version=pipeline_version,
                 user_id=user_id,
                 notebook_id=notebook_id,
+                selected_source_ids=selected_source_ids,
             )
         return self._retrieve_dense(
             db,
@@ -196,6 +198,7 @@ class ChatRuntimeService:
             pipeline_version=pipeline_version,
             user_id=user_id,
             notebook_id=notebook_id,
+            selected_source_ids=selected_source_ids,
         )
 
     def _retrieve_hybrid(
@@ -206,6 +209,7 @@ class ChatRuntimeService:
         pipeline_version: str,
         user_id: int | None = None,
         notebook_id: int | None = None,
+        selected_source_ids: list[str] | None = None,
     ) -> list[RetrievedContext]:
         # Run-ready hybrid stub: keep same interface and return dense results,
         # while reserving hook points for future sparse merge + RRF.
@@ -216,6 +220,7 @@ class ChatRuntimeService:
             pipeline_version=pipeline_version,
             user_id=user_id,
             notebook_id=notebook_id,
+            selected_source_ids=selected_source_ids,
         )
 
     def _retrieve_dense(
@@ -226,8 +231,10 @@ class ChatRuntimeService:
         pipeline_version: str,
         user_id: int | None = None,
         notebook_id: int | None = None,
+        selected_source_ids: list[str] | None = None,
     ) -> list[RetrievedContext]:
         vector = self._get_embeddings().embed_query(question)
+        scoped_document_ids = [source_id for source_id in (selected_source_ids or []) if source_id]
         must_filters = [
             rest.FieldCondition(key="pipeline_version", match=rest.MatchValue(value=pipeline_version)),
             rest.FieldCondition(key="kind", match=rest.MatchValue(value="child")),
@@ -236,6 +243,8 @@ class ChatRuntimeService:
             must_filters.append(rest.FieldCondition(key="owner_id", match=rest.MatchValue(value=user_id)))
         if notebook_id is not None:
             must_filters.append(rest.FieldCondition(key="notebook_id", match=rest.MatchValue(value=notebook_id)))
+        if scoped_document_ids:
+            must_filters.append(rest.FieldCondition(key="document_id", match=rest.MatchAny(any=scoped_document_ids)))
         client = build_qdrant_client()
         query_filter = rest.Filter(must=must_filters)
 
@@ -279,6 +288,8 @@ class ChatRuntimeService:
             parent_query = parent_query.filter(DocumentChunk.owner_id == user_id)
         if notebook_id is not None:
             parent_query = parent_query.filter(DocumentChunk.notebook_id == notebook_id)
+        if scoped_document_ids:
+            parent_query = parent_query.filter(DocumentChunk.document_id.in_(scoped_document_ids))
 
         parent_rows = parent_query.all()
         parent_map = {row.id: row for row in parent_rows}

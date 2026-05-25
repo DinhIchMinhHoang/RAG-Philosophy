@@ -43,11 +43,19 @@ Request:
 {
   "message": "What is the key argument?",
   "conversation_id": "optional-existing-conversation-id",
-  "notebook_id": 1
+  "notebook_id": 1,
+  "selected_source_ids": ["doc_1", "doc_2"]
 }
 ```
 
 Only `message` is required. If `conversation_id` is omitted, the backend creates a new conversation for the authenticated user.
+
+`selected_source_ids` behavior:
+
+- optional list of document IDs scoped to retrieval
+- when non-empty, retrieval is restricted to those document IDs
+- when empty or omitted, retrieval falls back to all notebook sources (current default behavior)
+- when provided with `notebook_id`, every ID must belong to the authenticated user and that notebook; missing/unauthorized IDs return `404`
 
 Response:
 
@@ -164,6 +172,8 @@ Final event:
 ```text
 data: {"type":"final","token":"","done":true,"answer":"...","citations":[...],"conversation_id":"uuid","message_id":"uuid","rewritten_query":"standalone retrieval query"}
 ```
+
+Request payload shape is the same as `POST /api/chat`, including optional `selected_source_ids`.
 
 Error event:
 

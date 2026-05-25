@@ -102,28 +102,78 @@
 .source-drop input { display: none; }
 .source-empty { font-size: 13px; color: rgba(255, 255, 255, 0.6); text-align: center; }
 
+.source-select-all {
+    display: inline-flex; align-items: center; gap: 8px;
+    color: rgba(255, 255, 255, 0.82);
+    font-size: 13px; font-weight: 600;
+    user-select: none;
+}
+.source-select-all.is-hidden { display: none; }
+.source-select-all-checkbox {
+    width: 16px; height: 16px; margin: 0;
+    accent-color: var(--color-secondary);
+    cursor: pointer;
+}
+.source-select-all-label { line-height: 1; }
+
 .source-list { display: flex; flex-direction: column; gap: 10px; }
 .source-item {
     display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: var(--radius-md);
     background: linear-gradient(135deg, rgba(124, 58, 237, 0.12) 0%, rgba(6, 182, 212, 0.06) 100%);
     border: 1px solid rgba(255, 255, 255, 0.12);
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
-    position: relative; padding-right: 44px;
+    position: relative;
+}
+.source-item:focus-visible {
+    outline: 2px solid rgba(6, 182, 212, 0.45);
+    outline-offset: 1px;
+}
+.source-actions {
+    margin-left: auto;
+    position: relative;
+    min-width: 52px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+}
+.source-select-checkbox {
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    accent-color: var(--color-secondary);
+    cursor: pointer;
 }
 .source-menu-btn {
     width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center;
-    border: 0; background: none; color: rgba(255,255,255,0.55); cursor: pointer;
-    position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+    border: 0; background: transparent; color: rgba(255,255,255,0.72); cursor: pointer;
+    border-radius: 6px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.14s ease, color 0.14s ease, background 0.14s ease;
+}
+.source-item:hover .source-menu-btn,
+.source-item:focus-within .source-menu-btn,
+.source-item.is-menu-open .source-menu-btn,
+.source-menu-btn:focus-visible {
+    opacity: 1;
+    pointer-events: auto;
+}
+.source-menu-btn:hover {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.08);
 }
 .source-menu-btn .material-icons { font-size: 20px; }
 
 .source-menu {
-    display: none; position: absolute; right: 10px; top: 8px; min-width: 140px; border-radius: 10px; padding: 6px;
+    display: none; position: absolute; right: 0; top: calc(100% + 6px); min-width: 156px; border-radius: 10px; padding: 6px;
     background: rgba(2, 6, 23, 0.55);
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
     border: 1px solid rgba(255, 255, 255, 0.08);
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    z-index: 8;
 }
 .source-menu .source-menu-item {
     display: block; width: 100%; padding: 8px 12px; text-align: left; border: 0; background: transparent; color: rgba(255,255,255,0.82);

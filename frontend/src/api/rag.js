@@ -51,7 +51,7 @@ export async function ingestUrl({ url, notebookId } = {}) {
     });
 }
 
-export function chatStream(message, { conversationId, notebookId, onToken, onDone, onError }) {
+export function chatStream(message, { conversationId, notebookId, selectedSourceIds, onToken, onDone, onError }) {
     const controller = new AbortController();
     const token = getToken();
     if (!token) {
@@ -63,6 +63,9 @@ export function chatStream(message, { conversationId, notebookId, onToken, onDon
     const payload = { message };
     if (conversationId) payload.conversation_id = conversationId;
     if (notebookId) payload.notebook_id = notebookId;
+    if (Array.isArray(selectedSourceIds)) {
+        payload.selected_source_ids = selectedSourceIds.map((id) => String(id)).filter(Boolean);
+    }
 
     fetch(`${BASE_URL}/chat/stream`, {
         method: 'POST',

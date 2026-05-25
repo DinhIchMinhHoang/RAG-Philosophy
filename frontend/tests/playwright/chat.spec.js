@@ -294,4 +294,50 @@ test.describe('Chat Suite (4.x)', () => {
         expect(responseText).not.toContain('Excel Query Result');
     });
 
+    /**
+     * 4.7 Source sidebar interaction separation
+     * Checkbox toggles selection only, row body opens preview, and kebab opens menu only.
+     */
+    test('4.7 Source selection and row actions remain isolated', async ({ page }) => {
+        await signIn(page, TEST_EMAIL, TEST_PASSWORD);
+        await createNotebook(page);
+        await expect(page.locator('#scene-chat')).toBeVisible();
+
+        try {
+            await uploadFile(page, TEST_PDF_PATH);
+            await waitForUploadComplete(page);
+        } catch (e) {
+            test.skip('Test PDF file not found');
+        }
+
+        const sourceItem = page.locator('.source-item').first();
+        await expect(sourceItem).toBeVisible();
+        await expect(page.locator('.source-select-all-checkbox')).toBeVisible();
+        await expect(sourceItem.locator('.source-select-checkbox')).toBeVisible();
+
+        const menuBtn = sourceItem.locator('.source-menu-btn');
+        const initialOpacity = await menuBtn.evaluate((el) => getComputedStyle(el).opacity);
+        expect(initialOpacity).toBe('0');
+
+        await sourceItem.hover();
+        const hoveredOpacity = await menuBtn.evaluate((el) => getComputedStyle(el).opacity);
+        expect(Number(hoveredOpacity)).toBeGreaterThan(0);
+
+        const viewerContent = page.locator('#sourceViewer .viewer-content');
+        await expect(viewerContent).toBeHidden();
+
+        await sourceItem.locator('.source-select-checkbox').click();
+        await expect(viewerContent).toBeHidden();
+
+        await menuBtn.click();
+        await expect(sourceItem.locator('.source-menu')).toBeVisible();
+        await expect(viewerContent).toBeHidden();
+
+        await page.keyboard.press('Escape');
+        await expect(sourceItem.locator('.source-menu')).toBeHidden();
+
+        await sourceItem.locator('.source-meta').click();
+        await expect(viewerContent).toBeVisible();
+    });
+
 });

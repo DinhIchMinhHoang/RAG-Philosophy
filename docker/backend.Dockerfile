@@ -19,3 +19,13 @@ COPY backend /app/backend
 COPY rag_core /app/rag_core
 COPY data /app/data
 COPY .env.example /app/.env.example
+
+# Install HTML renderer for OCR-first HTML flow (HTML -> PDF -> OCR)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    fonts-dejavu-core \
+    && (apt-get install -y --no-install-recommends wkhtmltopdf \
+        || apt-get install -y --no-install-recommends chromium) \
+    && rm -rf /var/lib/apt/lists/*
+
+# Prefer chromium/chrome first, fallback to wkhtmltopdf
+ENV OCR_RENDERER_HTML_PRIORITY=chrome,wkhtmltopdf

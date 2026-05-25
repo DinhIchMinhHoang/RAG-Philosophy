@@ -59,11 +59,18 @@ class PasswordResetRequest(BaseModel):
 {
     "message": "What is philosophy?",
     "conversation_id": "optional-existing-conversation-id",
-    "notebook_id": 1
+    "notebook_id": 1,
+    "selected_source_ids": ["doc_1", "doc_2"]
 }
 ```
 
 Only `message` is required. The backend creates a conversation when `conversation_id` is omitted.
+
+`selected_source_ids` is optional:
+
+- non-empty list => retrieval is filtered to those document IDs
+- empty list or omitted => explicit fallback to all notebook sources
+- when `notebook_id` is provided, IDs must belong to the authenticated user and notebook, otherwise `404`
 
 ### SSE Response Format
 ```json

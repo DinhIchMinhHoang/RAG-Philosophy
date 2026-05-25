@@ -41,6 +41,7 @@ class ChatRequest(BaseModel):
     message: str
     conversation_id: str | None = None
     notebook_id: int | None = None
+    selected_source_ids: list[str] | None = None
 
 
 class ChatResponse(BaseModel):
@@ -102,7 +103,49 @@ def _has_ready_notebook_documents(db: Session, *, user_id: int, notebook_id: int
     )
 
 
-async def _prepare_chat_turn(db: Session, request: ChatRequest, current_user: User, timings: ChatTiming) -> ChatTurn:
+def _normalize_selected_source_ids(selected_source_ids: list[str] | None) -> list[str]:
+    if not selected_source_ids:
+        return []
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for source_id in selected_source_ids:
+        value = source_id.strip()
+        if not value or value in seen:
+            continue
+        seen.add(value)
+        normalized.append(value)
+    return normalized
+
+
+def _resolve_selected_source_ids(db: Session, request: ChatRequest, current_user: User) -> list[str]:
+    normalized = _normalize_selected_source_ids(request.selected_source_ids)
+    if not normalized:
+        return []
+
+    owned_query = db.query(DocumentRecord.id).filter(
+        DocumentRecord.owner_id == current_user.id,
+        DocumentRecord.id.in_(normalized),
+    )
+    if request.notebook_id is not None:
+        owned_query = owned_query.filter(DocumentRecord.notebook_id == request.notebook_id)
+
+    found_ids = {row.id for row in owned_query.all()}
+    missing_ids = [source_id for source_id in normalized if source_id not in found_ids]
+    if missing_ids:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Selected sources not found or unauthorized: {', '.join(missing_ids)}",
+        )
+    return normalized
+
+
+async def _prepare_chat_turn(
+    db: Session,
+    request: ChatRequest,
+    current_user: User,
+    timings: ChatTiming,
+    selected_source_ids: list[str],
+) -> ChatTurn:
     normalized = _validate_message(request.message)
     conversation = get_or_create_conversation(
         db,
@@ -124,6 +167,7 @@ async def _prepare_chat_turn(db: Session, request: ChatRequest, current_user: Us
         pipeline_version=settings.pipeline_version,
         user_id=current_user.id,
         notebook_id=request.notebook_id,
+        selected_source_ids=selected_source_ids,
     )
     timings.retrieval_ms = _elapsed_ms(retrieval_started)
     available_citations = chat_runtime_service.citations_from_context(contexts)
@@ -144,7 +188,13 @@ async def _prepare_chat_turn(db: Session, request: ChatRequest, current_user: Us
     )
 
 
-async def _chat_non_stream_impl(db: Session, request: ChatRequest, current_user: User) -> ChatResponse:
+async def _chat_non_stream_impl(
+    db: Session,
+    request: ChatRequest,
+    current_user: User,
+    *,
+    selected_source_ids: list[str],
+) -> ChatResponse:
     timings = ChatTiming()
     if request.notebook_id is not None and not _has_ready_notebook_documents(
         db,
@@ -172,7 +222,7 @@ async def _chat_non_stream_impl(db: Session, request: ChatRequest, current_user:
             rewritten_query=_validate_message(request.message),
         )
 
-    turn = await _prepare_chat_turn(db, request, current_user, timings)
+    turn = await _prepare_chat_turn(db, request, current_user, timings, selected_source_ids)
 
     try:
         answer, _provider = await chat_runtime_service.answer(
@@ -265,7 +315,13 @@ async def chat_api(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    return await _chat_non_stream_impl(db, request, current_user)
+    selected_source_ids = _resolve_selected_source_ids(db, request, current_user)
+    return await _chat_non_stream_impl(
+        db,
+        request,
+        current_user,
+        selected_source_ids=selected_source_ids,
+    )
 
 
 
@@ -276,6 +332,8 @@ async def _chat_stream_impl(
     current_user: User,
     request_id: str | None,
     http_request: Request,
+    *,
+    selected_source_ids: list[str],
 ):
     async def event_generator():
         timings = ChatTiming()
@@ -341,7 +399,13 @@ async def _chat_stream_impl(
                 return
 
             timings.error_stage = "prepare"
-            turn = await _prepare_chat_turn(db, request, current_user, timings)
+            turn = await _prepare_chat_turn(
+                db,
+                request,
+                current_user,
+                timings,
+                selected_source_ids,
+            )
             conversation_id = turn.conversation_id
             rewritten_query = turn.rewritten_query
             timings.error_stage = "llm_stream"
@@ -442,10 +506,12 @@ async def chat_stream_api(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    selected_source_ids = _resolve_selected_source_ids(db, request, current_user)
     return await _chat_stream_impl(
         db,
         request,
         current_user,
         request_id=getattr(http_request.state, "request_id", None),
         http_request=http_request,
+        selected_source_ids=selected_source_ids,
     )

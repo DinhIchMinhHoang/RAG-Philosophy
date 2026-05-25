@@ -157,6 +157,90 @@ class ChatRuntimeModeTests(unittest.TestCase):
             db.close()
             engine.dispose()
 
+    def test_retrieve_scopes_qdrant_and_parent_query_to_selected_sources(self) -> None:
+        engine = create_engine(
+            "sqlite://",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+        models.Base.metadata.create_all(engine)
+        db = SessionLocal()
+        try:
+            db.add_all(
+                [
+                    models.DocumentChunk(
+                        id="parent-1",
+                        document_id="doc-1",
+                        owner_id=1,
+                        notebook_id=11,
+                        kind="parent",
+                        parent_chunk_id=None,
+                        chunk_order=0,
+                        text="allowed context",
+                        source="allowed.pdf",
+                        page=1,
+                        doc_id="allowed",
+                        pipeline_version="1.0.0",
+                    ),
+                    models.DocumentChunk(
+                        id="parent-2",
+                        document_id="doc-2",
+                        owner_id=1,
+                        notebook_id=11,
+                        kind="parent",
+                        parent_chunk_id=None,
+                        chunk_order=0,
+                        text="blocked context",
+                        source="blocked.pdf",
+                        page=1,
+                        doc_id="blocked",
+                        pipeline_version="1.0.0",
+                    ),
+                ]
+            )
+            db.commit()
+
+            fake_hits = [
+                SimpleNamespace(
+                    score=0.9,
+                    payload={"parent_chunk_id": "parent-1", "document_id": "doc-1"},
+                ),
+                SimpleNamespace(
+                    score=0.8,
+                    payload={"parent_chunk_id": "parent-2", "document_id": "doc-2"},
+                ),
+            ]
+
+            class FakeClient:
+                def __init__(self) -> None:
+                    self.query_filter = None
+
+                def search(self, **kwargs):
+                    self.query_filter = kwargs.get("query_filter")
+                    return fake_hits
+
+            fake_client = FakeClient()
+
+            with patch.object(self.service, "_get_embeddings", return_value=SimpleNamespace(embed_query=lambda _q: [0.1])), patch.object(
+                chat_runtime, "build_qdrant_client", return_value=fake_client
+            ):
+                results = self.service.retrieve(
+                    db=db,
+                    question="q",
+                    pipeline_version="1.0.0",
+                    user_id=1,
+                    notebook_id=11,
+                    selected_source_ids=["doc-1"],
+                )
+
+            self.assertEqual([item.document_id for item in results], ["doc-1"])
+            self.assertEqual(results[0].source, "allowed.pdf")
+            self.assertIn("document_id", repr(fake_client.query_filter))
+        finally:
+            db.close()
+            engine.dispose()
+
     def test_retrieve_uses_document_filename_for_citation_source(self) -> None:
         engine = create_engine(
             "sqlite://",

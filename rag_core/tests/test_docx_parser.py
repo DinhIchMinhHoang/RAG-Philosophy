@@ -15,13 +15,14 @@ import os
 import tempfile
 import time
 import unittest
+from unittest import mock
 
 from langchain_core.documents import Document
 
 try:
-    from rag_core.docx_parser import parse_docx, _magic_check
+    from rag_core.docx_parser import Config, parse_docx, _magic_check
 except ImportError:
-    from docx_parser import parse_docx, _magic_check
+    from docx_parser import Config, parse_docx, _magic_check
 
 
 # =====================================================================
@@ -94,6 +95,18 @@ class TestDocxParser(unittest.TestCase):
 
     DOCUMENT_ID = "test-docx-123"
     PIPELINE_VERSION = "v1"
+
+    def setUp(self) -> None:
+        self._patchers = [
+            mock.patch.object(Config, "OCR_DOCX_ENABLED", False),
+            mock.patch.object(Config, "OCR_NONPDF_MODE", "primary"),
+        ]
+        for patcher in self._patchers:
+            patcher.start()
+
+    def tearDown(self) -> None:
+        for patcher in reversed(self._patchers):
+            patcher.stop()
 
     def _write_bytes(self, content: bytes, suffix: str = ".docx") -> str:
         """Write bytes to a temp file and return path."""
@@ -205,6 +218,27 @@ class TestDocxParser(unittest.TestCase):
             all_content = "\n".join(doc.page_content for doc in docs)
             self.assertIn("Chapter 1", all_content)
             self.assertIn("Chapter 2", all_content)
+        finally:
+            os.unlink(path)
+
+    def test_primary_mode_falls_back_to_pandoc_when_ocr_fails(self):
+        path = self._write_bytes(_create_simple_docx())
+        try:
+            with mock.patch.object(Config, "OCR_DOCX_ENABLED", True):
+                with mock.patch("rag_core.docx_parser._parse_docx_via_ocr", side_effect=RuntimeError("boom")):
+                    docs = parse_docx(path, self.DOCUMENT_ID, self.PIPELINE_VERSION)
+            self.assertGreater(len(docs), 0)
+        finally:
+            os.unlink(path)
+
+    def test_strict_mode_raises_when_ocr_fails(self):
+        path = self._write_bytes(_create_simple_docx())
+        try:
+            with mock.patch.object(Config, "OCR_DOCX_ENABLED", True):
+                with mock.patch.object(Config, "OCR_NONPDF_MODE", "strict"):
+                    with mock.patch("rag_core.docx_parser._parse_docx_via_ocr", side_effect=RuntimeError("boom")):
+                        with self.assertRaises(ValueError):
+                            parse_docx(path, self.DOCUMENT_ID, self.PIPELINE_VERSION)
         finally:
             os.unlink(path)
 

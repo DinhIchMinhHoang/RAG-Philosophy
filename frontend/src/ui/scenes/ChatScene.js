@@ -17,6 +17,7 @@ import {
 
 const CONVERSATION_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const CONVERSATION_MESSAGE_LIMIT = 50;
+const SOURCE_SELECTION_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
 function renderMessageSkeleton(thread) {
     thread.innerHTML = '';
@@ -50,6 +51,10 @@ function currentNotebookId(chatScene) {
 
 export function conversationCacheKey(notebookId) {
     return `notebook:${notebookId}:conversation:last`;
+}
+
+function sourceSelectionCacheKey(notebookId) {
+    return `notebook:${notebookId}:sources:selected`;
 }
 
 function normalizeConversationState(state = {}) {
@@ -140,6 +145,122 @@ export function renderCitationMarkup(text, citations = []) {
     return html;
 }
 
+function readCachedSourceSelection(notebookId) {
+    if (!notebookId) return null;
+    try {
+        const raw = localStorage.getItem(sourceSelectionCacheKey(notebookId));
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        if (!parsed || Date.now() - Number(parsed.cached_at || 0) > SOURCE_SELECTION_CACHE_TTL_MS) {
+            localStorage.removeItem(sourceSelectionCacheKey(notebookId));
+            return null;
+        }
+        const ids = Array.isArray(parsed.selected_source_ids)
+            ? parsed.selected_source_ids.map((id) => String(id)).filter(Boolean)
+            : [];
+        return new Set(ids);
+    } catch (err) {
+        console.error('[Source selection] Failed to read cache', err);
+        return null;
+    }
+}
+
+function writeCachedSourceSelection(notebookId, selectedSourceIds) {
+    if (!notebookId) return;
+    try {
+        localStorage.setItem(
+            sourceSelectionCacheKey(notebookId),
+            JSON.stringify({
+                cached_at: Date.now(),
+                selected_source_ids: Array.from(selectedSourceIds || []).map((id) => String(id)).filter(Boolean),
+            }),
+        );
+    } catch (err) {
+        console.error('[Source selection] Failed to write cache', err);
+    }
+}
+
+function tokenizeCitations(text, citations = []) {
+    const citationMap = new Map(citations.map((citation) => [String(citation.citation_id || '').toUpperCase(), citation]));
+    let tokenIdx = 0;
+    const tokenMap = new Map();
+
+    function createToken(citation, fallbackLabel) {
+        const label = citationDisplayLabel(citation, fallbackLabel);
+        const token = `@@CITATION_TOKEN_${tokenIdx++}@@`;
+        tokenMap.set(token, { citation, label });
+        return token;
+    }
+
+    let output = String(text ?? '').replace(/\[((?:\s*C\d+\s*(?:,\s*)?)+)\]/gi, (match, citationGroup) => {
+        const citationIds = citationGroup.match(/C\d+/gi) || [];
+        for (const citationId of citationIds) {
+            const normalized = citationId.toUpperCase();
+            const citation = citationMap.get(normalized);
+            if (citation) return createToken(citation, `[${normalized}]`);
+        }
+        return match;
+    });
+
+    output = output.replace(/\[Trang (\d+)\]/g, (_, p1) => createToken({ page: p1 }, `Trang ${p1}`));
+    output = output.replace(/- ([^,\n]+),\s*Trang\s*(\d+)/g, (_, file, page) => {
+        return createToken({ source: file.trim(), page }, `${file.trim()} (P. ${page})`);
+    });
+
+    return { text: output, tokenMap };
+}
+
+function materializeCitationButtons(container, tokenMap) {
+    if (!container || !tokenMap || tokenMap.size === 0) return;
+    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+    const textNodes = [];
+    let node;
+    while ((node = walker.nextNode())) textNodes.push(node);
+
+    for (const textNode of textNodes) {
+        let text = textNode.nodeValue || '';
+        if (!text.includes('@@CITATION_TOKEN_')) continue;
+
+        const fragment = document.createDocumentFragment();
+        while (true) {
+            const match = text.match(/@@CITATION_TOKEN_\d+@@/);
+            if (!match || match.index == null) break;
+            const start = match.index;
+            const token = match[0];
+
+            if (start > 0) fragment.appendChild(document.createTextNode(text.slice(0, start)));
+
+            const payload = tokenMap.get(token);
+            if (payload) {
+                const wrapper = document.createElement('span');
+                wrapper.innerHTML = citationButtonHtml(payload.citation, payload.label);
+                const btn = wrapper.firstElementChild;
+                if (btn) fragment.appendChild(btn);
+                else fragment.appendChild(document.createTextNode(token));
+            } else {
+                fragment.appendChild(document.createTextNode(token));
+            }
+
+            text = text.slice(start + token.length);
+        }
+        if (text) fragment.appendChild(document.createTextNode(text));
+        textNode.parentNode?.replaceChild(fragment, textNode);
+    }
+}
+
+function normalizeMathDelimiters(text) {
+    const raw = String(text ?? '');
+    // marked may consume backslash delimiters \(...\) and \[...\].
+    // Normalize them to KaTeX-safe dollar delimiters before markdown parsing.
+    let normalized = raw.replace(/\\\[((?:[\s\S]*?))\\\]/g, (_, expr) => `$$${expr}$$`);
+    normalized = normalized.replace(/\\\(((?:[\s\S]*?))\\\)/g, (_, expr) => `$${expr}$`);
+    // Heuristic fallback: model sometimes returns "(\alpha + \beta)" or "[\mathbf{x}]"
+    // without escaped TeX delimiters.
+    normalized = normalized.replace(/\((\\[a-zA-Z]+[\s\S]*?)\)/g, (_, expr) => `$${expr}$`);
+    normalized = normalized.replace(/\[(\\[a-zA-Z]+[\s\S]*?)\]/g, (_, expr) => `$$${expr}$$`);
+    return normalized;
+}
+
 function renderCitationChips(container, citations = []) {
     if (!container) return;
     container.innerHTML = '';
@@ -164,9 +285,11 @@ function renderCitationChips(container, citations = []) {
 }
 
 export function processRichText(container, text, citations = []) {
-    const html = renderCitationMarkup(text, citations);
-    if (window.marked) container.innerHTML = marked.parse(html);
+    const mathSafeText = normalizeMathDelimiters(text);
+    const tokenized = tokenizeCitations(mathSafeText, citations);
+    if (window.marked) container.innerHTML = marked.parse(tokenized.text);
     else container.textContent = text;
+    materializeCitationButtons(container, tokenized.tokenMap);
 
     if (window.renderMathInElement) {
         renderMathInElement(container, {
@@ -197,6 +320,7 @@ let activeConversationId = null;
 let activeStreamUi = null;
 const activeConversationByNotebook = new Map();
 const conversationStateByNotebook = new Map();
+const selectedSourceIdsByNotebook = new Map();
 const manualNewChatByNotebook = new Set();
 let setCollapsedFn = null;
 let notebookLoadVersion = 0;
@@ -442,6 +566,32 @@ function cacheConversationState(notebookId) {
     if (state) writeCachedConversation(notebookId, state);
 }
 
+function getSelectedSourceIdsSet(notebookId) {
+    if (!notebookId) return new Set();
+    if (!selectedSourceIdsByNotebook.has(notebookId)) {
+        const cached = readCachedSourceSelection(notebookId);
+        selectedSourceIdsByNotebook.set(notebookId, cached || new Set());
+    }
+    return selectedSourceIdsByNotebook.get(notebookId);
+}
+
+function persistSelectedSourceIdsSet(notebookId, selectedIds) {
+    if (!notebookId) return;
+    selectedSourceIdsByNotebook.set(notebookId, new Set(selectedIds || []));
+    writeCachedSourceSelection(notebookId, selectedSourceIdsByNotebook.get(notebookId));
+}
+
+function pruneSelectedSourceIdsForVisible(notebookId, visibleSourceIds = []) {
+    if (!notebookId) return;
+    const visible = new Set((visibleSourceIds || []).map((id) => String(id)).filter(Boolean));
+    const next = new Set();
+    getSelectedSourceIdsSet(notebookId).forEach((id) => {
+        const normalized = String(id);
+        if (visible.has(normalized)) next.add(normalized);
+    });
+    persistSelectedSourceIdsSet(notebookId, next);
+}
+
 function showThinkingIndicator(chatThread) {
     const ind = document.createElement('div');
     ind.className = 'thinking-indicator';
@@ -675,6 +825,64 @@ export function initChatScene(transitionManager) {
     let sourceLoadToken = 0;
     let conversationLoadToken = 0;
     let sendButton = null;
+    let sourceDocuments = [];
+
+    let selectAllWrap = null;
+    let selectAllCheckbox = null;
+
+    if (sourceList && sourceList.parentElement) {
+        selectAllWrap = document.createElement('label');
+        selectAllWrap.className = 'source-select-all';
+        selectAllWrap.innerHTML = `
+            <input type="checkbox" class="source-select-all-checkbox" aria-label="Select all sources">
+            <span class="source-select-all-label">Chọn tất cả</span>
+        `;
+        sourceList.parentElement.insertBefore(selectAllWrap, sourceList);
+        selectAllCheckbox = selectAllWrap.querySelector('.source-select-all-checkbox');
+    }
+
+    const getVisibleSourceIds = () => sourceDocuments
+        .map((doc) => String(doc?.document_id || ''))
+        .filter(Boolean);
+
+    const updateSelectAllState = () => {
+        if (!selectAllWrap || !selectAllCheckbox) return;
+        const notebookId = currentNotebookId(chatScene);
+        const visibleIds = getVisibleSourceIds();
+        const totalVisible = visibleIds.length;
+        const selectedSet = notebookId ? getSelectedSourceIdsSet(notebookId) : new Set();
+        const selectedVisibleCount = visibleIds.reduce((count, id) => (selectedSet.has(id) ? count + 1 : count), 0);
+        const allSelected = totalVisible > 0 && selectedVisibleCount === totalVisible;
+        const indeterminate = selectedVisibleCount > 0 && selectedVisibleCount < totalVisible;
+
+        selectAllWrap.classList.toggle('is-hidden', totalVisible === 0);
+        selectAllCheckbox.disabled = totalVisible === 0;
+        selectAllCheckbox.checked = allSelected;
+        selectAllCheckbox.indeterminate = indeterminate;
+    };
+
+    selectAllCheckbox?.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+    });
+
+    selectAllCheckbox?.addEventListener('change', (ev) => {
+        ev.stopPropagation();
+        const notebookId = currentNotebookId(chatScene);
+        if (!notebookId) return;
+        const visibleIds = getVisibleSourceIds();
+        const next = new Set(getSelectedSourceIdsSet(notebookId));
+        if (selectAllCheckbox.checked) {
+            visibleIds.forEach((id) => next.add(id));
+        } else {
+            visibleIds.forEach((id) => next.delete(id));
+        }
+        persistSelectedSourceIdsSet(notebookId, next);
+        sourceList?.querySelectorAll('.source-select-checkbox').forEach((checkbox) => {
+            const rowId = checkbox.getAttribute('data-document-id') || '';
+            checkbox.checked = next.has(rowId);
+        });
+        updateSelectAllState();
+    });
 
     const cancelActiveStream = ({ preservePartial = true } = {}) => {
         if (activeStreamController) {
@@ -722,7 +930,12 @@ export function initChatScene(transitionManager) {
 
     const closeAllSourceMenus = (exceptMenu = null) => {
         document.querySelectorAll('#scene-chat .source-menu').forEach((menu) => {
-            if (menu !== exceptMenu) menu.style.display = 'none';
+            if (menu === exceptMenu) return;
+            menu.style.display = 'none';
+            const item = menu.closest('.source-item');
+            const btn = item?.querySelector('.source-menu-btn');
+            item?.classList.remove('is-menu-open');
+            if (btn) btn.setAttribute('aria-expanded', 'false');
         });
     };
 
@@ -731,53 +944,126 @@ export function initChatScene(transitionManager) {
         closeAllSourceMenus();
     });
 
-    const renderPersistedSources = (documents = []) => {
+    document.addEventListener('keydown', (ev) => {
+        if (ev.key !== 'Escape') return;
+        closeAllSourceMenus();
+    });
+
+    const renderPersistedSources = (documents = [], { pruneSelection = true } = {}) => {
         if (!sourceList) return;
+        sourceDocuments = Array.isArray(documents) ? documents : [];
+        const notebookId = currentNotebookId(chatScene);
+        const visibleIds = sourceDocuments.map((doc) => String(doc?.document_id || '')).filter(Boolean);
+        if (notebookId && pruneSelection) pruneSelectedSourceIdsForVisible(notebookId, visibleIds);
+        const selectedIds = notebookId ? getSelectedSourceIdsSet(notebookId) : new Set();
+
         sourceList.innerHTML = '';
-        documents.forEach((doc) => {
+        sourceDocuments.forEach((doc) => {
             const item = document.createElement('div');
             item.className = 'source-item';
             item.style.cursor = 'pointer';
             item.dataset.documentId = doc.document_id || '';
+            item.tabIndex = 0;
 
-            // build menu button and dropdown
-            const menuBtnHtml = `<button class="source-menu-btn" title="More" type="button"><span class="material-icons">more_vert</span></button>`;
-            const menuHtml = `<div class="source-menu"><button class="source-menu-item" data-action="rename"><span class=\"material-icons\">edit</span> Rename</button><button class="source-menu-item" data-action="delete"><span class=\"material-icons\">delete</span> Delete</button></div>`;
+            const fileId = String(doc.document_id || '');
+            const isSelected = Boolean(fileId && selectedIds.has(fileId));
+            const checkboxDisabledAttr = fileId ? '' : 'disabled';
+            const checkboxCheckedAttr = isSelected ? 'checked' : '';
 
-            item.innerHTML = `<div class="source-icon"><span class="material-icons">picture_as_pdf</span></div><div class="source-meta"><div class="source-name">${escapeHtml(doc.filename || 'Untitled document')}</div><div class="source-type">${escapeHtml(formatDocumentStatus(doc))}</div></div>${menuBtnHtml}${menuHtml}`;
+            item.innerHTML = `
+                <div class="source-icon"><span class="material-icons">picture_as_pdf</span></div>
+                <div class="source-meta">
+                    <div class="source-name">${escapeHtml(doc.filename || 'Untitled document')}</div>
+                    <div class="source-type">${escapeHtml(formatDocumentStatus(doc))}</div>
+                </div>
+                <div class="source-actions">
+                    <button class="source-menu-btn" aria-label="Source actions" aria-haspopup="menu" aria-expanded="false" title="More" type="button">
+                        <span class="material-icons">more_vert</span>
+                    </button>
+                    <input
+                        class="source-select-checkbox"
+                        type="checkbox"
+                        aria-label="Select source"
+                        data-document-id="${escapeHtml(fileId)}"
+                        ${checkboxCheckedAttr}
+                        ${checkboxDisabledAttr}
+                    >
+                </div>
+                <div class="source-menu" role="menu" aria-label="Source actions menu">
+                    <button class="source-menu-item" role="menuitem" data-action="rename" aria-label="Rename source">
+                        <span class="material-icons">edit</span>Đổi tên nguồn
+                    </button>
+                    <button class="source-menu-item" role="menuitem" data-action="delete" aria-label="Delete source">
+                        <span class="material-icons">delete</span>Xóa nguồn
+                    </button>
+                </div>
+            `;
 
-            // click on item opens preview unless clicking within menu
             item.addEventListener('click', (ev) => {
-                if (ev.target.closest('.source-menu') || ev.target.closest('.source-menu-btn') || ev.target.closest('.source-rename-input') || ev.target.closest('.source-rename-actions')) return;
+                if (
+                    ev.target.closest('.source-menu')
+                    || ev.target.closest('.source-menu-btn')
+                    || ev.target.closest('.source-select-checkbox')
+                    || ev.target.closest('.source-rename-input')
+                    || ev.target.closest('.source-rename-actions')
+                ) return;
                 closeAllSourceMenus();
                 showPagePreview(doc.filename, null, doc.document_id || null, doc.mime_type);
             });
 
-            // wire menu toggle
+            item.addEventListener('keydown', (ev) => {
+                if (ev.key === 'Enter' || ev.key === ' ') {
+                    if (ev.target.closest('.source-menu-btn') || ev.target.closest('.source-select-checkbox') || ev.target.closest('.source-menu')) return;
+                    ev.preventDefault();
+                    closeAllSourceMenus();
+                    showPagePreview(doc.filename, null, doc.document_id || null, doc.mime_type);
+                }
+            });
+
             const menuBtn = item.querySelector('.source-menu-btn');
             const menu = item.querySelector('.source-menu');
-            if (menuBtn && menu) {
-                menuBtn.addEventListener('click', (ev) => {
+            const selectCheckbox = item.querySelector('.source-select-checkbox');
+
+            if (selectCheckbox) {
+                selectCheckbox.addEventListener('click', (ev) => {
                     ev.stopPropagation();
-                    closeAllSourceMenus(menu);
-                    menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
+                });
+                selectCheckbox.addEventListener('change', (ev) => {
+                    ev.stopPropagation();
+                    const notebookIdForSelection = currentNotebookId(chatScene);
+                    if (!notebookIdForSelection) return;
+                    const selectedSet = new Set(getSelectedSourceIdsSet(notebookIdForSelection));
+                    if (selectCheckbox.checked) selectedSet.add(fileId);
+                    else selectedSet.delete(fileId);
+                    persistSelectedSourceIdsSet(notebookIdForSelection, selectedSet);
+                    updateSelectAllState();
                 });
             }
 
-            // handle menu actions
+            if (menuBtn && menu) {
+                menuBtn.addEventListener('click', (ev) => {
+                    ev.stopPropagation();
+                    const willOpen = menu.style.display !== 'block';
+                    closeAllSourceMenus(willOpen ? menu : null);
+                    menu.style.display = willOpen ? 'block' : 'none';
+                    item.classList.toggle('is-menu-open', willOpen);
+                    menuBtn.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+                });
+            }
+
             const handleRename = async () => {
-                // inline edit
                 const nameEl = item.querySelector('.source-name');
                 const original = nameEl.textContent || '';
-                // extract base name without extension
                 const base = original.replace(/\.[^/.]+$/, '') || original;
                 nameEl.innerHTML = `<input class="source-rename-input" type="text" value="${escapeHtml(base)}" />`;
                 const input = nameEl.querySelector('.source-rename-input');
                 menu.style.display = 'none';
+                item.classList.remove('is-menu-open');
+                menuBtn?.setAttribute('aria-expanded', 'false');
                 input.focus();
 
                 const notebookId = currentNotebookId(chatScene);
-                const fileId = doc.document_id || '';
+                const fileIdToRename = doc.document_id || '';
 
                 const cleanup = () => { nameEl.textContent = original; };
                 let submitted = false;
@@ -786,13 +1072,10 @@ export function initChatScene(transitionManager) {
                     const newVal = input.value.trim();
                     if (!newVal) { alert('Name cannot be empty'); return; }
                     if (newVal === base) { cleanup(); return; }
-                    // simple client-side sanitization
                     if (/[\\/\.\.]/.test(newVal)) { alert('Invalid characters in name'); return; }
                     input.disabled = true;
                     try {
-                        await renameSource({ notebookId, fileId, newName: newVal });
-                        // update visible filename (backend preserves extension)
-                        // append original extension if present
+                        await renameSource({ notebookId, fileId: fileIdToRename, newName: newVal });
                         const extMatch = (original.match(/(\.[^/.]+)$/) || [])[0] || '';
                         nameEl.textContent = `${newVal}${extMatch}`;
                         submitted = true;
@@ -821,24 +1104,33 @@ export function initChatScene(transitionManager) {
 
             const handleDelete = async () => {
                 menu.style.display = 'none';
+                item.classList.remove('is-menu-open');
+                menuBtn?.setAttribute('aria-expanded', 'false');
                 if (!confirm('Delete this source?')) return;
                 const notebookId = currentNotebookId(chatScene);
-                const fileId = doc.document_id || '';
+                const fileIdToDelete = String(doc.document_id || '');
                 try {
-                    await deleteSource({ notebookId, fileId });
+                    await deleteSource({ notebookId, fileId: fileIdToDelete });
                     item.remove();
+                    if (notebookId && fileIdToDelete) {
+                        const selectedSet = new Set(getSelectedSourceIdsSet(notebookId));
+                        selectedSet.delete(fileIdToDelete);
+                        persistSelectedSourceIdsSet(notebookId, selectedSet);
+                    }
+                    sourceDocuments = sourceDocuments.filter((entry) => String(entry?.document_id || '') !== fileIdToDelete);
                     updateSourceEmpty(sourceEmpty, sourceList);
+                    updateSelectAllState();
                 } catch (err) {
                     console.error('[Delete] failed', err);
                     alert(err.message || 'Delete failed');
                 }
             };
 
-            // attach menu item handlers
             item.querySelectorAll('.source-menu-item').forEach((btn) => {
                 const action = btn.getAttribute('data-action');
                 btn.addEventListener('click', (ev) => {
                     ev.stopPropagation();
+                    ev.preventDefault();
                     if (action === 'rename') handleRename();
                     else if (action === 'delete') handleDelete();
                 });
@@ -847,6 +1139,7 @@ export function initChatScene(transitionManager) {
             sourceList.appendChild(item);
         });
         updateSourceEmpty(sourceEmpty, sourceList);
+        updateSelectAllState();
     };
 
     const loadNotebookSources = async () => {
@@ -856,7 +1149,10 @@ export function initChatScene(transitionManager) {
             renderPersistedSources([]);
             return;
         }
-        renderPersistedSources([]);
+        sourceDocuments = [];
+        if (sourceList) sourceList.innerHTML = '';
+        updateSourceEmpty(sourceEmpty, sourceList);
+        updateSelectAllState();
         try {
             const result = await listSources({ notebookId });
             if (token !== sourceLoadToken) return;
@@ -864,7 +1160,7 @@ export function initChatScene(transitionManager) {
         } catch (err) {
             if (token !== sourceLoadToken) return;
             console.error('[Sources] Failed to load notebook sources', err);
-            renderPersistedSources([]);
+            renderPersistedSources([], { pruneSelection: false });
         }
     };
 
@@ -905,13 +1201,16 @@ export function initChatScene(transitionManager) {
         notebookLoadVersion += 1;
         sourceLoadToken += 1;
         conversationLoadToken += 1;
+        sourceDocuments = [];
         if (activeStreamController) {
             activeStreamController.abort();
             activeStreamController = null;
         }
         activeConversationId = null;
+        closeAllSourceMenus();
         delete chatScene.dataset.notebookId;
         resetNotebookWorkspace(chatScene);
+        updateSelectAllState();
     });
 
     document.addEventListener('chat:notebookChanged', () => {
@@ -945,6 +1244,7 @@ export function initChatScene(transitionManager) {
             cancelActiveStream({ preservePartial: false });
         }
         activeConversationId = null;
+        closeAllSourceMenus();
         resetSourceViewer();
         loadNotebookSources();
         loadNotebookConversation();
@@ -982,9 +1282,11 @@ export function initChatScene(transitionManager) {
             item.addEventListener('click', () => { if (isPDF) showPagePreview(file.name, null, item.dataset.documentId || null, file.type || 'application/pdf'); });
             sourceList.appendChild(item);
             updateSourceEmpty(sourceEmpty, sourceList);
+            updateSelectAllState();
 
             if (canUpload) {
                 const metaEl = item.querySelector('.source-type');
+                let shouldRefreshSources = false;
                 try {
                     const result = await uploadDocument(file, { notebookId: uploadNotebookId });
                     if (getActiveNotebookKey() !== uploadNotebookKey) return;
@@ -1001,6 +1303,7 @@ export function initChatScene(transitionManager) {
                     } else {
                         setSourceMeta(metaEl, result.status || 'Upload accepted', false);
                     }
+                    shouldRefreshSources = true;
                 } catch (err) {
                     if (getActiveNotebookKey() !== uploadNotebookKey) return;
 
@@ -1024,6 +1327,7 @@ export function initChatScene(transitionManager) {
                                 } else {
                                     setSourceMeta(metaEl, result.status || 'Replace accepted', false);
                                 }
+                                shouldRefreshSources = true;
                             } catch (replaceErr) {
                                 if (getActiveNotebookKey() !== uploadNotebookKey) return;
                                 console.error('[Replace]', replaceErr);
@@ -1032,6 +1336,7 @@ export function initChatScene(transitionManager) {
                         } else {
                             item.remove();
                             updateSourceEmpty(sourceEmpty, sourceList);
+                            updateSelectAllState();
                         }
                         continue;
                     }
@@ -1039,6 +1344,7 @@ export function initChatScene(transitionManager) {
                     console.error('[Upload]', err);
                     setSourceMeta(metaEl, `Error: ${err.message}`, false);
                 }
+                if (shouldRefreshSources) await loadNotebookSources();
             }
         }
     };
@@ -1124,6 +1430,7 @@ export function initChatScene(transitionManager) {
         sourceDrop.addEventListener('drop', (ev) => { ev.preventDefault(); sourceDrop.classList.remove('is-dragover'); if (ev.dataTransfer) handleFiles(ev.dataTransfer.files); });
     }
     updateSourceEmpty(sourceEmpty, sourceList);
+    updateSelectAllState();
 
     const chatForm = chatScene.querySelector('.chat-input');
     const chatPrompt = chatScene.querySelector('#chatPrompt');
@@ -1197,9 +1504,11 @@ export function initChatScene(transitionManager) {
             const requestNotebookId = requestNotebookKey ? Number(requestNotebookKey) : null;
             const requestVersion = notebookLoadVersion;
             const notebookId = requestNotebookId;
+            const selectedSourceIds = notebookId ? Array.from(getSelectedSourceIdsSet(notebookId)) : [];
             activeStreamController = chatStream(text, {
                 conversationId: activeConversationId,
                 notebookId: requestNotebookId,
+                selectedSourceIds,
                 onToken(token) {
                     if (!isCurrentNotebookLoad(requestVersion, requestNotebookKey)) return;
                     if (!receivedFirst) { receivedFirst = true; hideThinkingIndicator(); aiMsg.style.display = 'flex'; }

@@ -73,6 +73,12 @@ class Config:
     OCR_MIN_VECTOR_DRAWINGS: int = int(os.getenv("OCR_MIN_VECTOR_DRAWINGS", "15"))
     OCR_MIN_MATH_SYMBOLS: int = int(os.getenv("OCR_MIN_MATH_SYMBOLS", "3"))
     OCR_CROP_PADDING_POINTS: float = float(os.getenv("OCR_CROP_PADDING_POINTS", "5"))
+    OCR_NONPDF_MODE: str = os.getenv("OCR_NONPDF_MODE", "primary").strip().lower()
+    OCR_DOCX_ENABLED: bool = os.getenv("OCR_DOCX_ENABLED", "true").strip().lower() == "true"
+    OCR_HTML_ENABLED: bool = os.getenv("OCR_HTML_ENABLED", "true").strip().lower() == "true"
+    OCR_RENDER_TIMEOUT_SECONDS: int = int(os.getenv("OCR_RENDER_TIMEOUT_SECONDS", "120"))
+    OCR_RENDERER_DOCX_PRIORITY: str = os.getenv("OCR_RENDERER_DOCX_PRIORITY", "soffice,pandoc").strip()
+    OCR_RENDERER_HTML_PRIORITY: str = os.getenv("OCR_RENDERER_HTML_PRIORITY", "chrome,wkhtmltopdf").strip()
     PDF_POINTS_PER_INCH: float = float(os.getenv("PDF_POINTS_PER_INCH", "72"))
 
     _DATA_ROOT: Path = Path(__file__).resolve().parent.parent / "data"

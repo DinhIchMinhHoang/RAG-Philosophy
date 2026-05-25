@@ -394,6 +394,8 @@ class NonAdminApiContractTests(unittest.TestCase):
         self.assertEqual(retrieve_mock.call_args_list[1].args[1], "rewritten test")
         self.assertEqual(retrieve_mock.call_args_list[0].kwargs["user_id"], 1)
         self.assertIsNone(retrieve_mock.call_args_list[0].kwargs["notebook_id"])
+        self.assertEqual(retrieve_mock.call_args_list[0].kwargs["selected_source_ids"], [])
+        self.assertEqual(retrieve_mock.call_args_list[1].kwargs["selected_source_ids"], [])
 
         db = self.SessionLocal()
         try:
@@ -405,6 +407,171 @@ class NonAdminApiContractTests(unittest.TestCase):
             self.assertTrue(all(m.sources_used[0]["doc_id"] == "doc-key-1" for m in assistant_messages))
         finally:
             db.close()
+
+    def test_chat_selected_source_ids_are_forwarded_for_chat_and_stream(self) -> None:
+        token = self._signup_and_get_token()
+        headers = {"Authorization": f"Bearer {token}"}
+        notebook_response = self.client.post(
+            "/api/notebooks",
+            headers=headers,
+            json={"title": "Notebook with sources", "is_community": False},
+        )
+        self.assertEqual(notebook_response.status_code, 201)
+        notebook_id = notebook_response.json()["id"]
+
+        db = self.SessionLocal()
+        try:
+            db.add_all(
+                [
+                    models.DocumentRecord(
+                        id="doc-1",
+                        owner_id=1,
+                        notebook_id=notebook_id,
+                        filename="one.pdf",
+                        object_key="doc-1/one.pdf",
+                        mime_type="application/pdf",
+                        size_bytes=12,
+                    ),
+                    models.DocumentRecord(
+                        id="doc-2",
+                        owner_id=1,
+                        notebook_id=notebook_id,
+                        filename="two.pdf",
+                        object_key="doc-2/two.pdf",
+                        mime_type="application/pdf",
+                        size_bytes=12,
+                    ),
+                    models.IngestJob(
+                        id="job-1",
+                        document_id="doc-1",
+                        status="succeeded",
+                        stage="persisting_metadata",
+                        progress_pct=100,
+                        pipeline_version="1.0.0",
+                    ),
+                ]
+            )
+            db.commit()
+        finally:
+            db.close()
+
+        contexts = [
+            RetrievedContext(
+                document_id="doc-1",
+                chunk_id="chunk-1",
+                doc_id="doc-key-1",
+                source="one.pdf",
+                page=1,
+                score=0.9,
+                snippet="Snippet",
+                text="Context",
+            )
+        ]
+
+        async def _fake_stream_answer(*args, **kwargs):
+            for token_value in ["Hi", " [C1]"]:
+                yield token_value
+
+        with patch.object(chat.chat_runtime_service, "rewrite_question", new=AsyncMock(return_value="rewritten scoped")), patch.object(
+            chat.chat_runtime_service, "retrieve", return_value=contexts
+        ) as retrieve_mock, patch.object(
+            chat.chat_runtime_service,
+            "citations_from_context",
+            return_value=[
+                {
+                    "citation_id": "C1",
+                    "rank": 1,
+                    "source": "one.pdf",
+                    "page": 1,
+                    "snippet": "Snippet",
+                    "document_id": "doc-1",
+                    "chunk_id": "chunk-1",
+                    "doc_id": "doc-key-1",
+                    "score": 0.9,
+                }
+            ],
+        ), patch.object(chat.chat_runtime_service, "answer", new=AsyncMock(return_value=("Hi [C1]", "gemini"))), patch.object(
+            chat.chat_runtime_service, "stream_answer", side_effect=_fake_stream_answer
+        ):
+            selected_payload = {
+                "message": "test",
+                "notebook_id": notebook_id,
+                "selected_source_ids": ["doc-1"],
+            }
+            chat_response = self.client.post("/api/chat", headers=headers, json=selected_payload)
+            self.assertEqual(chat_response.status_code, 200)
+
+            stream_response = self.client.post(
+                "/api/chat/stream",
+                headers=headers,
+                json={**selected_payload, "conversation_id": chat_response.json()["conversation_id"]},
+            )
+            self.assertEqual(stream_response.status_code, 200)
+
+        self.assertEqual(retrieve_mock.call_args_list[0].kwargs["selected_source_ids"], ["doc-1"])
+        self.assertEqual(retrieve_mock.call_args_list[1].kwargs["selected_source_ids"], ["doc-1"])
+        self.assertEqual(retrieve_mock.call_args_list[0].kwargs["notebook_id"], notebook_id)
+        self.assertEqual(retrieve_mock.call_args_list[1].kwargs["notebook_id"], notebook_id)
+
+    def test_chat_rejects_missing_or_unauthorized_selected_source_ids(self) -> None:
+        token_a = self._signup_and_get_token("alice", "alice-selected@gmail.com")
+        token_b = self._signup_and_get_token("bob", "bob-selected@gmail.com")
+        headers_a = {"Authorization": f"Bearer {token_a}"}
+        headers_b = {"Authorization": f"Bearer {token_b}"}
+
+        notebook_a = self.client.post(
+            "/api/notebooks",
+            headers=headers_a,
+            json={"title": "Alice notebook", "is_community": False},
+        ).json()["id"]
+        notebook_b = self.client.post(
+            "/api/notebooks",
+            headers=headers_b,
+            json={"title": "Bob notebook", "is_community": False},
+        ).json()["id"]
+
+        db = self.SessionLocal()
+        try:
+            db.add_all(
+                [
+                    models.DocumentRecord(
+                        id="doc-alice",
+                        owner_id=1,
+                        notebook_id=notebook_a,
+                        filename="alice.pdf",
+                        object_key="doc-alice/alice.pdf",
+                        mime_type="application/pdf",
+                        size_bytes=12,
+                    ),
+                    models.DocumentRecord(
+                        id="doc-bob",
+                        owner_id=2,
+                        notebook_id=notebook_b,
+                        filename="bob.pdf",
+                        object_key="doc-bob/bob.pdf",
+                        mime_type="application/pdf",
+                        size_bytes=12,
+                    ),
+                ]
+            )
+            db.commit()
+        finally:
+            db.close()
+
+        payload = {
+            "message": "test",
+            "notebook_id": notebook_a,
+            "selected_source_ids": ["doc-alice", "doc-bob", "doc-missing"],
+        }
+        chat_response = self.client.post("/api/chat", headers=headers_a, json=payload)
+        self.assertEqual(chat_response.status_code, 404)
+        self.assertIn("Selected sources not found or unauthorized", chat_response.json()["detail"])
+        self.assertIn("doc-bob", chat_response.json()["detail"])
+        self.assertIn("doc-missing", chat_response.json()["detail"])
+
+        stream_response = self.client.post("/api/chat/stream", headers=headers_a, json=payload)
+        self.assertEqual(stream_response.status_code, 404)
+        self.assertIn("Selected sources not found or unauthorized", stream_response.json()["detail"])
 
     def test_chat_stream_empty_notebook_returns_graceful_final_event(self) -> None:
         token = self._signup_and_get_token()

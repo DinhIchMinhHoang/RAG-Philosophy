@@ -84,9 +84,13 @@ const API = {
 
 ### chatStream(message, callbacks)
 - **Endpoint**: POST /api/chat/stream
-- **Request**: `{message: "question"}`
+- **Request**: `{message: "question", notebook_id?: number, selected_source_ids?: string[]}`
 - **Response**: SSE stream with token events plus a final `done: true` payload
 - **Callback**: `onToken` called for each chunk, `onDone` receives the final SSE payload, `onError` handles stream failures
+- **Selected-source semantics**:
+  - non-empty `selected_source_ids` restricts retrieval to those sources
+  - omitted or empty `selected_source_ids` falls back to all notebook sources
+  - when `notebook_id` is set, source IDs must belong to that notebook and the current user or backend returns `404`
 
 ## Error Handling
 
