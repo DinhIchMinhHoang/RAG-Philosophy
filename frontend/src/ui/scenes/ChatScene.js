@@ -1435,9 +1435,7 @@ export function initChatScene(transitionManager) {
     const chatForm = chatScene.querySelector('.chat-input');
     const chatPrompt = chatScene.querySelector('#chatPrompt');
     const clearChatBtn = chatScene.querySelector('[data-action="clear-chat"]');
-    const newChatBtn = chatScene.querySelector('[data-action="new-chat"]');
-    const saveConversationBtn = chatScene.querySelector('[data-action="save-conversation"]');
-    const summarizeBtn = chatScene.querySelector('[data-action="summarize-to-notebook"]');
+    // Removed: new-chat, save-conversation, summarize-to-notebook buttons
 
     const visibleConversationText = () => Array.from(chatThread?.querySelectorAll('.message, .ai-response') || [])
         .map((node) => {
@@ -1603,42 +1601,6 @@ export function initChatScene(transitionManager) {
             conversation_id: activeConversationId,
             message_id: messageId,
             sources_used: stateMessage?.sources_used || [],
-        });
-    });
-
-    newChatBtn?.addEventListener('click', () => {
-        if (activeStreamController) cancelActiveStream({ preservePartial: false });
-        const notebookId = currentNotebookId(chatScene);
-        activeConversationId = null;
-        if (notebookId) {
-            manualNewChatByNotebook.add(notebookId);
-            activeConversationByNotebook.set(notebookId, null);
-            conversationStateByNotebook.set(notebookId, emptyConversationState());
-            writeCachedConversation(notebookId, emptyConversationState());
-        }
-        renderWelcomeMessage(chatThread);
-        resetSourceViewer();
-    });
-
-    saveConversationBtn?.addEventListener('click', () => {
-        const content = visibleConversationText();
-        if (!content) return;
-        saveNotebookItem({
-            kind: 'conversation',
-            title: document.querySelector('#scene-chat .chat-title')?.textContent || 'Saved conversation',
-            content,
-            conversation_id: activeConversationId,
-        });
-    });
-
-    summarizeBtn?.addEventListener('click', () => {
-        const content = visibleConversationText();
-        if (!content) return;
-        saveNotebookItem({
-            kind: 'summary',
-            title: 'Conversation summary draft',
-            content,
-            conversation_id: activeConversationId,
         });
     });
 
