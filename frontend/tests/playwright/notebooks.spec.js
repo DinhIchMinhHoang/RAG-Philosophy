@@ -9,7 +9,7 @@ import { resolve } from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
-const TEST_XLSX = resolve(__dirname, '..', '..', '..', 'data', 'raw', 'test.xlsx');
+const TEST_PDF = resolve(__dirname, '..', '..', '..', 'data', 'raw', 'test.pdf');
 import { signIn } from './helpers/auth.js';
 import { createNotebook, openNotebook, deleteNotebook } from './helpers/notebooks.js';
 
@@ -159,20 +159,19 @@ test.describe('Notebooks Suite (2.x)', () => {
     });
 
     /**
-     * 2.5 Delete notebook with Excel - API check to verify cleanup
-     * Test that deleting a notebook with an Excel file properly cleans up.
+     * 2.5 Delete notebook with source - API check to verify cleanup
+     * Test that deleting a notebook with a supported source file properly cleans up.
      */
-    test('2.5 Delete notebook with Excel - verify cleanup', async ({ page }) => {
+    test('2.5 Delete notebook with source - verify cleanup', async ({ page }) => {
         // Create a new notebook
         const title = await createNotebook(page);
 
-        // Upload an Excel file to the notebook
+        // Upload a supported source file to the notebook
         const [fileChooser] = await Promise.all([
             page.waitForEvent('filechooser'),
             page.locator('.source-add-button').first().click(),
         ]);
-        const xlsxPath = TEST_XLSX;
-        await fileChooser.setFiles([xlsxPath]);
+        await fileChooser.setFiles([TEST_PDF]);
 
         // Wait for upload to complete
         await page.waitForTimeout(2000);

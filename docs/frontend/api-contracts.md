@@ -59,8 +59,9 @@ const API = {
 ### uploadDocument(file)
 - **Endpoint**: POST /api/documents
 - **Headers**: Authorization: Bearer token
-- **Body**: multipart/form-data with 'file' field
+- **Body**: multipart/form-data with 'file' field; supported source files are PDF, DOCX, HTML/HTM, and Markdown
 - **Response**: `{document_id, job_id, status, pipeline_version, object_key}`
+- **Disabled formats**: Excel/CSV (`.xlsx`, `.xls`, `.csv`) are rejected with `400 Unsupported format` while tabular ingest/query is disabled
 
 ### listSources()
 - **Endpoint**: GET /api/documents

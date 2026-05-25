@@ -910,7 +910,7 @@ export function initChatScene(transitionManager) {
         loadNotebookConversation();
     });
 
-    const SUPPORTED_EXTENSIONS = ['.pdf', '.xlsx', '.xls', '.csv', '.docx', '.html', '.htm', '.md'];
+    const SUPPORTED_EXTENSIONS = ['.pdf', '.docx', '.html', '.htm', '.md'];
 
     function getFileIcon(filename) {
         const ext = filename.toLowerCase().split('.').pop();
@@ -932,12 +932,13 @@ export function initChatScene(transitionManager) {
             const isPDF = file.name.toLowerCase().endsWith('.pdf');
             const canUpload = isSupported(file.name);
             const icon = getFileIcon(file.name);
-            const meta = canUpload ? 'Uploading…' : (file.type || 'file');
+            const meta = canUpload ? 'Uploading…' : 'Unsupported format';
+            const metaClass = canUpload ? 'source-type uploading' : 'source-type';
 
             const item = document.createElement('div');
             item.className = 'source-item';
             item.style.cursor = 'pointer';
-            item.innerHTML = `<div class="source-icon"><span class="material-icons">${icon}</span></div><div class="source-meta"><div class="source-name">${file.name}</div><div class="source-type uploading">${meta}</div></div>`;
+            item.innerHTML = `<div class="source-icon"><span class="material-icons">${icon}</span></div><div class="source-meta"><div class="source-name">${file.name}</div><div class="${metaClass}">${meta}</div></div>`;
             item.addEventListener('click', () => { if (isPDF) showPagePreview(file.name, null, item.dataset.documentId || null, file.type || 'application/pdf'); });
             sourceList.appendChild(item);
             updateSourceEmpty(sourceEmpty, sourceList);

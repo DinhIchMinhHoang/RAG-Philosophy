@@ -114,6 +114,9 @@ Saved items are stored separately from normal chat history so future chat TTL cl
 ## Document Schemas
 
 ### Upload Response
+
+Supported upload file types: PDF, DOCX, HTML/HTM, and Markdown. Excel/CSV tabular ingest is temporarily disabled, so `.xlsx`, `.xls`, and `.csv` return `400 Unsupported format`.
+
 ```json
 {
     "document_id": "doc-uuid",
@@ -146,7 +149,8 @@ Saved items are stored separately from normal chat history so future chat TTL cl
 **400 - Bad Request:**
 ```json
 {"detail": "No filename provided."}
-{"detail": "Only PDF files are supported."}
+{"detail": "Unsupported format: .csv. Supported: .docx, .htm, .html, .md, .pdf"}
+{"detail": "Unsupported format while tabular ingest is disabled"}
 {"detail": "Message cannot be empty."}
 ```
 

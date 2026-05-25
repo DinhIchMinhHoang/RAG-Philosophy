@@ -38,8 +38,6 @@ services:
     environment:
       PYTHONPATH: /app
       EMBEDDING_DEVICE: ${EMBEDDING_DEVICE:-cpu}
-      OLLAMA_BASE_URL: http://ollama:11434
-      OLLAMA_MAX_WORKERS: ${OLLAMA_MAX_WORKERS:-2}
       WEB_CONCURRENCY: "1"
     volumes:
       - ./data:/app/data
@@ -81,8 +79,6 @@ services:
     environment:
       PYTHONPATH: /app
       EMBEDDING_DEVICE: ${EMBEDDING_DEVICE:-cpu}
-      OLLAMA_BASE_URL: http://ollama:11434
-      OLLAMA_MAX_WORKERS: ${OLLAMA_MAX_WORKERS:-2}
       CELERYD_CONCURRENCY: "1"
     volumes:
       - ./data:/app/data

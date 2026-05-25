@@ -16,7 +16,7 @@ The backend (`backend/app/`) wraps the RAG core (`rag_core/`) as a service layer
 
 ### RAG Core Responsibilities (Python Pipeline)
 
-- **PDF Parsing**: Hybrid two-pass algorithm (pymupdf4llm + Ollama)
+- **PDF Parsing**: Hybrid two-pass algorithm (pymupdf4llm + configured OCR provider)
 - **Text Chunking**: Parent-child splitting with doc_id management
 - **Vector Indexing**: Qdrant + InMemoryStore setup
 - **Retrieval**: MultiVectorRetriever execution

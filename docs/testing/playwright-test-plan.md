@@ -2,7 +2,7 @@
 
 ## Overview
 
-End-to-end browser tests for the Lumina RAG application covering authentication, notebook management, document upload (all formats + deduplication), chat/RAG streaming, and UI interactions.
+End-to-end browser tests for the Lumina RAG application covering authentication, notebook management, supported document upload + deduplication, chat/RAG streaming, and UI interactions.
 
 **Scope:** Auth, Notebooks, Upload, Chat, Dashboard UI, Chat UX, Edge Cases
 **Excluded:** Password Reset, Admin Panel
@@ -52,7 +52,7 @@ frontend/tests/playwright/
 | 2.2 | Open notebook | Click notebook item | Navigate to ChatScene, topbar shows notebook title |
 | 2.3 | Rename notebook | More menu (⋮) → Rename → prompt → enter new name → OK | Title updates on both dashboard and chat topbar |
 | 2.4 | Delete notebook | More menu → Delete → confirm dialog → OK | Notebook disappears from grid. If currently open → redirect to dashboard |
-| 2.5 | Delete notebook with Excel | Notebook containing Excel file → delete | Verify: `excel_table_records` empty, `etbl_*` SQL tables dropped, object storage cleaned, Qdrant vectors deleted |
+| 2.5 | Delete notebook with source | Notebook containing supported source file → delete | Verify: object storage cleaned, Qdrant vectors deleted, metadata removed |
 
 ### 3. Document Upload (`upload.spec.js`)
 
@@ -62,13 +62,13 @@ frontend/tests/playwright/
 | 3.2 | Upload DOCX | `.docx` | Add source → choose file | Status "Ready" |
 | 3.3 | Upload HTML | `.html` | Add source → choose file | Status "Ready" |
 | 3.4 | Upload MD | `.md` | Add source → choose file | Status "Ready" |
-| 3.5 | Upload XLSX multi-sheet | `.xlsx` (8 sheets) | Add source → choose file | Status "Ready" with tables/rows count. `uq_user_doc_excel` constraint NOT violated |
-| 3.6 | Upload CSV | `.csv` | Add source → choose file | Status "Ready" |
+| 3.5 | Reject XLSX | `.xlsx` | Add source → choose file | Error: "Unsupported format"; no backend upload request |
+| 3.6 | Reject CSV | `.csv` | Add source → choose file | Error: "Unsupported format"; no backend upload request |
 | 3.7 | **Dedup: 409 block** | Same file, same notebook | Upload already-existing file | Confirm modal "File already exists" with 2 buttons |
 | 3.8 | **Dedup: Cancel** | — | Modal → click "No" | Uploading item removed from source list, existing file unchanged |
 | 3.9 | **Dedup: Replace** | — | Modal → click "Yes" | File replaced, `document_id` preserved, status "Ready" |
 | 3.10 | **Dedup: Different notebook** | Same file, different notebook | Upload same file to another notebook | NOT blocked, new document created |
-| 3.11 | Delete source | — | Source menu → Delete → confirm | File removed from list, cleanup: storage + vectors + Excel tables |
+| 3.11 | Delete source | — | Source menu → Delete → confirm | File removed from list, cleanup: storage + vectors; legacy Excel tables are cleaned up only when deleting old tabular documents |
 | 3.12 | Rename source | — | Source menu → Rename → inline edit → Enter | Filename updated in source list |
 | 3.13 | Drag & drop upload | PDF | Drag file into `.source-drop` zone | Upload succeeds |
 | 3.14 | Reject unsupported format | `.exe` | Upload | Error: "Unsupported format" |
@@ -84,7 +84,7 @@ frontend/tests/playwright/
 | 4.3 | New chat | Click "New chat" button | Conversation cleared, welcome message shown |
 | 4.4 | Empty notebook | Notebook with no files → send message | Response: "Please add sources to this notebook" |
 | 4.5 | Multi-user isolation | Sign out user A → sign in user B → open B's notebook | Only user B's data visible, user A's data not accessible |
-| 4.6 | Chat with Excel source | Notebook with Excel file → ask data-related question | Response includes Excel query result section |
+| 4.6 | Chat ignores legacy Excel source | Notebook with PDF + legacy Excel record → ask PDF-related question | Response uses RAG context/citations only; no Excel query result section |
 
 ---
 
@@ -119,7 +119,7 @@ frontend/tests/playwright/
 |---|---|---|---|
 | 7.1 | Upload multiple files | Select 5 files at once | All upload sequentially, all reach "Ready" |
 | 7.2 | Refresh during chat | F5 while streaming response | Application recovers, no corrupted state |
-| 7.3 | Unsupported file viewer | Click `.xlsx` source item | Fallback shown with download link |
+| 7.3 | Unsupported Excel upload | Upload `.xlsx` | Error: "Unsupported format"; file is not sent to backend |
 | 7.4 | New note (no API) | Click "New note" → type text → OK | Note appears in source list |
 | 7.5 | Stream abort on navigate | While streaming → navigate to another notebook | Stream aborted cleanly, no errors |
 
@@ -158,8 +158,8 @@ Test files needed in a fixtures directory:
 - `test.docx` — simple DOCX document
 - `test.html` — simple HTML page
 - `test.md` — simple Markdown file
-- `test.xlsx` — Excel file with 3+ sheets
-- `test.csv` — simple CSV file
+- `test.xlsx` — Excel file used only for unsupported-format checks while tabular ingest is disabled
+- `test.csv` — CSV file used only for unsupported-format checks while tabular ingest is disabled
 
 ---
 

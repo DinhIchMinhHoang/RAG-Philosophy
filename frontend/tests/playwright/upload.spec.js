@@ -65,10 +65,10 @@ test.describe('Upload Suite (3.x)', () => {
     });
 
     /**
-     * 3.2 Upload Excel file
-     * Test that an Excel file can be uploaded to a notebook.
+     * 3.2 Reject Excel file
+     * Test that Excel upload is blocked while tabular ingest is disabled.
      */
-    test('3.2 Upload Excel file', async ({ page }) => {
+    test('3.2 Reject Excel file - should show unsupported format', async ({ page }) => {
         // Create a new notebook
         await createNotebook(page);
 
@@ -79,12 +79,9 @@ test.describe('Upload Suite (3.x)', () => {
         try {
             await uploadFile(page, TEST_EXCEL_PATH);
 
-            // Wait for upload to complete
-            await waitForUploadComplete(page);
+            await page.waitForTimeout(500);
 
-            // Verify source item appears in the list
-            const sourceItems = await getSourceItems(page);
-            expect(sourceItems.length).toBeGreaterThan(0);
+            await expect(page.locator('.source-item .source-type').first()).toContainText('Unsupported format');
         } catch (e) {
             // If file not found, skip the test gracefully
             test.skip('Test Excel file not found');
@@ -92,10 +89,10 @@ test.describe('Upload Suite (3.x)', () => {
     });
 
     /**
-     * 3.3 Upload CSV file
-     * Test that a CSV file can be uploaded to a notebook.
+     * 3.3 Reject CSV file
+     * Test that CSV upload is blocked while tabular ingest is disabled.
      */
-    test('3.3 Upload CSV file', async ({ page }) => {
+    test('3.3 Reject CSV file - should show unsupported format', async ({ page }) => {
         // Create a new notebook
         await createNotebook(page);
 
@@ -107,12 +104,9 @@ test.describe('Upload Suite (3.x)', () => {
         try {
             await uploadFile(page, csvPath);
 
-            // Wait for upload to complete
-            await waitForUploadComplete(page);
+            await page.waitForTimeout(500);
 
-            // Verify source item appears
-            const sourceItems = await getSourceItems(page);
-            expect(sourceItems.length).toBeGreaterThan(0);
+            await expect(page.locator('.source-item .source-type').first()).toContainText('Unsupported format');
         } catch (e) {
             test.skip('Test CSV file not found');
         }
@@ -558,8 +552,8 @@ test.describe('Upload Suite (3.x)', () => {
         // Wait a moment for streaming to start
         await page.waitForTimeout(1000);
 
-        // Try to upload another file while streaming
-        const secondFilePath = TEST_EXCEL_PATH;
+        // Try to upload another supported file while streaming
+        const secondFilePath = TEST_MD_PATH;
         try {
             await uploadFile(page, secondFilePath);
 

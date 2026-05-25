@@ -10,7 +10,6 @@ from ..core.settings import settings
 
 # File validation limits
 MAX_PDF_SIZE_MB = int(os.getenv("MAX_PDF_SIZE_MB", "100"))
-MAX_TABULAR_SIZE_MB = int(os.getenv("MAX_TABULAR_SIZE_MB", "50"))
 MAX_DOCX_SIZE_MB = int(os.getenv("MAX_DOCX_SIZE_MB", "50"))
 MAX_HTML_SIZE_MB = int(os.getenv("MAX_HTML_SIZE_MB", "50"))
 MAX_MD_SIZE_MB = int(os.getenv("MAX_MD_SIZE_MB", "50"))
@@ -191,7 +190,7 @@ storage_client = build_storage_client()
 def validate_file_bytes(object_key: str, payload: bytes) -> str:
     ext = Path(object_key).suffix.lower()
 
-    if ext not in {'.pdf', '.xlsx', '.xls', '.csv', '.docx', '.html', '.htm', '.md'}:
+    if ext not in {'.pdf', '.docx', '.html', '.htm', '.md'}:
         raise ValueError(f"Unsupported format: {ext}")
 
     size_limit_bytes = settings.max_pdf_size_mb * 1024 * 1024
@@ -204,26 +203,12 @@ def validate_file_bytes(object_key: str, payload: bytes) -> str:
             raise ValueError(f"PDF too large (>{MAX_PDF_SIZE_MB} MB)")
         if len(payload) < 5 or payload[:4] != b"%PDF":
             raise ValueError("Invalid PDF format")
-    elif ext in ['.xlsx', '.xls']:
-        max_bytes = MAX_TABULAR_SIZE_MB * 1024 * 1024
-        if len(payload) > max_bytes:
-            raise ValueError(f"Excel file too large (>{MAX_TABULAR_SIZE_MB} MB)")
-        if ext == '.xlsx' and len(payload) >= 2 and payload[:2] != b'PK':
-            raise ValueError("Invalid Excel format")
     elif ext == '.docx':
         max_bytes = MAX_DOCX_SIZE_MB * 1024 * 1024
         if len(payload) > max_bytes:
             raise ValueError(f"DOCX file too large (>{MAX_DOCX_SIZE_MB} MB)")
         if len(payload) >= 2 and payload[:2] != b'PK':
             raise ValueError("Invalid DOCX format")
-    elif ext == '.csv':
-        max_bytes = MAX_TABULAR_SIZE_MB * 1024 * 1024
-        if len(payload) > max_bytes:
-            raise ValueError(f"CSV file too large (>{MAX_TABULAR_SIZE_MB} MB)")
-        try:
-            payload.decode('utf-8')
-        except UnicodeDecodeError:
-            raise ValueError("Invalid CSV encoding (expected UTF-8)")
     elif ext in ('.html', '.htm'):
         max_bytes = MAX_HTML_SIZE_MB * 1024 * 1024
         if len(payload) > max_bytes:

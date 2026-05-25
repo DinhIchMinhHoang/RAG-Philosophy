@@ -303,17 +303,15 @@ class ChatRuntimeModeTests(unittest.TestCase):
 
         with patch.object(chat_runtime, "settings", fake_settings), patch.object(
             self.service,
-            "_append_excel_context",
-            return_value="[Excel Query Result — không có citation marker]\n| Số lượng |\n| --- |\n| 3 |",
-        ), patch.object(
-            self.service,
             "_invoke_provider",
             new=AsyncMock(side_effect=[RuntimeError("llm down"), "LLM diễn đạt tự nhiên"]),
-        ):
+        ) as invoke_mock:
             answer, provider = asyncio.run(self.service.answer("q", self.contexts))
 
         self.assertEqual(provider, "local")
         self.assertEqual(answer, "LLM diễn đạt tự nhiên")
+        self.assertNotIn("Excel Query Result", invoke_mock.await_args_list[0].args[2])
+        self.assertIn("[C1] source=s.pdf page=1 doc_id=doc-key-1 chunk_id=chunk-1", invoke_mock.await_args_list[0].args[2])
 
     def test_stream_falls_back_to_local_llm_when_primary_fails_before_tokens(self) -> None:
         fake_settings = SimpleNamespace(
@@ -333,13 +331,9 @@ class ChatRuntimeModeTests(unittest.TestCase):
 
         with patch.object(chat_runtime, "settings", fake_settings), patch.object(
             self.service,
-            "_append_excel_context",
-            return_value="[Excel Query Result — không có citation marker]\n| Số lượng |\n| --- |\n| 3 |",
-        ), patch.object(
-            self.service,
             "_stream_provider",
             side_effect=RuntimeError("llm down"),
-        ), patch.object(
+        ) as stream_mock, patch.object(
             self.service,
             "_invoke_provider",
             new=AsyncMock(return_value="LLM diễn đạt tự nhiên"),
@@ -348,6 +342,8 @@ class ChatRuntimeModeTests(unittest.TestCase):
 
         self.assertEqual(len(chunks), 1)
         self.assertEqual(chunks[0], "LLM diễn đạt tự nhiên")
+        self.assertNotIn("Excel Query Result", stream_mock.call_args.args[2])
+        self.assertIn("[C1] source=s.pdf page=1 doc_id=doc-key-1 chunk_id=chunk-1", stream_mock.call_args.args[2])
 
 
 if __name__ == "__main__":

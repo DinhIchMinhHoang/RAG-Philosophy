@@ -22,14 +22,12 @@ from ..models import DocumentRecord, IngestJob, JobStage, JobStatus, Notebook, U
 
 router = APIRouter(prefix="/api", tags=["Ingest"])
 
-ALLOWED_EXTENSIONS = {'.pdf', '.xlsx', '.xls', '.csv', '.docx', '.html', '.htm', '.md'}
+ALLOWED_EXTENSIONS = {'.pdf', '.docx', '.html', '.htm', '.md'}
+TABULAR_EXTENSIONS = {'.xlsx', '.xls', '.csv'}
 MAX_UPLOAD_SIZE_MB = int(os.getenv("MAX_UPLOAD_SIZE_MB", "20"))
 
 MIME_TYPES = {
     '.pdf': 'application/pdf',
-    '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    '.xls': 'application/vnd.ms-excel',
-    '.csv': 'text/csv',
     '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     '.html': 'text/html',
     '.htm': 'text/html',
@@ -192,6 +190,14 @@ def _validate_notebook_for_upload(db: Session, notebook_id: int | None, current_
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed to use this notebook")
 
 
+def _supported_extensions_text() -> str:
+    return ", ".join(sorted(ALLOWED_EXTENSIONS))
+
+
+def _is_tabular_extension(path: str) -> bool:
+    return Path(path).suffix.lower() in TABULAR_EXTENSIONS
+
+
 async def _create_document_impl(
     file: UploadFile,
     *,
@@ -206,7 +212,7 @@ async def _create_document_impl(
     if ext not in ALLOWED_EXTENSIONS:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Unsupported format: {ext}. Supported: {', '.join(ALLOWED_EXTENSIONS)}"
+            detail=f"Unsupported format: {ext}. Supported: {_supported_extensions_text()}"
         )
 
     payload = await file.read()
@@ -489,6 +495,12 @@ def _reindex_document_impl(db: Session, document_id: str, request: ReindexReques
         if not version:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="pipeline_version is required")
 
+        if _is_tabular_extension(document.filename) or _is_tabular_extension(document.object_key):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Unsupported format while tabular ingest is disabled",
+            )
+
         job = _create_job(db, document_id=document.id, pipeline_version=version)
 
         if document.object_key.startswith("url://"):
@@ -582,7 +594,7 @@ async def replace_document(
     if ext not in ALLOWED_EXTENSIONS:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Unsupported format: {ext}. Supported: {', '.join(ALLOWED_EXTENSIONS)}"
+            detail=f"Unsupported format: {ext}. Supported: {_supported_extensions_text()}"
         )
 
     payload = await file.read()

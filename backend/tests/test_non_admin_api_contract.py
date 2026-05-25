@@ -164,6 +164,70 @@ class NonAdminApiContractTests(unittest.TestCase):
             self.assertFalse(delete_again_response.json()["deleted"])
             self.assertEqual(delete_again_response.json()["status"], "not_found")
 
+    def test_tabular_upload_replace_and_reindex_are_disabled(self) -> None:
+        token = self._signup_and_get_token()
+        headers = {"Authorization": f"Bearer {token}"}
+
+        with patch("backend.app.routers.ingest._enqueue_ingest", return_value=None) as enqueue_mock:
+            upload_response = self.client.post(
+                "/api/documents",
+                headers=headers,
+                files={
+                    "file": (
+                        "sample.xlsx",
+                        b"PK\x03\x04spreadsheet",
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    )
+                },
+            )
+        self.assertEqual(upload_response.status_code, 400)
+        self.assertIn("Unsupported format", upload_response.json()["detail"])
+        enqueue_mock.assert_not_called()
+
+        db = self.SessionLocal()
+        try:
+            db.add_all(
+                [
+                    models.DocumentRecord(
+                        id="doc-pdf",
+                        owner_id=1,
+                        filename="original.pdf",
+                        object_key="doc-pdf/original.pdf",
+                        mime_type="application/pdf",
+                        size_bytes=12,
+                    ),
+                    models.DocumentRecord(
+                        id="doc-csv",
+                        owner_id=1,
+                        filename="legacy.csv",
+                        object_key="doc-csv/legacy.csv",
+                        mime_type="text/csv",
+                        size_bytes=12,
+                    ),
+                ]
+            )
+            db.commit()
+        finally:
+            db.close()
+
+        replace_response = self.client.post(
+            "/api/documents/doc-pdf",
+            headers=headers,
+            files={"file": ("replacement.csv", b"a,b\n1,2\n", "text/csv")},
+        )
+        self.assertEqual(replace_response.status_code, 400)
+        self.assertIn("Unsupported format", replace_response.json()["detail"])
+
+        reindex_response = self.client.post("/api/documents/doc-csv/reindex", headers=headers, json={})
+        self.assertEqual(reindex_response.status_code, 400)
+        self.assertEqual(reindex_response.json()["detail"], "Unsupported format while tabular ingest is disabled")
+
+        db = self.SessionLocal()
+        try:
+            self.assertEqual(db.query(models.IngestJob).count(), 0)
+        finally:
+            db.close()
+
     def test_document_job_and_file_routes_are_owner_scoped(self) -> None:
         token_a = self._signup_and_get_token("alice", "alice@gmail.com")
         token_b = self._signup_and_get_token("bob", "bob@gmail.com")

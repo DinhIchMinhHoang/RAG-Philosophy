@@ -2,6 +2,8 @@ import { hideImageModal, showImageModal } from '../components/Modal.js';
 import { isAuthenticated } from '../../api/client.js';
 import { getNotebooks, createNotebook, updateNotebook, deleteNotebook, copyNotebook } from '../../api/notebooks.js';
 
+let createNotebookInFlight = false;
+
 export function shouldLoadNotebooks() {
     return isAuthenticated();
 }
@@ -63,6 +65,38 @@ function renderNotebooks(grid, notebooks, emptyMessage) {
         return;
     }
     notebooks.forEach(nb => grid.appendChild(buildNotebookItem(nb)));
+}
+
+export async function createDashboardNotebook({
+    createBtn,
+    transitionManager,
+    createNotebookFn = createNotebook,
+    documentRef = document,
+} = {}) {
+    if (createNotebookInFlight) return null;
+    createNotebookInFlight = true;
+    if (createBtn) {
+        createBtn.disabled = true;
+        createBtn.setAttribute('aria-busy', 'true');
+    }
+
+    try {
+        const nb = await createNotebookFn({ title: 'Untitled notebook', is_community: false });
+        const myGrid = documentRef.querySelector('.my-grid');
+        if (myGrid) {
+            const empty = myGrid.querySelector('.notebook-empty-state');
+            if (empty) empty.remove();
+            myGrid.prepend(buildNotebookItem(nb));
+        }
+        transitionManager?.openNotebook(nb.title, nb.id, null, 'false');
+        return nb;
+    } finally {
+        createNotebookInFlight = false;
+        if (createBtn) {
+            createBtn.disabled = false;
+            createBtn.removeAttribute('aria-busy');
+        }
+    }
 }
 
 function repositionThumb(thumb, opt, pad) {
@@ -248,6 +282,9 @@ export function initDashboardScene(transitionManager) {
     const container = dashboard?.querySelector('.dashboard-container');
 
     if (dashboard && container) {
+        if (dashboard.dataset.initialized === 'true') return;
+        dashboard.dataset.initialized = 'true';
+
         setupThumbSwitch(dashboard.querySelector('.sort-switch'), container);
 
         const accountBtn = document.querySelector('[data-scene="account"]');
@@ -260,14 +297,7 @@ export function initDashboardScene(transitionManager) {
         if (createBtn) createBtn.addEventListener('click', async (e) => {
             e.preventDefault();
             try {
-                const nb = await createNotebook({ title: 'Untitled notebook', is_community: false });
-                const myGrid = document.querySelector('.my-grid');
-                if (myGrid) {
-                    const empty = myGrid.querySelector('.notebook-empty-state');
-                    if (empty) empty.remove();
-                    myGrid.prepend(buildNotebookItem(nb));
-                }
-                transitionManager.openNotebook(nb.title, nb.id, null, 'false');
+                await createDashboardNotebook({ createBtn, transitionManager });
             } catch (err) {
                 console.error('[Dashboard] Failed to create notebook', err);
             }

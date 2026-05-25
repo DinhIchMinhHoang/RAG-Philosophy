@@ -141,8 +141,8 @@ class TestMdParser(unittest.TestCase):
             docs = parse_md(path, self.DOCUMENT_ID, self.PIPELINE_VERSION)
             self.assertGreater(len(docs), 0)
             all_content = "\n".join(doc.page_content for doc in docs)
-            # Noise should be removed
-            self.assertNotIn("MỤC LỤC", all_content)
+            # Standalone page labels should be removed, but document headings are preserved.
+            self.assertIn("MỤC LỤC", all_content)
             self.assertNotIn("Trang 1", all_content)
             self.assertNotIn("Trang 2", all_content)
             # Main content should be preserved

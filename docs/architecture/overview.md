@@ -36,7 +36,7 @@ The UET RAG system is a full-stack document question-answering application consi
 │                                                                          │
 │  Step 1: Parser (HybridPDFParser)                                       │
 │  ├── Fast Track: pymupdf4llm.to_markdown() for simple pages           │
-│  └── Heavy Track: Ollama VLM (glm-ocr) for complex pages               │
+│  └── Heavy Track: Z.AI layout parsing OCR for complex pages             │
 │      → Output: List[Document] with {source, page} metadata             │
 │                                                                          │
 │  Step 2: Chunker (Parent-Child Splitting)                               │
@@ -61,7 +61,7 @@ The UET RAG system is a full-stack document question-answering application consi
 | Component | Technology | Version/Notes |
 |-----------|------------|---------------|
 | PDF Parsing | PyMuPDF (fitz) + pymupdf4llm | Hybrid approach |
-| OCR | Ollama + glm-ocr | VLM-based for complex pages |
+| OCR | Z.AI GLM-OCR Layout Parsing API | VLM-based for complex pages |
 | Embeddings | HuggingFace Transformers | harrier-oss-v1-270m |
 | Vector Store | Qdrant | In-memory mode for dev |
 | LLM | Gemini 3.1 Flash | langchain-google-genai |
@@ -78,7 +78,7 @@ All configuration is centralized in `rag_core/config.py`:
 - **Embedding**: DEVICE=cpu (set to 'cuda' for GPU)
 - **LLM**: gemini-3.1-flash-lite-preview
 - **Vector DB**: Qdrant collection "rag_philosophy"
-- **Ollama**: localhost:11434, glm-ocr model, 5 workers
+- **OCR**: `OCR_PROVIDER`, `OCR_API_BASE_URL`, `OCR_API_KEY`, `OCR_MODEL`, and OCR thresholds/workers in `rag_core/config.py`
 
 ## Data Flow
 

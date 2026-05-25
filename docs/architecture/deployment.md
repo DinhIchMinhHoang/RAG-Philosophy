@@ -74,7 +74,7 @@ curl -N http://localhost/api/chat/stream \
 
 ## Optional GPU Acceleration
 
-The default Compose stack starts Ollama without a required GPU reservation, so CPU-only hosts can boot the app normally.
+The default Compose stack starts Ollama only for local chat fallback, without a required GPU reservation, so CPU-only hosts can boot the app normally. OCR uses the configured `OCR_*` API settings from `.env`.
 
 On hosts with an Nvidia runtime, enable GPU acceleration with the override file:
 
@@ -94,7 +94,7 @@ docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
    - Postgres data (`postgres_data` volume)
    - MinIO objects (`minio_data` volume)
    - Qdrant vectors (`qdrant_data` volume)
-   - Ollama models (`ollama_data` volume)
+   - Ollama models (`ollama_data` volume, only for local chat fallback)
 
 ## Local SQLite Artifacts
 
@@ -117,8 +117,13 @@ docker inspect --format='{{json .State.Health}}' rag_backend
 
 ## Lưu ý để OCR thực sự hoạt động (không chỉ fallback)
 
-- Pull model trong container ollama:
+- Configure OCR API credentials in `.env`:
 
 ```bash
-docker compose exec ollama ollama pull glm-ocr
+OCR_PROVIDER=zai
+OCR_API_BASE_URL=https://api.z.ai/api/paas/v4/layout_parsing
+OCR_API_KEY=<your-zai-api-key>
+OCR_MODEL=glm-ocr
 ```
+
+Backend and worker read these values through `env_file: .env`.

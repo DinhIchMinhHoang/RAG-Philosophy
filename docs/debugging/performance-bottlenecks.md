@@ -4,13 +4,14 @@
 
 ### PDF Parsing (Step 1)
 
-**Bottleneck**: Heavy track OCR (Ollama)
+**Bottleneck**: Heavy track OCR (Z.AI layout parsing API)
 
 **Configuration**:
 ```python
-OLLAMA_MAX_WORKERS = 5       # Parallel OCR threads
-VLM_TIMEOUT_SECONDS = 60     # Per-page timeout
-DPI_FOR_OCR = 150            # Rendering resolution
+OCR_MAX_WORKERS = 5          # Parallel OCR threads
+OCR_TIMEOUT_SECONDS = 60     # Per-page request timeout
+OCR_RENDER_DPI = 150         # Rendering resolution
+OCR_MAX_IMAGE_LONG_EDGE = 1500
 ```
 
 **Mitigation**:

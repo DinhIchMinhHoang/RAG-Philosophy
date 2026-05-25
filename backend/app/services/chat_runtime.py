@@ -23,16 +23,6 @@ except Exception as exc:  # pragma: no cover
 
 logger = logging.getLogger(__name__)
 
-_EXCEL_QUERY_SERVICE: "ExcelQueryService | None" = None
-
-
-def _get_excel_query_service():
-    global _EXCEL_QUERY_SERVICE
-    if _EXCEL_QUERY_SERVICE is None:
-        from .excel_query_service import excel_query_service as _svc
-        _EXCEL_QUERY_SERVICE = _svc
-    return _EXCEL_QUERY_SERVICE
-
 _SYSTEM_PROMPT = (
     "Bạn là trợ lý AI học tập thân thiện. Bạn phải luôn trả lời bằng tiếng Việt.\n\n"
     "Quy tắc trả lời:\n"
@@ -44,17 +34,11 @@ _SYSTEM_PROMPT = (
     "   - Mọi nhận định dựa trên tài liệu phải kèm marker citation inline như [C1] hoặc [C2].\n"
     "   - Chỉ dùng các marker xuất hiện ở đầu block Context. Không tạo marker mới.\n"
     "   - Nếu Context không có đáp án, hãy nói rõ là tài liệu không đề cập và không gắn citation giả.\n\n"
-    "3. Nếu Context có khối bắt đầu bằng `[Excel Query Result`:\n"
-    "   - Hãy xem đó là dữ liệu bảng trung gian do hệ thống truy xuất được.\n"
-    "   - Diễn đạt lại kết quả tự nhiên bằng tiếng Việt, không chép nguyên văn bảng nếu không cần.\n"
-    "   - Không tạo citation cho khối Excel này.\n"
-    "   - Nếu câu hỏi có nhiều ý, hãy trả lời đủ từng ý theo dữ liệu bảng.\n\n"
     "Context:\n{context}"
 )
 
 _CITATION_MARKER_RE = re.compile(r"\[(C\d+)\]", re.IGNORECASE)
 _CITATION_GROUP_RE = re.compile(r"\[((?:\s*C\d+\s*(?:,\s*)?)+)\]", re.IGNORECASE)
-_EXCEL_CONTEXT_PREFIX = "[Excel Query Result"
 
 
 @dataclass
@@ -411,35 +395,6 @@ class ChatRuntimeService:
         normalized = rewritten.strip().strip('"').strip("'").strip()
         return normalized or question
 
-    def _append_excel_context(self, db: Session | None, user_id: str | None, question: str, context_text: str) -> str:
-        if db is None or not user_id:
-            return context_text
-        try:
-            excel_service = _get_excel_query_service()
-            result = excel_service.query(db, user_id, question)
-            if result:
-                logger.info("excel_query_result: %d chars", len(result))
-                block = (
-                    "[Excel Query Result — không có citation marker, "
-                    "không cần gắn Trang cho dữ liệu này]\n"
-                    f"{result}"
-                )
-                return f"{block}\n\n---\n\n{context_text}" if context_text else block
-        except Exception as exc:
-            logger.warning("excel_query_failed: %s", str(exc))
-            db.rollback()
-        return context_text
-
-    def _excel_context_text(self, context_text: str) -> str | None:
-        if not context_text.startswith(_EXCEL_CONTEXT_PREFIX):
-            return None
-        block = context_text.split("\n\n---\n\n", 1)[0]
-        lines = block.splitlines()
-        result = "\n".join(lines[1:]).strip()
-        if not result:
-            return None
-        return result
-
     async def answer(
         self,
         question: str,
@@ -451,7 +406,6 @@ class ChatRuntimeService:
 
         mode = settings.llm_mode
         context_text = self._build_context(contexts)
-        context_text = self._append_excel_context(db, user_id, question, context_text)
         chat_history_text = self._build_history(recent_history)
 
         if mode in {"gemini", "opencode"}:
@@ -487,7 +441,6 @@ class ChatRuntimeService:
 
         mode = settings.llm_mode
         context_text = self._build_context(contexts)
-        context_text = self._append_excel_context(db, user_id, question, context_text)
         chat_history_text = self._build_history(recent_history)
 
         if mode in {"gemini", "opencode"}:

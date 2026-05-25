@@ -17,8 +17,6 @@ const TEST_DATA_DIR = resolve(__dirname, '..', '..', '..', 'data', 'raw');
 const TEST_EMAIL = 'vha7244@gmail.com';
 const TEST_PASSWORD = '123456';
 const TEST_PDF_PATH = resolve(TEST_DATA_DIR, 'test.pdf');
-const TEST_EXCEL_PATH = resolve(TEST_DATA_DIR, 'test.xlsx');
-const TEST_CSV_PATH = resolve(TEST_DATA_DIR, 'test.csv');
 
 test.describe('Chat Suite (4.x)', () => {
 
@@ -252,10 +250,10 @@ test.describe('Chat Suite (4.x)', () => {
     });
 
     /**
-     * 4.6 Notebook with Excel - ask question and verify response
-     * Test that Excel files can be analyzed and answered about.
+     * 4.6 PDF chat does not show Excel query result
+     * Test that chat stays on the RAG path while tabular query is disabled.
      */
-    test('4.6 Notebook with Excel - ask question and verify response', async ({ page }) => {
+    test('4.6 PDF chat does not show Excel query result', async ({ page }) => {
         // Sign in
         await signIn(page, TEST_EMAIL, TEST_PASSWORD);
 
@@ -265,19 +263,19 @@ test.describe('Chat Suite (4.x)', () => {
         // Verify ChatScene is visible
         await expect(page.locator('#scene-chat')).toBeVisible();
 
-        // Upload an Excel file
+        // Upload a PDF file
         try {
-            await uploadFile(page, TEST_EXCEL_PATH);
+            await uploadFile(page, TEST_PDF_PATH);
             await waitForUploadComplete(page);
         } catch (e) {
-            test.skip('Test Excel file not found');
+            test.skip('Test PDF file not found');
         }
 
         // Wait for source to appear
         await page.waitForSelector('.source-item', { state: 'visible' });
 
-        // Send a question about the Excel file
-        await page.fill('#chatPrompt', 'What data is in this spreadsheet? Give me a summary.');
+        // Send a question about the source file
+        await page.fill('#chatPrompt', 'What is this document about? Give me a summary.');
         await page.press('#chatPrompt', 'Enter');
 
         // Wait for AI response
@@ -293,6 +291,7 @@ test.describe('Chat Suite (4.x)', () => {
         // Verify response is not the empty welcome message
         const responseText = await aiResponse.textContent();
         expect(responseText).not.toContain('Hi, I can help you explore your sources');
+        expect(responseText).not.toContain('Excel Query Result');
     });
 
 });

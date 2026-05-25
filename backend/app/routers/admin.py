@@ -16,6 +16,7 @@ from ..ingest.qdrant_store import build_qdrant_client, delete_vectors_for_docume
 from ..ingest.storage import storage_client
 
 router = APIRouter(prefix="/api/admin", tags=["Admin"])
+TABULAR_EXTENSIONS = {'.xlsx', '.xls', '.csv'}
 
 
 class AdminUserCreate(BaseModel):
@@ -186,6 +187,10 @@ def _create_job(db: Session, document_id: str, pipeline_version: str) -> models.
     db.commit()
     db.refresh(job)
     return job
+
+
+def _is_tabular_extension(path: str) -> bool:
+    return Path(path).suffix.lower() in TABULAR_EXTENSIONS
 
 
 def _delete_conversations(db: Session, conversation_ids: list[str]) -> None:
@@ -491,6 +496,12 @@ def reindex_document_admin(
     document = db.query(models.DocumentRecord).filter(models.DocumentRecord.id == document_id).first()
     if not document:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+
+    if _is_tabular_extension(document.filename) or _is_tabular_extension(document.object_key):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Unsupported format while tabular ingest is disabled",
+        )
 
     version = (request.pipeline_version or settings.pipeline_version).strip()
     if not version:

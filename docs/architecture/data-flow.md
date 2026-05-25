@@ -33,7 +33,7 @@ User Upload (PDF)
 │  ┌─────────────────────────────────────────────────────────────┐ │
 │  │ Pass 2: Execute                                            │ │
 │  │  - Simple: pymupdf4llm.to_markdown()                     │ │
-│  │  - Complex: Smart Crop → render → Ollama OCR (parallel)    │ │
+│  │  - Complex: Smart Crop → render → Z.AI OCR (parallel)       │ │
 │  └─────────────────────────────────────────────────────────────┘ │
 │  Output: List[Document] with {source, page} metadata           │
 └────────┬─────────────────────────────────────────────────────────┘

@@ -74,7 +74,7 @@ test.describe('Edge Cases (7.x)', () => {
     [file1, file2, file3].forEach(f => fs.unlinkSync(f));
   });
 
-  test('7.3 Unsupported file viewer (Excel)', async ({ page }) => {
+  test('7.3 Unsupported Excel upload', async ({ page }) => {
     await createNotebook(page);
     await expect(page.locator('#scene-chat')).toBeVisible();
 
@@ -87,21 +87,11 @@ test.describe('Edge Cases (7.x)', () => {
       'PK\x03\x04 Test Excel Content');
     await fileInput.setInputFiles(excelFile);
 
-    // Wait for source to appear
-    await page.waitForTimeout(2000);
-
-    // Click the source item to open viewer
+    // Wait for source to appear with a local unsupported state.
+    await page.waitForTimeout(500);
     const sourceItem = page.locator('.source-item').first();
     await expect(sourceItem).toBeVisible({ timeout: 3000 });
-    await sourceItem.click();
-
-    // Verify viewer shows fallback with download link
-    const viewerFallback = page.locator('.viewer-fallback');
-    await expect(viewerFallback).toBeVisible({ timeout: 3000 });
-
-    // Should have download link
-    const downloadLink = viewerFallback.locator('.viewer-open-link');
-    await expect(downloadLink).toBeVisible();
+    await expect(sourceItem.locator('.source-type')).toContainText('Unsupported format');
 
     // Clean up
     fs.unlinkSync(excelFile);

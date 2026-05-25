@@ -169,7 +169,9 @@ Reset a password using a valid reset code.
 
 ### POST /api/documents
 
-Upload a PDF for RAG ingestion.
+Upload a supported source file for RAG ingestion.
+
+Supported file types: PDF, DOCX, HTML/HTM, and Markdown. Excel/CSV tabular ingest and tabular query are temporarily disabled; `.xlsx`, `.xls`, and `.csv` uploads return `400 Unsupported format`.
 
 **Headers:**
 ```
@@ -179,7 +181,7 @@ Content-Type: multipart/form-data
 
 **Body:**
 ```
-file: <PDF file>
+file: <PDF, DOCX, HTML/HTM, or Markdown file>
 ```
 
 **Response (202):**
@@ -195,7 +197,7 @@ file: <PDF file>
 
 **Errors:**
 - 400: No filename provided
-- 400: Not a PDF file
+- 400: Unsupported format
 - 500: Processing failed
 
 ---
@@ -251,6 +253,8 @@ Delete a document and associated vectors.
 ### POST /api/documents/{document_id}/reindex
 
 Start a new ingest job for an existing document.
+
+Reindexing existing Excel/CSV documents is temporarily disabled and returns `400 Unsupported format while tabular ingest is disabled`. Existing tabular records are not deleted by this endpoint.
 
 **Request Body:**
 ```json

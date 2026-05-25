@@ -32,7 +32,7 @@ These choices are conventional for a Python service that needs typed APIs, simpl
 
 - **LangChain**: used for document objects, retrievers, prompt templates, chains, Ollama chat, Gemini chat, OpenAI-compatible chat, and Qdrant integration.
 - **PyMuPDF / pymupdf4llm**: used for PDF text and markdown extraction.
-- **Ollama + `glm-ocr`**: used by the parser for complex pages requiring OCR/VLM extraction.
+- **Z.AI GLM-OCR Layout Parsing API**: used by the parser for complex pages requiring OCR/VLM extraction.
 - **Hugging Face embeddings**: `microsoft/harrier-oss-v1-270m` is the current embedding model in `rag_core/config.py`.
 - **Qdrant**: used as the vector database for child chunks.
 - **BM25 (`rank_bm25`)**: used in `rag_core` hybrid retrieval experiments and retrievers.
@@ -99,9 +99,9 @@ The frontend is intentionally light on build tooling. That keeps local developme
 `HybridPDFParser` uses a two-pass strategy:
 
 1. Scan pages with PyMuPDF and classify pages as simple or complex.
-2. Extract simple pages with `pymupdf4llm`; process complex pages through rendered images and Ollama OCR, with fallback to PyMuPDF-based extraction.
+2. Extract simple pages with `pymupdf4llm`; process complex pages through rendered images and the configured Z.AI OCR API, with fallback to PyMuPDF-based extraction.
 
-The parser preserves `source` and `page` metadata. This is a strong design choice because source/page fidelity is required for citations. The tradeoff is operational cost: the OCR path depends on an available Ollama service and a pulled model, and parsing can become the slowest ingest stage.
+The parser preserves `source` and `page` metadata. This is a strong design choice because source/page fidelity is required for citations. The tradeoff is operational cost: the OCR path depends on valid `OCR_*` API configuration, and parsing can become the slowest ingest stage.
 
 ## Chunking Strategy
 
@@ -385,7 +385,7 @@ The frontend is useful for demos and local E2E testing, but it is not yet a matu
 - `qdrant`
 - `ollama`
 
-This matches the intended architecture in `TASKS.md`: one browser-facing entrypoint, separate API and worker processes, queue-backed ingestion, relational metadata storage, object storage, vector storage, and local model/OCR support.
+This matches the intended architecture in `TASKS.md`: one browser-facing entrypoint, separate API and worker processes, queue-backed ingestion, relational metadata storage, object storage, vector storage, remote OCR, and local model fallback support.
 
 ## Networking And Request Flow
 
@@ -408,7 +408,7 @@ Compose uses named volumes for:
 - Postgres data
 - MinIO objects
 - Qdrant storage
-- Ollama model cache
+- Ollama model cache for local chat fallback
 
 Backend and worker also mount local source directories:
 
@@ -428,7 +428,8 @@ The named volumes provide local durability. The source mounts make the stack con
 - auth settings
 - LLM/provider settings
 - retrieval settings
-- local Ollama settings
+- OCR settings
+- local Ollama settings for chat fallback
 
 There is visible drift:
 
@@ -469,7 +470,7 @@ The Compose stack is suitable for local development and a controlled demo. It is
 - no TLS termination configuration is included
 - backend and worker source are mounted live
 - no database migrations are visible
-- no autoscaling or resource limits are defined except an Ollama GPU reservation
+- no autoscaling or resource limits are defined except optional local LLM GPU configuration
 - no centralized metrics/tracing stack is included
 
 # 7. Current Project Status

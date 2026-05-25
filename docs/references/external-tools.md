@@ -11,7 +11,8 @@
 
 | Tool | Purpose | Required |
 |------|---------|----------|
-| Ollama | Local LLM for OCR | Yes (glm-ocr model) |
+| Z.AI GLM-OCR Layout Parsing API | OCR for complex PDF pages | Required for OCR path; parser falls back when unset |
+| Ollama | Local LLM fallback for chat | Optional |
 | Qdrant | Vector database | Yes (in-memory or local) |
 | SQLite | User database | Yes (file-based) |
 

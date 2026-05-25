@@ -177,7 +177,9 @@ Compatibility note: `token` is always present for old clients.
 
 ### `POST /api/documents`
 
-`multipart/form-data` with `file` (PDF).
+`multipart/form-data` with `file`.
+
+Supported file types: PDF, DOCX, HTML/HTM, and Markdown. Excel/CSV tabular ingest and tabular query are temporarily disabled; `.xlsx`, `.xls`, and `.csv` uploads return `400 Unsupported format`. Existing Excel/CSV records are not migrated or dropped by this contract change.
 
 Response:
 
@@ -198,6 +200,12 @@ Returns documents with latest job status for tracking ingest progress.
 ### `DELETE /api/documents/{document_id}`
 
 Idempotent cleanup across metadata/chunks, vectors, and object storage.
+
+Delete still attempts Excel SQL table cleanup for legacy tabular documents.
+
+### `POST /api/documents/{document_id}/reindex`
+
+Starts a new ingest job for an existing supported document. Existing Excel/CSV documents return `400 Unsupported format while tabular ingest is disabled` and no ingest job is created.
 
 ### `GET /api/jobs/{job_id}`
 

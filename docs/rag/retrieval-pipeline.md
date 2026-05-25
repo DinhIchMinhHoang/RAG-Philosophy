@@ -20,13 +20,13 @@ Pass 1: Scan & Classify
 
 Pass 2: Execute
 +-- Fast Track (simple): pymupdf4llm.to_markdown()
-+-- Heavy Track (complex): Smart Crop ? render ? Ollama OCR (parallel)
++-- Heavy Track (complex): Smart Crop ? render ? Z.AI layout parsing OCR (parallel)
 ```
 
 **Page Classification Heuristics:**
-- Images: Check `page.get_image_info()` for blocks > 50x50px
-- Drawings: Check `page.get_drawings()` count = 15
-- Math: Check for symbols (?, ?, ?, ?, =, =, etc.) > 3 occurrences
+- Images: Check `page.get_image_info()` using `OCR_MIN_IMAGE_WIDTH` / `OCR_MIN_IMAGE_HEIGHT`
+- Drawings: Check `page.get_drawings()` using `OCR_MIN_VECTOR_DRAWINGS`
+- Math: Check math-symbol counts using `OCR_MIN_MATH_SYMBOLS`
 
 **Output**: `List[Document]` with metadata `{source: str, page: int}`
 

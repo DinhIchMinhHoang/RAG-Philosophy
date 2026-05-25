@@ -79,7 +79,7 @@ Guest -> Sign In -> Authenticated User
 ### Document Flow
 
 ```
-No Documents -> Upload PDF -> Documents Ready
+No Documents -> Upload supported source -> Documents Ready
              -> Reset -> No Documents
 ```
 

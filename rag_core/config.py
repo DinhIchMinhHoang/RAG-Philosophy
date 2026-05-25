@@ -57,12 +57,23 @@ class Config:
     RERANK_TIMEOUT_SECONDS: float = float(os.getenv("RERANK_TIMEOUT_SECONDS", "2.0"))
     RERANK_MAX_TOKENS_PER_DOC: int = int(os.getenv("RERANK_MAX_TOKENS_PER_DOC", "1024"))
 
-    OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-    OLLAMA_MODEL_NAME: str = "glm-ocr"
-    OLLAMA_MAX_WORKERS: int = int(os.getenv("OLLAMA_MAX_WORKERS", "2"))
-    DPI_FOR_OCR: int = 150
-    VLM_TIMEOUT_SECONDS: int = 60
-    MAX_IMAGE_LONG_EDGE: int = 1500
+    OCR_PROVIDER: str = os.getenv("OCR_PROVIDER", "zai").strip().lower()
+    OCR_API_BASE_URL: str = os.getenv(
+        "OCR_API_BASE_URL",
+        "https://api.z.ai/api/paas/v4/layout_parsing",
+    ).strip()
+    OCR_API_KEY: str = os.getenv("OCR_API_KEY", "").strip()
+    OCR_MODEL: str = os.getenv("OCR_MODEL", "glm-ocr").strip()
+    OCR_MAX_WORKERS: int = int(os.getenv("OCR_MAX_WORKERS", "2"))
+    OCR_TIMEOUT_SECONDS: int = int(os.getenv("OCR_TIMEOUT_SECONDS", "60"))
+    OCR_RENDER_DPI: int = int(os.getenv("OCR_RENDER_DPI", "150"))
+    OCR_MAX_IMAGE_LONG_EDGE: int = int(os.getenv("OCR_MAX_IMAGE_LONG_EDGE", "1500"))
+    OCR_MIN_IMAGE_WIDTH: float = float(os.getenv("OCR_MIN_IMAGE_WIDTH", "50"))
+    OCR_MIN_IMAGE_HEIGHT: float = float(os.getenv("OCR_MIN_IMAGE_HEIGHT", "50"))
+    OCR_MIN_VECTOR_DRAWINGS: int = int(os.getenv("OCR_MIN_VECTOR_DRAWINGS", "15"))
+    OCR_MIN_MATH_SYMBOLS: int = int(os.getenv("OCR_MIN_MATH_SYMBOLS", "3"))
+    OCR_CROP_PADDING_POINTS: float = float(os.getenv("OCR_CROP_PADDING_POINTS", "5"))
+    PDF_POINTS_PER_INCH: float = float(os.getenv("PDF_POINTS_PER_INCH", "72"))
 
     _DATA_ROOT: Path = Path(__file__).resolve().parent.parent / "data"
     DATA_DIR: str = str(_DATA_ROOT)
