@@ -41,6 +41,16 @@ export async function replaceDocument(documentId, file) {
     return await response.json();
 }
 
+export async function ingestUrl({ url, notebookId } = {}) {
+    if (!url) throw new Error('missing url');
+    const payload = { url };
+    if (notebookId) payload.notebook_id = notebookId;
+    return await request('/ingest/url', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+    });
+}
+
 export function chatStream(message, { conversationId, notebookId, onToken, onDone, onError }) {
     const controller = new AbortController();
     const token = getToken();

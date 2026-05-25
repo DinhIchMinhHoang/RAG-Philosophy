@@ -270,7 +270,13 @@ async def chat_api(
 
 
 
-async def _chat_stream_impl(db: Session, request: ChatRequest, current_user: User, request_id: str | None):
+async def _chat_stream_impl(
+    db: Session,
+    request: ChatRequest,
+    current_user: User,
+    request_id: str | None,
+    http_request: Request,
+):
     async def event_generator():
         timings = ChatTiming()
         stream_started = time.perf_counter()
@@ -280,6 +286,18 @@ async def _chat_stream_impl(db: Session, request: ChatRequest, current_user: Use
         yield _sse_payload({"type": "status", "token": "", "done": False, "stage": "accepted"})
 
         try:
+            if await http_request.is_disconnected():
+                timings.total_stream_ms = _elapsed_ms(stream_started)
+                _log_chat_stream(
+                    "info",
+                    "chat_stream_cancelled",
+                    request_id=request_id,
+                    current_user=current_user,
+                    request=request,
+                    conversation_id=conversation_id,
+                    timings=timings,
+                )
+                return
             if request.notebook_id is not None and not _has_ready_notebook_documents(
                 db,
                 user_id=current_user.id,
@@ -335,6 +353,18 @@ async def _chat_stream_impl(db: Session, request: ChatRequest, current_user: Use
                 db=db,
                 user_id=current_user.username,
             ):
+                if await http_request.is_disconnected():
+                    timings.total_stream_ms = _elapsed_ms(stream_started)
+                    _log_chat_stream(
+                        "info",
+                        "chat_stream_cancelled",
+                        request_id=request_id,
+                        current_user=current_user,
+                        request=request,
+                        conversation_id=conversation_id,
+                        timings=timings,
+                    )
+                    return
                 answer_parts.append(token)
                 if timings.llm_first_token_ms is None:
                     timings.llm_first_token_ms = _elapsed_ms(llm_started)
@@ -417,4 +447,5 @@ async def chat_stream_api(
         request,
         current_user,
         request_id=getattr(http_request.state, "request_id", None),
+        http_request=http_request,
     )

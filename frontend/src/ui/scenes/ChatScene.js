@@ -6,6 +6,7 @@ import {
     getJob,
     getLatestNotebookConversation,
     getToken,
+    ingestUrl,
     listSources,
     renameSource,
     deleteSource,
@@ -193,6 +194,7 @@ export function processRichText(container, text, citations = []) {
 const viewerState = { filename: null, page: null, documentId: null, mimeType: null };
 let activeStreamController = null;
 let activeConversationId = null;
+let activeStreamUi = null;
 const activeConversationByNotebook = new Map();
 const conversationStateByNotebook = new Map();
 const manualNewChatByNotebook = new Set();
@@ -453,6 +455,16 @@ function hideThinkingIndicator() {
     document.getElementById('thinkingIndicator')?.remove();
 }
 
+function setSendButtonMode(button, mode) {
+    if (!button) return;
+    const isCancel = mode === 'cancel';
+    button.classList.toggle('is-cancel', isCancel);
+    button.title = isCancel ? 'Stop' : 'Send';
+    button.setAttribute('aria-label', isCancel ? 'Stop' : 'Send');
+    const icon = button.querySelector('.material-icons');
+    if (icon) icon.textContent = isCancel ? 'stop' : 'north_east';
+}
+
 function updateSourceEmpty(sourceEmpty, sourceList) {
     if (!sourceEmpty || !sourceList) return;
     sourceEmpty.style.display = sourceList.children.length ? 'none' : 'block';
@@ -655,8 +667,37 @@ export function initChatScene(transitionManager) {
     const sourceDrop = chatScene.querySelector('.source-drop');
     const sourceAddButtons = chatScene.querySelectorAll('.source-add-button');
     const sourceNoteButton = chatScene.querySelector('.source-note-button');
+    const urlIngestModal = document.getElementById('urlIngestModal');
+    const urlIngestInput = document.getElementById('urlIngestInput');
+    const urlIngestError = document.getElementById('urlIngestError');
+    const urlIngestSubmit = document.getElementById('urlIngestSubmit');
+    const urlIngestCancel = document.getElementById('urlIngestCancel');
     let sourceLoadToken = 0;
     let conversationLoadToken = 0;
+    let sendButton = null;
+
+    const cancelActiveStream = ({ preservePartial = true } = {}) => {
+        if (activeStreamController) {
+            activeStreamController.abort();
+            activeStreamController = null;
+        }
+        hideThinkingIndicator();
+        if (activeStreamUi?.aiMsg) {
+            if (!preservePartial || !activeStreamUi.receivedFirst) {
+                activeStreamUi.aiMsg.remove();
+            } else {
+                activeStreamUi.aiMsg.style.display = 'flex';
+                activeStreamUi.aiMsg.classList.remove('streaming');
+                if (activeStreamUi.textEl) {
+                    activeStreamUi.textEl.innerHTML = '';
+                    processRichText(activeStreamUi.textEl, activeStreamUi.fullText || '');
+                }
+                if (activeStreamUi.citationsEl) renderCitationChips(activeStreamUi.citationsEl, []);
+            }
+        }
+        activeStreamUi = null;
+        setSendButtonMode(sendButton, 'send');
+    };
 
     const shareButton = chatScene.querySelector('.chat-top-actions .panel-icon-button[title="Share"]');
     if (shareButton) {
@@ -901,8 +942,7 @@ export function initChatScene(transitionManager) {
             }
         }
         if (activeStreamController) {
-            activeStreamController.abort();
-            activeStreamController = null;
+            cancelActiveStream({ preservePartial: false });
         }
         activeConversationId = null;
         resetSourceViewer();
@@ -1003,16 +1043,79 @@ export function initChatScene(transitionManager) {
         }
     };
 
+    const openUrlIngestModal = () => {
+        if (!urlIngestModal || !urlIngestInput || !urlIngestError) return;
+        urlIngestInput.value = '';
+        urlIngestError.textContent = '';
+        urlIngestError.classList.remove('show');
+        urlIngestModal.classList.add('open');
+        urlIngestModal.style.display = 'flex';
+        urlIngestModal.setAttribute('aria-hidden', 'false');
+        setTimeout(() => urlIngestInput.focus(), 0);
+    };
+
+    const closeUrlIngestModal = () => {
+        if (!urlIngestModal || !urlIngestInput || !urlIngestError) return;
+        urlIngestModal.classList.remove('open');
+        urlIngestModal.style.display = 'none';
+        urlIngestModal.setAttribute('aria-hidden', 'true');
+        urlIngestError.textContent = '';
+        urlIngestError.classList.remove('show');
+    };
+
+    const setUrlIngestError = (message) => {
+        if (!urlIngestError) return;
+        urlIngestError.textContent = message || '';
+        urlIngestError.classList.toggle('show', Boolean(message));
+    };
+
+    const submitUrlIngest = async () => {
+        if (!urlIngestInput || !urlIngestSubmit) return;
+        const raw = urlIngestInput.value.trim();
+        if (!raw) {
+            setUrlIngestError('Please enter a URL.');
+            return;
+        }
+        let normalized;
+        try {
+            normalized = new URL(raw).toString();
+        } catch (err) {
+            setUrlIngestError('Please enter a valid URL.');
+            return;
+        }
+        const notebookId = currentNotebookId(chatScene);
+        if (!notebookId) {
+            setUrlIngestError('Please select a notebook first.');
+            return;
+        }
+        setUrlIngestError('');
+        urlIngestSubmit.disabled = true;
+        urlIngestSubmit.textContent = 'Adding...';
+        try {
+            await ingestUrl({ url: normalized, notebookId });
+            closeUrlIngestModal();
+            loadNotebookSources();
+        } catch (err) {
+            console.error('[URL ingest] failed', err);
+            setUrlIngestError(err.message || 'Failed to add website.');
+        } finally {
+            urlIngestSubmit.disabled = false;
+            urlIngestSubmit.textContent = 'Add';
+        }
+    };
+
     sourceAddButtons.forEach(btn => btn.addEventListener('click', () => sourceInput?.click()));
     sourceInput?.addEventListener('change', (ev) => { handleFiles(ev.target.files); sourceInput.value = ''; });
-    if (sourceNoteButton) sourceNoteButton.addEventListener('click', () => {
-        const note = prompt('New note');
-        if (!note) return;
-        const item = document.createElement('div');
-        item.className = 'source-item';
-        item.innerHTML = `<div class="source-icon"><span class="material-icons">edit_note</span></div><div class="source-meta"><div class="source-name">${note}</div><div class="source-type">Note</div></div>`;
-        sourceList.appendChild(item);
-        updateSourceEmpty(sourceEmpty, sourceList);
+    if (sourceNoteButton) sourceNoteButton.addEventListener('click', openUrlIngestModal);
+    urlIngestCancel?.addEventListener('click', closeUrlIngestModal);
+    urlIngestModal?.querySelector('.image-modal-backdrop')?.addEventListener('click', closeUrlIngestModal);
+    urlIngestInput?.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter') { ev.preventDefault(); submitUrlIngest(); }
+        if (ev.key === 'Escape') { ev.preventDefault(); closeUrlIngestModal(); }
+    });
+    urlIngestSubmit?.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        submitUrlIngest();
     });
 
     if (sourceDrop) {
@@ -1054,7 +1157,10 @@ export function initChatScene(transitionManager) {
             const text = chatPrompt.value.trim();
             if (!text) return;
 
-            if (activeStreamController) { activeStreamController.abort(); activeStreamController = null; }
+            if (activeStreamController) {
+                cancelActiveStream({ preservePartial: true });
+                return;
+            }
 
             addMessage(chatThread, 'user', text);
             const userMessageState = { id: '', role: 'user', content: text, sources_used: [] };
@@ -1070,12 +1176,13 @@ export function initChatScene(transitionManager) {
             const citationsEl = aiMsg.querySelector('.citation-strip');
             if (!textEl) return;
 
-            const sendBtn = chatForm.querySelector('.send-button');
-            if (sendBtn) sendBtn.disabled = true;
+            sendButton = chatForm.querySelector('.send-button');
+            setSendButtonMode(sendButton, 'cancel');
 
             showThinkingIndicator(chatThread);
 
             let fullText = ''; let receivedFirst = false;
+            activeStreamUi = { aiMsg, textEl, citationsEl, fullText, receivedFirst };
 
             const requestNotebookKey = getActiveNotebookKey();
             const requestNotebookId = requestNotebookKey ? Number(requestNotebookKey) : null;
@@ -1088,6 +1195,10 @@ export function initChatScene(transitionManager) {
                     if (!isCurrentNotebookLoad(requestVersion, requestNotebookKey)) return;
                     if (!receivedFirst) { receivedFirst = true; hideThinkingIndicator(); aiMsg.style.display = 'flex'; }
                     fullText += token;
+                    if (activeStreamUi) {
+                        activeStreamUi.fullText = fullText;
+                        activeStreamUi.receivedFirst = receivedFirst;
+                    }
                     textEl.innerHTML = '';
                     processRichText(textEl, fullText + ' <span class="streaming-cursor"></span>');
                     chatThread.scrollTop = chatThread.scrollHeight;
@@ -1135,7 +1246,8 @@ export function initChatScene(transitionManager) {
                     renderCitationChips(citationsEl, []);
                     aiMsg.classList.remove('streaming');
                     activeStreamController = null;
-                    if (sendBtn) sendBtn.disabled = false;
+                    activeStreamUi = null;
+                    setSendButtonMode(sendButton, 'send');
                 },
                 onError(err) {
                     if (!isCurrentNotebookLoad(requestVersion, requestNotebookKey)) return;
@@ -1144,7 +1256,8 @@ export function initChatScene(transitionManager) {
                     textEl.insertAdjacentText('beforeend', `\n\nError: ${err.message}`);
                     aiMsg.classList.remove('streaming');
                     activeStreamController = null;
-                    if (sendBtn) sendBtn.disabled = false;
+                    activeStreamUi = null;
+                    setSendButtonMode(sendButton, 'send');
                 },
             });
         });
@@ -1176,6 +1289,7 @@ export function initChatScene(transitionManager) {
     });
 
     newChatBtn?.addEventListener('click', () => {
+        if (activeStreamController) cancelActiveStream({ preservePartial: false });
         const notebookId = currentNotebookId(chatScene);
         activeConversationId = null;
         if (notebookId) {
@@ -1211,6 +1325,7 @@ export function initChatScene(transitionManager) {
     });
 
     clearChatBtn?.addEventListener('click', () => {
+        if (activeStreamController) cancelActiveStream({ preservePartial: false });
         const notebookId = currentNotebookId(chatScene);
         activeConversationId = null;
         if (notebookId) {

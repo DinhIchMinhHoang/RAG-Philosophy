@@ -439,6 +439,7 @@ class ChatRuntimeService:
         user_id: str | None = None,
     ):
 
+        import asyncio
         mode = settings.llm_mode
         context_text = self._build_context(contexts)
         chat_history_text = self._build_history(recent_history)
@@ -476,6 +477,8 @@ class ChatRuntimeService:
             async for token in self._stream_provider(cloud_provider, question, context_text, chat_history_text):
                 emitted = True
                 yield token
+        except asyncio.CancelledError:
+            raise
         except Exception as exc:
             if emitted:
                 raise
