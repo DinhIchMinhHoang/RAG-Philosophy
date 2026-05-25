@@ -45,3 +45,4 @@ test_step1_step2.py
 e2e-artifacts/
 todo_backlog.md
 TODO.md
+.env.backup

@@ -461,9 +461,41 @@ def run_url_ingest_job(
 
     stage_started = time.perf_counter()
     _mark_stage("fetching_object", 0.1, "url_fetch_started")
-    from rag_core.html_parser import parse_html_from_url
 
-    parsed_pages = parse_html_from_url(url, document_id, pipeline_version)
+    import urllib.request
+    from rag_core.html_parser import (
+        DEFAULT_URL_MAX_BYTES,
+        DEFAULT_URL_TIMEOUT,
+        _validate_html_content,
+        parse_html_bytes,
+    )
+
+    req = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": "Mozilla/5.0 (compatible; RAG-Philosophy/1.0; +https://uet.vnu.edu.vn)",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=DEFAULT_URL_TIMEOUT) as resp:
+        content = resp.read()
+        if len(content) > DEFAULT_URL_MAX_BYTES:
+            raise ValueError(
+                f"URL content too large ({len(content)} bytes > {DEFAULT_URL_MAX_BYTES})"
+            )
+
+    object_key = f"{document_id}/index.html"
+    storage_client.put_bytes(object_key, content, "text/html")
+
+    doc = db.query(DocumentRecord).filter(DocumentRecord.id == document_id).first()
+    if doc:
+        doc.object_key = object_key
+        doc.size_bytes = len(content)
+        db.commit()
+
+    _validate_html_content(content[:8192])
+    html = content.decode("utf-8", errors="ignore").lstrip("\ufeff")
+    parsed_pages = parse_html_bytes(html, url, document_id, pipeline_version)
+
     _mark_stage("fetching_object", 1.0, f"fetched_and_parsed_pages={len(parsed_pages)}")
     fetch_duration_ms = int((time.perf_counter() - stage_started) * 1000)
     log_event(

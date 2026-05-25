@@ -18,6 +18,7 @@ from ..ingest.logging_utils import log_event
 from ..ingest.processor import run_ingest_job
 from ..ingest.qdrant_store import build_qdrant_client, delete_vectors_for_document
 from ..ingest.storage import compute_content_hash, storage_client
+from ..ingest.url_safety import URLValidationError, validate_ingest_url
 from ..models import DocumentRecord, IngestJob, JobStage, JobStatus, Notebook, User
 
 router = APIRouter(prefix="/api", tags=["Ingest"])
@@ -71,6 +72,7 @@ def _is_queue_idle() -> bool:
 
 class UrlIngestRequest(BaseModel):
     url: str
+    notebook_id: int | None = None
 
 
 class ReindexRequest(BaseModel):
@@ -707,4 +709,63 @@ def reindex_document(
     current_user: User = Depends(get_current_user),
 ):
     return _reindex_document_impl(db=db, document_id=document_id, request=request, current_user=current_user)
+
+
+@router.post("/ingest/url", status_code=status.HTTP_202_ACCEPTED)
+def create_url_document(
+    request: UrlIngestRequest,
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        url = validate_ingest_url(request.url.strip())
+    except URLValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+
+    version = settings.pipeline_version.strip()
+    if not version:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="pipeline_version is required")
+
+    document_id = str(uuid.uuid4())
+    object_key = f"url://{url}"
+
+    db = SessionLocal()
+    try:
+        _validate_notebook_for_upload(db, request.notebook_id, current_user)
+
+        document = DocumentRecord(
+            id=document_id,
+            owner_id=current_user.id,
+            notebook_id=request.notebook_id,
+            filename=url,
+            object_key=object_key,
+            mime_type="text/html",
+            size_bytes=0,
+        )
+        db.add(document)
+        db.commit()
+        db.refresh(document)
+
+        job = _create_job(db, document_id=document.id, pipeline_version=version)
+        _enqueue_url_ingest(job.id, document.id, url, version, current_user.username)
+
+        return {
+            "document_id": document.id,
+            "job_id": job.id,
+            "status": job.status,
+            "pipeline_version": version,
+            "url": url,
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        log_event(
+            "error",
+            "url_ingest_failed",
+            document_id=document_id,
+            stage="enqueue",
+            error_message=str(exc),
+        )
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to enqueue URL: {exc}")
+    finally:
+        db.close()
 

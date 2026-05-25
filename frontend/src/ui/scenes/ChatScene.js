@@ -1152,15 +1152,25 @@ export function initChatScene(transitionManager) {
     };
 
     if (chatForm && chatPrompt) {
+        sendButton = chatForm.querySelector('.send-button');
+        if (sendButton) {
+            sendButton.addEventListener('click', (ev) => {
+                if (!sendButton.classList.contains('is-cancel')) return;
+                ev.preventDefault();
+                if (activeStreamController) cancelActiveStream({ preservePartial: true });
+            });
+        }
+
         chatForm.addEventListener('submit', (ev) => {
             ev.preventDefault();
-            const text = chatPrompt.value.trim();
-            if (!text) return;
 
             if (activeStreamController) {
                 cancelActiveStream({ preservePartial: true });
                 return;
             }
+
+            const text = chatPrompt.value.trim();
+            if (!text) return;
 
             addMessage(chatThread, 'user', text);
             const userMessageState = { id: '', role: 'user', content: text, sources_used: [] };
@@ -1176,7 +1186,6 @@ export function initChatScene(transitionManager) {
             const citationsEl = aiMsg.querySelector('.citation-strip');
             if (!textEl) return;
 
-            sendButton = chatForm.querySelector('.send-button');
             setSendButtonMode(sendButton, 'cancel');
 
             showThinkingIndicator(chatThread);
