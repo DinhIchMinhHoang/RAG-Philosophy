@@ -8,38 +8,41 @@ Sử dụng ChatGoogleGenerativeAI (Gemini) kết hợp với retriever
 from __future__ import annotations
 
 import logging
+from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
-from langchain.chains.combine_documents import create_stuff_documents_chain
+from langchain_core.runnables import RunnableLambda
 from langchain.chains.retrieval import create_retrieval_chain
 
 try:
     from .common.llm import build_chat_llm
     from .common.logging_utils import configure_logging, get_logger
+    from .common.prompts import SYSTEM_PROMPT
     from .config import Config
 except ImportError:  # pragma: no cover
     from common.llm import build_chat_llm
     from common.logging_utils import configure_logging, get_logger
+    from common.prompts import SYSTEM_PROMPT
     from config import Config
 
 configure_logging()
 logger = get_logger(__name__)
 
-# ── System Prompt ─────────────────────────────────────────────
-SYSTEM_PROMPT = (
-    "Bạn là chuyên gia AI, trợ lý học tập cho sinh viên "
-    "Đại học Công nghệ (UET). Bạn sẽ nhận được các đoạn trích dẫn "
-    "từ giáo trình. Hãy trả lời câu hỏi dựa TRỰC TIẾP trên "
-    "các đoạn văn được cung cấp dưới đây.\n\n"
-    "Quy tắc:\n"
-    "1. Chỉ sử dụng thông tin từ tài liệu được cung cấp.\n"
-    "2. Nếu thông tin không đủ, hãy chỉ ra phần nào thiếu "
-    "thay vì tự ý bổ sung.\n"
-    "3. Bắt buộc đính kèm trích dẫn nguồn ở cuối mỗi ý quan trọng sử dụng thông tin từ tài liệu đó theo đúng định dạng sau:\n"
-    "   `- tên_file, Trang X` (ví dụ: `- giao_trinh_triet_hoc.pdf, Trang 12` hoặc `- mac_lenin.pdf, Trang 5`)\n"
-    "   Trong đó tên_file và X lấy chính xác từ context.\n\n"
-    "Tài liệu tham khảo:\n"
-    "{context}"
-)
+
+def _format_context_documents(docs) -> str:
+    blocks: list[str] = []
+    for idx, doc in enumerate(docs or [], start=1):
+        metadata = doc.metadata or {}
+        source = metadata.get("source", "N/A")
+        page = metadata.get("page", "N/A")
+        doc_id = metadata.get("doc_id", "")
+        chunk_id = metadata.get("chunk_id", "")
+        blocks.append(
+            (
+                f"[C{idx}] source={source} page={page} doc_id={doc_id} chunk_id={chunk_id}\n"
+                f"{doc.page_content}"
+            )
+        )
+    return "\n\n---\n\n".join(blocks)
 
 
 def setup_rag_chain(retriever):
@@ -63,10 +66,17 @@ def setup_rag_chain(retriever):
         ("human", "{input}"),
     ])
 
-    # 3. Tạo chain: stuff documents → LLM
-    question_answer_chain = create_stuff_documents_chain(
-        llm=llm,
-        prompt=prompt,
+    # 3. Tạo chain: format retrieved documents with citation IDs → LLM
+    question_answer_chain = (
+        RunnableLambda(
+            lambda inputs: {
+                "context": _format_context_documents(inputs.get("context", [])),
+                "input": inputs.get("input", ""),
+            }
+        )
+        | prompt
+        | llm
+        | StrOutputParser()
     )
 
     # 4. Kết hợp retriever + QA chain → RAG chain
