@@ -2,7 +2,7 @@ import { store } from '../../state/store.js';
 import {
     BASE_URL,
     chatStream,
-    createSavedNotebookItem,
+
     getJob,
     getLatestNotebookConversation,
     getToken,
@@ -514,7 +514,7 @@ function addMessage(chatThread, role, text, citations = [], messageId = '') {
     msg.dataset.messageId = messageId || '';
     const chatScene = document.getElementById('scene-chat');
     const isReadOnly = chatScene && chatScene.dataset.notebookOwnerId && String(store.user?.id) !== String(chatScene.dataset.notebookOwnerId);
-    msg.innerHTML = `<div class="message-text"></div><div class="citation-strip"></div>${isReadOnly ? '' : '<div class="message-actions"><button class="message-action" data-action="pin-message" title="Pin message"><span class="material-icons">push_pin</span></button><button class="message-action" data-action="save-message" title="Save to Notes"><span class="material-icons">bookmark_add</span></button></div>'}<div class="message-meta"></div>`;
+    msg.innerHTML = `<div class="message-text"></div><div class="citation-strip"></div><div class="message-meta"></div>`;
     const textEl = msg.querySelector('.message-text');
     const citationsEl = msg.querySelector('.citation-strip');
     const metaEl = msg.querySelector('.message-meta');
@@ -1494,16 +1494,6 @@ export function initChatScene(transitionManager) {
         .filter(Boolean)
         .join('\n\n');
 
-    const saveNotebookItem = async (payload) => {
-        const notebookId = currentNotebookId(chatScene);
-        if (!notebookId) return;
-        try {
-            await createSavedNotebookItem(notebookId, payload);
-        } catch (err) {
-            console.error('[Notes] Failed to save notebook item', err);
-        }
-    };
-
     if (chatForm && chatPrompt) {
         sendButton = chatForm.querySelector('.send-button');
         if (sendButton) {
@@ -1631,26 +1621,6 @@ export function initChatScene(transitionManager) {
         });
         chatPrompt.addEventListener('input', () => { chatPrompt.style.height = 'auto'; chatPrompt.style.height = `${Math.min(chatPrompt.scrollHeight, 140)}px`; });
     }
-
-    chatThread?.addEventListener('click', (ev) => {
-        const action = ev.target.closest('.message-action')?.getAttribute('data-action');
-        if (!action) return;
-        const messageEl = ev.target.closest('.message, .ai-response');
-        const content = messageEl?.querySelector('.message-text')?.textContent?.trim();
-        if (!messageEl || !content) return;
-        const notebookId = currentNotebookId(chatScene);
-        const state = notebookId ? conversationStateByNotebook.get(notebookId) : null;
-        const messageId = messageEl.dataset.messageId || null;
-        const stateMessage = state?.messages?.find((message) => message.id === messageId);
-        saveNotebookItem({
-            kind: action === 'pin-message' ? 'pin' : 'note',
-            title: action === 'pin-message' ? 'Pinned message' : 'Saved message',
-            content,
-            conversation_id: activeConversationId,
-            message_id: messageId,
-            sources_used: stateMessage?.sources_used || [],
-        });
-    });
 
     clearChatBtn?.addEventListener('click', () => {
         if (activeStreamController) cancelActiveStream({ preservePartial: false });
