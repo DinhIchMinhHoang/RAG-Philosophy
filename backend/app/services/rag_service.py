@@ -39,27 +39,10 @@ if _RAG_CORE_DIR not in sys.path:
 
 from rag_core.config import Config as RAGConfig           # rag_core/config.py
 from rag_core.common.llm import build_chat_llm
+from rag_core.common.prompts import SYSTEM_PROMPT
 from rag_core.step1_parser import HybridPDFParser          # rag_core/step1_parser.py
 from rag_core.step2_chunker import chunk_documents         # rag_core/step2_chunker.py
 from rag_core.step3_vector_db import build_vector_db       # rag_core/step3_vector_db.py
-
-# ---------------------------------------------------------------------------
-# System Prompt for the streaming chain (matches step4_generator.py style)
-# ---------------------------------------------------------------------------
-_SYSTEM_PROMPT = (
-    "Bạn là chuyên gia AI, trợ lý học tập cho sinh viên "
-    "Đại học Công nghệ (UET). Bạn sẽ nhận được các đoạn trích dẫn "
-    "từ giáo trình. Hãy trả lời câu hỏi dựa TRỰC TIẾP trên "
-    "các đoạn văn được cung cấp dưới đây.\n\n"
-    "Quy tắc:\n"
-    "1. Chỉ sử dụng thông tin từ tài liệu được cung cấp.\n"
-    "2. Nếu thông tin không đủ, hãy chỉ ra phần nào thiếu "
-    "thay vì tự ý bổ sung.\n"
-    "3. Luôn đính kèm số trang (VD: [Trang X]) vào cuối "
-    "mỗi ý quan trọng trong câu trả lời.\n\n"
-    "Tài liệu tham khảo:\n"
-    "{context}"
-)
 
 
 class RAGService:
@@ -141,10 +124,11 @@ class RAGService:
         # Format context with source/page info
         context_parts = []
         for i, doc in enumerate(docs):
+            citation_id = f"C{i + 1}"
             source = doc.metadata.get("source", "N/A")
             page = doc.metadata.get("page", "N/A")
             context_parts.append(
-                f"[Tài liệu {i+1} — {source}, Trang {page}]\n"
+                f"[{citation_id}] source={source} page={page}\n"
                 f"{doc.page_content}"
             )
         context_text = "\n\n---\n\n".join(context_parts)
@@ -157,7 +141,7 @@ class RAGService:
         )
 
         prompt = ChatPromptTemplate.from_messages([
-            ("system", _SYSTEM_PROMPT),
+            ("system", SYSTEM_PROMPT),
             ("human", "{input}"),
         ])
 

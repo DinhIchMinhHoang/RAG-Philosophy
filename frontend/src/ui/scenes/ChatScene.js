@@ -558,6 +558,10 @@ function formatDocumentStatus(doc) {
     return formatJobProgress(job);
 }
 
+function isActiveIngestJob(job) {
+    return Boolean(job) && !['succeeded', 'failed'].includes(job.status);
+}
+
 async function pollUploadJob(jobId, metaEl) {
     let delayMs = 1000;
 
@@ -744,7 +748,8 @@ export function initChatScene(transitionManager) {
             const menuBtnHtml = `<button class="source-menu-btn" title="More" type="button"><span class="material-icons">more_vert</span></button>`;
             const menuHtml = `<div class="source-menu"><button class="source-menu-item" data-action="rename"><span class=\"material-icons\">edit</span> Rename</button><button class="source-menu-item" data-action="delete"><span class=\"material-icons\">delete</span> Delete</button></div>`;
 
-            item.innerHTML = `<div class="source-icon"><span class="material-icons">picture_as_pdf</span></div><div class="source-meta"><div class="source-name">${escapeHtml(doc.filename || 'Untitled document')}</div><div class="source-type">${escapeHtml(formatDocumentStatus(doc))}</div></div>${menuBtnHtml}${menuHtml}`;
+            const sourceTypeClass = isActiveIngestJob(doc.latest_job) ? 'source-type uploading' : 'source-type';
+            item.innerHTML = `<div class="source-icon"><span class="material-icons">${getFileIcon(doc.filename || '')}</span></div><div class="source-meta"><div class="source-name">${escapeHtml(doc.filename || 'Untitled document')}</div><div class="${sourceTypeClass}">${escapeHtml(formatDocumentStatus(doc))}</div></div>${menuBtnHtml}${menuHtml}`;
 
             // click on item opens preview unless clicking within menu
             item.addEventListener('click', (ev) => {
@@ -963,6 +968,10 @@ export function initChatScene(transitionManager) {
         return SUPPORTED_EXTENSIONS.includes(ext);
     }
 
+    function refreshSourcesIfCurrent(notebookKey) {
+        if (getActiveNotebookKey() === notebookKey) loadNotebookSources();
+    }
+
     const handleFiles = async (files) => {
         const list = Array.from(files || []);
         const uploadNotebookKey = getActiveNotebookKey();
@@ -991,15 +1000,20 @@ export function initChatScene(transitionManager) {
                     if (result.document_id) item.dataset.documentId = result.document_id;
                     if (result.pages !== undefined || result.chunks !== undefined) {
                         setSourceMeta(metaEl, `${result.pages ?? 0} pages, ${result.chunks ?? 0} chunks`, false);
+                        refreshSourcesIfCurrent(uploadNotebookKey);
                     } else if (result.job_id) {
                         setSourceMeta(metaEl, 'Queued for indexing', true);
-                        pollUploadJob(result.job_id, metaEl).catch((err) => {
-                            if (getActiveNotebookKey() !== uploadNotebookKey) return;
-                            console.error('[Upload job]', err);
-                            setSourceMeta(metaEl, `Error: ${err.message}`, false);
-                        });
+                        refreshSourcesIfCurrent(uploadNotebookKey);
+                        pollUploadJob(result.job_id, metaEl)
+                            .then(() => refreshSourcesIfCurrent(uploadNotebookKey))
+                            .catch((err) => {
+                                if (getActiveNotebookKey() !== uploadNotebookKey) return;
+                                console.error('[Upload job]', err);
+                                setSourceMeta(metaEl, `Error: ${err.message}`, false);
+                            });
                     } else {
                         setSourceMeta(metaEl, result.status || 'Upload accepted', false);
+                        refreshSourcesIfCurrent(uploadNotebookKey);
                     }
                 } catch (err) {
                     if (getActiveNotebookKey() !== uploadNotebookKey) return;
@@ -1014,15 +1028,20 @@ export function initChatScene(transitionManager) {
                                 if (result.document_id) item.dataset.documentId = result.document_id;
                                 if (result.pages !== undefined || result.chunks !== undefined) {
                                     setSourceMeta(metaEl, `${result.pages ?? 0} pages, ${result.chunks ?? 0} chunks`, false);
+                                    refreshSourcesIfCurrent(uploadNotebookKey);
                                 } else if (result.job_id) {
                                     setSourceMeta(metaEl, 'Queued for indexing', true);
-                                    pollUploadJob(result.job_id, metaEl).catch((err2) => {
-                                        if (getActiveNotebookKey() !== uploadNotebookKey) return;
-                                        console.error('[Replace job]', err2);
-                                        setSourceMeta(metaEl, `Error: ${err2.message}`, false);
-                                    });
+                                    refreshSourcesIfCurrent(uploadNotebookKey);
+                                    pollUploadJob(result.job_id, metaEl)
+                                        .then(() => refreshSourcesIfCurrent(uploadNotebookKey))
+                                        .catch((err2) => {
+                                            if (getActiveNotebookKey() !== uploadNotebookKey) return;
+                                            console.error('[Replace job]', err2);
+                                            setSourceMeta(metaEl, `Error: ${err2.message}`, false);
+                                        });
                                 } else {
                                     setSourceMeta(metaEl, result.status || 'Replace accepted', false);
+                                    refreshSourcesIfCurrent(uploadNotebookKey);
                                 }
                             } catch (replaceErr) {
                                 if (getActiveNotebookKey() !== uploadNotebookKey) return;
