@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..models import DocumentRecord, IngestJob, User
+from ..models import DocumentRecord, IngestJob, Notebook, User
 from ..core.dependencies import get_current_user
 from ..core.logging_utils import log_api_event
 from ..core.settings import settings
@@ -90,14 +90,14 @@ def _elapsed_ms(started_at: float) -> int:
 
 
 def _has_ready_notebook_documents(db: Session, *, user_id: int, notebook_id: int) -> bool:
+    nb = db.query(Notebook).filter(Notebook.id == notebook_id).first()
+    filters = [DocumentRecord.notebook_id == notebook_id, IngestJob.status == "succeeded"]
+    if not nb or not nb.is_community:
+        filters.append(DocumentRecord.owner_id == user_id)
     return (
         db.query(DocumentRecord.id)
         .join(IngestJob, IngestJob.document_id == DocumentRecord.id)
-        .filter(
-            DocumentRecord.owner_id == user_id,
-            DocumentRecord.notebook_id == notebook_id,
-            IngestJob.status == "succeeded",
-        )
+        .filter(*filters)
         .first()
         is not None
     )
@@ -122,8 +122,14 @@ def _resolve_selected_source_ids(db: Session, request: ChatRequest, current_user
     if not normalized:
         return []
 
+    owner_filter = DocumentRecord.owner_id == current_user.id
+    if request.notebook_id is not None:
+        nb = db.query(Notebook).filter(Notebook.id == request.notebook_id).first()
+        if nb and nb.is_community:
+            owner_filter = DocumentRecord.notebook_id == request.notebook_id
+
     owned_query = db.query(DocumentRecord.id).filter(
-        DocumentRecord.owner_id == current_user.id,
+        owner_filter,
         DocumentRecord.id.in_(normalized),
     )
     if request.notebook_id is not None:
@@ -161,6 +167,10 @@ async def _prepare_chat_turn(
     rewritten_query = await chat_runtime_service.rewrite_question(normalized, history)
     timings.rewrite_ms = _elapsed_ms(rewrite_started)
     retrieval_started = time.perf_counter()
+    is_community = False
+    if request.notebook_id is not None:
+        nb = db.query(Notebook).filter(Notebook.id == request.notebook_id).first()
+        is_community = nb is not None and nb.is_community
     contexts = chat_runtime_service.retrieve(
         db,
         rewritten_query,
@@ -168,6 +178,7 @@ async def _prepare_chat_turn(
         user_id=current_user.id,
         notebook_id=request.notebook_id,
         selected_source_ids=selected_source_ids,
+        is_community=is_community,
     )
     timings.retrieval_ms = _elapsed_ms(retrieval_started)
     available_citations = chat_runtime_service.citations_from_context(contexts)

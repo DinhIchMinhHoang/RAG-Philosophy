@@ -1,6 +1,7 @@
 import { hideImageModal, showImageModal } from '../components/Modal.js';
 import { isAuthenticated } from '../../api/client.js';
 import { getNotebooks, createNotebook, updateNotebook, deleteNotebook, copyNotebook } from '../../api/notebooks.js';
+import { store } from '../../state/store.js';
 
 let createNotebookInFlight = false;
 
@@ -51,6 +52,14 @@ function buildNotebookItem(nb) {
     item.appendChild(btn);
 
     item.dataset.isCommunity = nb.is_community ? 'true' : 'false';
+
+    if (nb.is_community) {
+        const badge = document.createElement('span');
+        badge.className = 'community-badge';
+        badge.title = 'Community notebook — shared by all users';
+        badge.innerHTML = '<span class="material-icons">public</span>';
+        cover.appendChild(badge);
+    }
 
     return item;
 }
@@ -132,7 +141,7 @@ function setupThumbSwitch(switchEl, container) {
 function setupMoreMenu(transitionManager) {
     const moreMenu = document.createElement('div');
     moreMenu.className = 'more-menu';
-    moreMenu.innerHTML = `<button class="menu-item rename">Rename</button><button class="menu-item change-image">Change image</button><button class="menu-item copy">Copy to my notebooks</button><button class="menu-item delete">Delete</button>`;
+    moreMenu.innerHTML = `<button class="menu-item rename">Rename</button><button class="menu-item change-image">Change image</button><button class="menu-item share"></button><button class="menu-item copy">Copy to my notebooks</button><button class="menu-item delete">Delete</button>`;
     document.body.appendChild(moreMenu);
 
     let currentTarget = null;
@@ -157,6 +166,31 @@ function setupMoreMenu(transitionManager) {
         moreMenu.style.left = `${Math.max(8, left)}px`;
         moreMenu.style.top = `${Math.min(window.innerHeight - 8, rect.bottom + 8)}px`;
         moreMenu.classList.add('visible');
+
+        const isOwner = store.user && String(store.user.id) === String(target.dataset.ownerId);
+        const isCommunity = target.dataset.isCommunity === 'true';
+        const renameBtn = moreMenu.querySelector('.rename');
+        const changeImageBtn = moreMenu.querySelector('.change-image');
+        const shareBtn = moreMenu.querySelector('.share');
+        const deleteBtn = moreMenu.querySelector('.delete');
+        const copyBtn = moreMenu.querySelector('.copy');
+        if (isOwner) {
+            renameBtn.style.display = '';
+            changeImageBtn.style.display = '';
+            shareBtn.style.display = '';
+            shareBtn.textContent = isCommunity ? 'Unshare' : 'Share';
+            deleteBtn.style.display = '';
+            copyBtn.style.display = 'none';
+        } else if (isCommunity) {
+            renameBtn.style.display = 'none';
+            changeImageBtn.style.display = 'none';
+            shareBtn.style.display = 'none';
+            deleteBtn.style.display = 'none';
+            copyBtn.style.display = '';
+        } else {
+            hideMenu();
+            return;
+        }
     };
 
     if (document.getElementById('chooseFileBtn')) {
@@ -259,11 +293,45 @@ function setupMoreMenu(transitionManager) {
                     transitionManager.transitionTo('dashboard');
                 }
             }
+        } else if (action === 'share') {
+            const nbId = currentTarget.dataset.notebookId;
+            const isCurrentlyShared = currentTarget.dataset.isCommunity === 'true';
+            if (nbId) {
+                const newTitle = currentTarget.querySelector('.item-title')?.textContent || currentTarget.getAttribute('data-title') || '';
+                if (!isCurrentlyShared && (!newTitle || newTitle.toLowerCase() === 'untitled notebook')) {
+                    alert('Please name the notebook before sharing.');
+                    hideMenu();
+                    return;
+                }
+                if (!isCurrentlyShared && !confirm('Share this notebook with the community? It will be visible to all users.')) {
+                    hideMenu();
+                    return;
+                }
+                updateNotebook(nbId, { is_community: !isCurrentlyShared, title: newTitle })
+                    .then(() => {
+                        currentTarget.dataset.isCommunity = String(!isCurrentlyShared);
+                        document.dispatchEvent(new CustomEvent('notebooks:refresh'));
+                        const chatScene = document.getElementById('scene-chat');
+                        if (chatScene && String(chatScene.dataset.notebookId) === String(nbId)) {
+                            chatScene.dataset.isCommunity = String(!isCurrentlyShared);
+                            const shareBtn = chatScene.querySelector('.panel-icon-button[title="Share"]');
+                            if (shareBtn) shareBtn.classList.toggle('active', !isCurrentlyShared);
+                        }
+                    })
+                    .catch(err => console.error('[Dashboard] Share failed', err));
+            }
         } else if (action === 'copy') {
             const nbId = currentTarget.dataset.notebookId;
             if (nbId) {
                 copyNotebook(nbId)
-                    .then(() => document.dispatchEvent(new CustomEvent('notebooks:refresh')))
+                    .then(() => {
+                        document.dispatchEvent(new CustomEvent('notebooks:refresh'));
+                        const toast = document.createElement('div');
+                        toast.className = 'toast-notification';
+                        toast.textContent = 'Notebook copied successfully';
+                        document.body.appendChild(toast);
+                        setTimeout(() => toast.remove(), 3000);
+                    })
                     .catch(err => console.error('[Dashboard] Copy failed', err));
             }
         }

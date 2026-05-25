@@ -225,3 +225,58 @@
 
 .dashboard-container[data-view="list"] .notebook-grid,
 .dashboard-container[data-view="list"] .showall-grid { display: flex; flex-direction: column; gap: 1px; padding: 0; }
+
+.community-badge {
+    position: absolute; top: 6px; left: 6px; z-index: 5;
+    background: rgba(6, 182, 212, 0.85);
+    border-radius: 50%; width: 24px; height: 24px;
+    display: flex; align-items: center; justify-content: center;
+    backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+    box-shadow: 0 2px 8px rgba(6, 182, 212, 0.4);
+    pointer-events: none;
+}
+.community-badge .material-icons { font-size: 14px; color: #fff; }
+.dashboard-container[data-view="list"] .community-badge {
+    width: 18px; height: 18px; position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+}
+.dashboard-container[data-view="list"] .community-badge .material-icons { font-size: 11px; }
+
+.info-tooltip {
+    display: inline-flex; align-items: center; vertical-align: middle;
+    cursor: help; position: relative; color: var(--color-secondary, #6b7280);
+    margin-left: 4px;
+}
+.info-tooltip .material-icons { font-size: 16px; }
+.info-tooltip:hover .material-icons,
+.info-tooltip:focus .material-icons { color: #fff; }
+.info-tooltip::after {
+    content: attr(aria-label);
+    position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%);
+    background: rgba(2, 6, 23, 0.95); color: #fff; padding: 8px 12px;
+    border-radius: 8px; font-size: 12px; font-weight: 400; line-height: 1.4;
+    white-space: nowrap; pointer-events: none; opacity: 0;
+    transition: opacity 0.15s ease; z-index: 100;
+    border: 1px solid rgba(255,255,255,0.1);
+    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+}
+.info-tooltip:hover::after,
+.info-tooltip:focus::after { opacity: 1; }
+@media (max-width: 600px) {
+    .info-tooltip::after { white-space: normal; width: 200px; text-align: center; }
+}
+
+.toast-notification {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+    background: rgba(2, 6, 23, 0.92); color: #fff; padding: 12px 24px;
+    border-radius: 12px; font-size: 14px; font-weight: 600; z-index: 99999;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    animation: toastIn 0.3s ease;
+}
+@keyframes toastIn {
+    from { opacity: 0; transform: translateX(-50%) translateY(16px); }
+    to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}

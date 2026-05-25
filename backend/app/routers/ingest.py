@@ -188,7 +188,7 @@ def _validate_notebook_for_upload(db: Session, notebook_id: int | None, current_
     notebook = db.query(Notebook).filter(Notebook.id == notebook_id).first()
     if notebook is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Notebook not found")
-    if notebook.owner_id != current_user.id and not notebook.is_community:
+    if notebook.owner_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed to use this notebook")
 
 
@@ -368,9 +368,14 @@ def _list_documents_impl(
     *,
     notebook_id: int | None = None,
 ) -> list[DocumentListItem]:
-    query = db.query(DocumentRecord).filter(DocumentRecord.owner_id == current_user.id)
     if notebook_id is not None:
-        query = query.filter(DocumentRecord.notebook_id == notebook_id)
+        nb = db.query(Notebook).filter(Notebook.id == notebook_id).first()
+        if nb and nb.is_community:
+            query = db.query(DocumentRecord).filter(DocumentRecord.notebook_id == notebook_id)
+        else:
+            query = db.query(DocumentRecord).filter(DocumentRecord.owner_id == current_user.id, DocumentRecord.notebook_id == notebook_id)
+    else:
+        query = db.query(DocumentRecord).filter(DocumentRecord.owner_id == current_user.id)
 
     rows = query.order_by(DocumentRecord.created_at.desc()).all()
     output: list[DocumentListItem] = []
