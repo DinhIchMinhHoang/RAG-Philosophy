@@ -42,8 +42,8 @@ jobs:
           file: docker/backend.Dockerfile
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner }}/rag-philosophy-backend:sha-${{ steps.sha.outputs.short }}
-            ghcr.io/${{ github.repository_owner }}/rag-philosophy-backend:latest
+            ghcr.io/${{ github.repository_owner | lower }}/rag-philosophy-backend:sha-${{ steps.sha.outputs.short }}
+            ghcr.io/${{ github.repository_owner | lower }}/rag-philosophy-backend:latest
 
       - name: Deploy to VM
         uses: appleboy/ssh-action@v1.2.0
