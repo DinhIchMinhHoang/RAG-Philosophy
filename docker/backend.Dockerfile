@@ -12,6 +12,9 @@ ENV PYTHONPATH=/app
 
 WORKDIR /app
 
+# Pre-install CPU-only torch so pip doesn't pull CUDA torch
+RUN pip install torch --index-url https://download.pytorch.org/whl/cpu --no-cache-dir
+
 COPY requirements.txt /app/requirements.txt
 RUN pip install --upgrade pip && pip install -r /app/requirements.txt
 

@@ -36,6 +36,12 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+<<<<<<< HEAD
+=======
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+>>>>>>> ba9caa937449742faf7ec944e2134ff7b131d7e0
       - name: Build and push backend image
         uses: docker/build-push-action@v6
         with:
@@ -45,6 +51,7 @@ jobs:
           tags: |
             ghcr.io/${{ steps.sha.outputs.owner }}/rag-philosophy-backend:sha-${{ steps.sha.outputs.short }}
             ghcr.io/${{ steps.sha.outputs.owner }}/rag-philosophy-backend:latest
+<<<<<<< HEAD
 
       - name: Build and push embedding image
         uses: docker/build-push-action@v6
@@ -55,6 +62,10 @@ jobs:
           tags: |
             ghcr.io/${{ steps.sha.outputs.owner }}/rag-philosophy-embedding:sha-${{ steps.sha.outputs.short }}
             ghcr.io/${{ steps.sha.outputs.owner }}/rag-philosophy-embedding:latest
+=======
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+>>>>>>> ba9caa937449742faf7ec944e2134ff7b131d7e0
 
       - name: Deploy to VM
         uses: appleboy/ssh-action@v1.2.0
@@ -74,6 +85,12 @@ jobs:
             echo "Pulling latest code"
             git pull --ff-only
 
+<<<<<<< HEAD
+=======
+            echo "Cleaning Docker disk"
+            docker system prune -af > /dev/null 2>&1 || true
+
+>>>>>>> ba9caa937449742faf7ec944e2134ff7b131d7e0
             export IMAGE_TAG
             echo "Deploying IMAGE_TAG=$IMAGE_TAG"
 
@@ -84,6 +101,7 @@ jobs:
             docker-compose -f docker-compose.vm.yml down
             docker-compose -f docker-compose.vm.yml up -d
 
+<<<<<<< HEAD
             # Wait for containers to initialize. The CPU embedding service can take
             # longer than the API to load and warm up its model.
             echo "Waiting for core services to become healthy..."
@@ -98,10 +116,18 @@ jobs:
                 sleep 10
             done
 
+=======
+            # Wait for containers to initialize
+            echo "Waiting for containers to start..."
+            sleep 60
+
+            # Health checks (10s per check, ~60s total)
+>>>>>>> ba9caa937449742faf7ec944e2134ff7b131d7e0
             ROLLBACK=false
             echo ""
             echo "=== HEALTH CHECKS ==="
 
+<<<<<<< HEAD
             echo "1/5  Backend /api/docs (via nginx)"
             curl -sf --max-time 10 http://localhost/api/docs > /dev/null && echo "  OK" || { echo "  FAIL"; ROLLBACK=true; }
 
@@ -117,6 +143,17 @@ jobs:
             echo "5/5  Worker health"
             docker inspect --format='{{.State.Health.Status}}' rag_worker | grep -q healthy && echo "  OK" || { echo "  FAIL"; ROLLBACK=true; }
 
+=======
+            echo "1/3  Backend /api/docs (via nginx)"
+            curl -sf --max-time 10 http://localhost/api/docs > /dev/null && echo "  OK" || { echo "  FAIL"; ROLLBACK=true; }
+
+            echo "2/3  Nginx /api/openapi.json"
+            curl -sf --max-time 10 http://localhost/api/openapi.json > /dev/null && echo "  OK" || { echo "  FAIL"; ROLLBACK=true; }
+
+            echo "3/3  Qdrant /collections"
+            curl -sf --max-time 10 http://localhost:6333/collections > /dev/null && echo "  OK" || { echo "  FAIL"; ROLLBACK=true; }
+
+>>>>>>> ba9caa937449742faf7ec944e2134ff7b131d7e0
             if [ "$ROLLBACK" = "true" ]; then
                 echo ""
                 echo "=== ROLLING BACK ==="
@@ -142,4 +179,7 @@ jobs:
         env:
           IMAGE_TAG: sha-${{ steps.sha.outputs.short }}
           COMMIT_SHA: ${{ steps.sha.outputs.full }}
+<<<<<<< HEAD
           GHCR_PAT: ${{ secrets.GHCR_PAT }}
+=======
+>>>>>>> ba9caa937449742faf7ec944e2134ff7b131d7e0

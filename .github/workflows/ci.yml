@@ -119,7 +119,7 @@ jobs:
           SKIP=true
           while IFS= read -r f; do
             case "$f" in
-              docs/*|README.md|*.md) ;;
+              docs/*|README.md|*.md|frontend/*) ;;
               *) SKIP=false; break ;;
             esac
           done <<< "$CHANGED"

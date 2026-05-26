@@ -36,7 +36,8 @@ function buildNotebookItem(nb) {
         cover.style.backgroundSize = nb.cover_mode || 'cover';
         cover.style.backgroundPosition = 'center';
     } else if (nb.cover_color) {
-        cover.style.background = nb.cover_color;
+        cover.style.backgroundImage = 'none';
+        cover.style.backgroundColor = nb.cover_color;
     }
     item.appendChild(cover);
 
@@ -229,11 +230,11 @@ function setupMoreMenu(transitionManager) {
                 const activeTab = document.querySelector('.image-modal-tabs .tab.active')?.getAttribute('data-tab') || 'upload';
                 if (activeTab === 'upload') {
                     const data = imagePreview?.dataset?.image || '';
-                    if (!data) { coverEl.style.background = ''; currentTarget.removeAttribute('data-cover'); currentTarget.removeAttribute('data-cover-mode'); }
-                    else { const mode = imageModeSelect ? imageModeSelect.value : 'cover'; coverEl.style.background = `url(${data}) center / ${mode} no-repeat`; currentTarget.setAttribute('data-cover', data); currentTarget.setAttribute('data-cover-mode', mode); }
+                    if (!data) { coverEl.style.backgroundImage = 'none'; coverEl.style.backgroundColor = 'transparent'; currentTarget.removeAttribute('data-cover'); currentTarget.removeAttribute('data-cover-mode'); }
+                    else { const mode = imageModeSelect ? imageModeSelect.value : 'cover'; coverEl.style.backgroundImage = `url(${data})`; coverEl.style.backgroundSize = mode; coverEl.style.backgroundPosition = 'center'; coverEl.style.backgroundRepeat = 'no-repeat'; coverEl.style.backgroundColor = 'transparent'; currentTarget.setAttribute('data-cover', data); currentTarget.setAttribute('data-cover-mode', mode); }
                 } else {
                     const color = colorPreview?.dataset?.color || colorPicker?.value || '#000000';
-                    coverEl.style.background = color; currentTarget.setAttribute('data-cover-color', color); currentTarget.removeAttribute('data-cover'); currentTarget.removeAttribute('data-cover-mode');
+                    coverEl.style.backgroundImage = 'none'; coverEl.style.backgroundColor = color; currentTarget.setAttribute('data-cover-color', color); currentTarget.removeAttribute('data-cover'); currentTarget.removeAttribute('data-cover-mode');
                 }
                 const nbId = currentTarget.dataset.notebookId;
                 if (nbId) {
