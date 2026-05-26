@@ -2,12 +2,13 @@
 
 ## Configuration
 
-Embedding model is configured in `rag_core/config.py`:
+Embedding model is configured through environment variables:
 
-```python
-# Embedding Model
-EMBEDDING_MODEL_NAME: str = "microsoft/harrier-oss-v1-270m"
-DEVICE: str = "cpu"  # Set to 'cuda' for GPU acceleration
+```bash
+EMBEDDING_MODEL_NAME=microsoft/harrier-oss-v1-270m
+EMBEDDING_DEVICE=cpu
+EMBEDDING_BATCH_SIZE=32
+EMBEDDING_SERVICE_URL=http://embedding:8000
 ```
 
 ## Model: microsoft/harrier-oss-v1-270m
@@ -17,40 +18,18 @@ DEVICE: str = "cpu"  # Set to 'cuda' for GPU acceleration
 - **Task**: Sentence embeddings
 - **Normalization**: L2-normalized outputs for cosine similarity
 
-## Implementation
+## Runtime Implementation
 
-```python
-# rag_core/common/embeddings.py
+Backend and worker do not load `SentenceTransformer` directly. Docker Compose starts `rag_embedding`, which loads the model once at startup and exposes:
 
-from langchain_huggingface import HuggingFaceEmbeddings
+- `GET /health`
+- `GET /info`
+- `POST /embed`
+- `POST /embed-batch`
 
-def build_embeddings() -> HuggingFaceEmbeddings:
-    return HuggingFaceEmbeddings(
-        model_name="microsoft/harrier-oss-v1-270m",
-        model_kwargs={
-            "device": "cpu",
-            "trust_remote_code": True,  # Required for Harrier
-        },
-        encode_kwargs={
-            "normalize_embeddings": True,  # L2 normalization
-        },
-    )
-```
+`/health` returns `ready=true` only after model load and warmup complete. Backend chat uses `/embed` for query vectors. Worker ingest uses `/embed-batch` for child chunk vectors. The service uses `normalize_embeddings=True` and defaults to `EMBEDDING_BATCH_SIZE=32`.
 
-## Usage in Vector Store
-
-```python
-# rag_core/step3_vector_db.py
-
-embeddings = _init_embeddings()  # Calls build_embeddings()
-
-vectorstore = QdrantVectorStore.from_documents(
-    documents=child_docs,
-    embedding=embeddings,
-    location=":memory:",
-    collection_name="rag_philosophy",
-)
-```
+Standalone `rag_core` scripts may still use `rag_core/common/embeddings.py` for local smoke tests and experiments. The production backend/worker path is the HTTP embedding service.
 
 ## Model Selection Rationale
 
@@ -64,20 +43,21 @@ vectorstore = QdrantVectorStore.from_documents(
 ## Device Configuration
 
 - **CPU**: Default, works on any machine without GPU
-- **CUDA**: Set `DEVICE="cuda"` in config for GPU acceleration (requires CUDA toolkit and compatible GPU)
+- **CUDA**: Set `EMBEDDING_DEVICE=cuda` and start Compose with `docker-compose.gpu.yml` on a host with Nvidia runtime support.
 
 ## Performance Notes
 
 - Embedding ~200 child docs: ~10-20 seconds on CPU
 - Qdrant search: <100ms
 - Total retrieval: dominated by embedding generation
+- Docker runtime loads the embedding model once in `rag_embedding`, not separately in `rag_backend` and `rag_worker`.
 
 ## Alternative Models
 
-To change the embedding model, update `rag_core/config.py`:
+To change the runtime embedding model, update `.env` and reindex any existing Qdrant collection whose vector dimension differs:
 
-```python
-EMBEDDING_MODEL_NAME: str = "sentence-transformers/all-MiniLM-L6-v2"
+```bash
+EMBEDDING_MODEL_NAME=sentence-transformers/all-MiniLM-L6-v2
 ```
 
 Other options to consider:

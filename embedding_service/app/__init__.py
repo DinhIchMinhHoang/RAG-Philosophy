@@ -1,0 +1,1 @@
+"""HTTP embedding service package."""

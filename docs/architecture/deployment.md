@@ -15,17 +15,20 @@ Services in the stack:
 1. `nginx` (public entrypoint on `http://localhost`)
 2. `backend` (FastAPI via Uvicorn)
 3. `worker` (Celery ingest queue)
-4. `redis`
-5. `postgres`
-6. `minio`
-7. `qdrant`
-8. `ollama`
+4. `embedding` / `rag_embedding` (SentenceTransformer HTTP service)
+5. `redis`
+6. `postgres`
+7. `minio`
+8. `qdrant`
+9. `ollama`
 
 Notes:
 
 - Browser/API access is Nginx-only (`http://localhost`).
 - Use `/api/*` from frontend/client calls.
 - Backend container is not published directly to host.
+- Backend and worker call the internal embedding service at `EMBEDDING_SERVICE_URL=http://embedding:8000`.
+- The embedding service is additionally bound to `127.0.0.1:8001` for local smoke checks and local backend development; browsers should not call it directly.
 
 ## First Boot
 
@@ -54,6 +57,10 @@ Notes:
    ```bash
    curl -I http://localhost/api/docs
    ```
+4. Confirm embedding service is healthy inside the Compose network:
+   ```bash
+   docker compose exec embedding python -c "import json,urllib.request; print(json.load(urllib.request.urlopen('http://localhost:8000/info')))"
+   ```
 
 ## Streaming (SSE) Validation
 
@@ -74,7 +81,7 @@ curl -N http://localhost/api/chat/stream \
 
 ## Optional GPU Acceleration
 
-The default Compose stack starts Ollama only for local chat fallback, without a required GPU reservation, so CPU-only hosts can boot the app normally. OCR uses the configured `OCR_*` API settings from `.env`.
+The default Compose stack starts Ollama and the embedding service without a required GPU reservation, so CPU-only hosts can boot the app normally. OCR uses the configured `OCR_*` API settings from `.env`.
 
 On hosts with an Nvidia runtime, enable GPU acceleration with the override file:
 
@@ -92,9 +99,10 @@ docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
    ```
 3. Verify data still exists:
    - Postgres data (`postgres_data` volume)
-   - MinIO objects (`minio_data` volume)
-   - Qdrant vectors (`qdrant_data` volume)
-   - Ollama models (`ollama_data` volume, only for local chat fallback)
+  - MinIO objects (`minio_data` volume)
+  - Qdrant vectors (`qdrant_data` volume)
+  - HuggingFace model cache (`huggingface_cache` volume)
+  - Ollama models (`ollama_data` volume, only for local chat fallback)
 
 ## Local SQLite Artifacts
 
@@ -106,6 +114,7 @@ Docker deployments use Postgres through `DATABASE_URL`; local SQLite files such 
 docker compose logs -f nginx
 docker compose logs -f backend
 docker compose logs -f worker
+docker compose logs -f embedding
 docker compose logs -f qdrant
 ```
 
@@ -114,6 +123,15 @@ If one service is unhealthy, inspect healthcheck status:
 ```bash
 docker inspect --format='{{json .State.Health}}' rag_backend
 ```
+
+Expected embedding logs should show model load only in `rag_embedding`:
+
+```bash
+docker compose logs embedding | grep embedding_model_ready
+docker compose logs backend worker | grep -E "SentenceTransformer|embedding_model_ready"
+```
+
+The second command should not show backend or worker loading the model locally.
 
 ## Lưu ý để OCR thực sự hoạt động (không chỉ fallback)
 

@@ -22,6 +22,7 @@ from ..services.chat_history import (
     save_chat_message,
 )
 from ..services.chat_runtime import RetrievedContext, chat_runtime_service
+from ..services.embedding_client import EmbeddingServiceError
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +35,10 @@ EMPTY_NOTEBOOK_ANSWER = (
 CHAT_ERROR_ANSWER = (
     "I could not process this chat request right now. "
     "Please try again after the system finishes processing your documents."
+)
+EMBEDDING_ERROR_ANSWER = (
+    "The embedding service is unavailable, so retrieval cannot run right now. "
+    "Please try again after the embedding service is healthy."
 )
 
 
@@ -222,7 +227,14 @@ async def _chat_non_stream_impl(
             rewritten_query=_validate_message(request.message),
         )
 
-    turn = await _prepare_chat_turn(db, request, current_user, timings, selected_source_ids)
+    try:
+        turn = await _prepare_chat_turn(db, request, current_user, timings, selected_source_ids)
+    except EmbeddingServiceError as exc:
+        logger.error("chat_embedding_failed: %s", str(exc), exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
 
     try:
         answer, _provider = await chat_runtime_service.answer(
@@ -463,6 +475,29 @@ async def _chat_stream_impl(
                     conversation_id=turn.conversation_id,
                     message_id=assistant_message.id,
                     rewritten_query=turn.rewritten_query,
+                )
+            )
+        except EmbeddingServiceError as exc:
+            logger.error("chat_stream_embedding_failed: %s", str(exc), exc_info=True)
+            timings.error_stage = "embedding"
+            timings.total_stream_ms = _elapsed_ms(stream_started)
+            _log_chat_stream(
+                "error",
+                "chat_stream_embedding_failed",
+                request_id=request_id,
+                current_user=current_user,
+                request=request,
+                conversation_id=conversation_id,
+                timings=timings,
+            )
+            yield _sse_payload(
+                _final_payload(
+                    answer=EMBEDDING_ERROR_ANSWER,
+                    citations=[],
+                    conversation_id=conversation_id,
+                    message_id=None,
+                    rewritten_query=rewritten_query,
+                    error="embedding_service_unavailable",
                 )
             )
         except Exception as exc:

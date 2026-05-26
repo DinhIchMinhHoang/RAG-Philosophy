@@ -138,7 +138,7 @@ class ChatRuntimeModeTests(unittest.TestCase):
 
             fake_client = FakeClient()
 
-            with patch.object(self.service, "_get_embeddings", return_value=SimpleNamespace(embed_query=lambda _q: [0.1])), patch.object(
+            with patch.object(self.service, "_embed_query", return_value=[0.1]), patch.object(
                 chat_runtime, "build_qdrant_client", return_value=fake_client
             ):
                 results = self.service.retrieve(
@@ -222,7 +222,7 @@ class ChatRuntimeModeTests(unittest.TestCase):
 
             fake_client = FakeClient()
 
-            with patch.object(self.service, "_get_embeddings", return_value=SimpleNamespace(embed_query=lambda _q: [0.1])), patch.object(
+            with patch.object(self.service, "_embed_query", return_value=[0.1]), patch.object(
                 chat_runtime, "build_qdrant_client", return_value=fake_client
             ):
                 results = self.service.retrieve(
@@ -291,7 +291,7 @@ class ChatRuntimeModeTests(unittest.TestCase):
                 def search(self, **kwargs):
                     return fake_hits
 
-            with patch.object(self.service, "_get_embeddings", return_value=SimpleNamespace(embed_query=lambda _q: [0.1])), patch.object(
+            with patch.object(self.service, "_embed_query", return_value=[0.1]), patch.object(
                 chat_runtime, "build_qdrant_client", return_value=FakeClient()
             ):
                 results = self.service.retrieve(

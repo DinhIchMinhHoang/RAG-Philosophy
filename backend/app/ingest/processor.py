@@ -9,11 +9,11 @@ from pathlib import Path
 from langchain_core.documents import Document
 from sqlalchemy.orm import Session
 
-from rag_core.common.embeddings import get_embeddings
 from rag_core.step1_parser import HybridPDFParser
 from rag_core.step2_chunker import chunk_documents
 
 from ..models import DocumentChunk, DocumentRecord
+from ..services.embedding_client import embed_texts
 from .idempotency import delete_chunks_for_document_version
 from .job_updater import JobUpdater
 from .logging_utils import log_event
@@ -235,9 +235,8 @@ def _process_parsed_documents(
 
     stage_started = time.perf_counter()
     _mark_stage("embedding", 0.05, "embedding_started")
-    embedder = get_embeddings()
     child_texts = [draft.text for draft in child_drafts]
-    vectors = embedder.embed_documents(child_texts)
+    vectors = embed_texts(child_texts)
     _mark_stage("embedding", 1.0, f"embedded_children={len(child_drafts)}")
     embedding_duration_ms = int((time.perf_counter() - stage_started) * 1000)
     log_event(

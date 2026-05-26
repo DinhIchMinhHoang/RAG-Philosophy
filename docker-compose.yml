@@ -37,7 +37,7 @@ services:
       - .env
     environment:
       PYTHONPATH: /app
-      EMBEDDING_DEVICE: ${EMBEDDING_DEVICE:-cpu}
+      EMBEDDING_SERVICE_URL: ${EMBEDDING_SERVICE_URL:-http://embedding:8000}
       WEB_CONCURRENCY: "1"
     volumes:
       - ./data:/app/data
@@ -56,6 +56,8 @@ services:
       minio:
         condition: service_healthy
       qdrant:
+        condition: service_healthy
+      embedding:
         condition: service_healthy
     healthcheck:
       test: [ "CMD-SHELL", "python -c \"import urllib.request,sys; urllib.request.urlopen('http://localhost:8000/docs'); sys.exit(0)\"" ]
@@ -78,7 +80,7 @@ services:
       - .env
     environment:
       PYTHONPATH: /app
-      EMBEDDING_DEVICE: ${EMBEDDING_DEVICE:-cpu}
+      EMBEDDING_SERVICE_URL: ${EMBEDDING_SERVICE_URL:-http://embedding:8000}
       CELERYD_CONCURRENCY: "1"
     volumes:
       - ./data:/app/data
@@ -98,12 +100,48 @@ services:
         condition: service_healthy
       qdrant:
         condition: service_healthy
+      embedding:
+        condition: service_healthy
     healthcheck:
       test: [ "CMD-SHELL", "python -c \"import pathlib,sys; data=pathlib.Path('/proc/1/cmdline').read_bytes(); sys.exit(0 if b'celery' in data else 1)\"" ]
       interval: 20s
       timeout: 10s
       retries: 6
       start_period: 40s
+    networks:
+      - app_net
+
+  embedding:
+    build:
+      context: .
+      dockerfile: docker/embedding.Dockerfile
+    container_name: rag_embedding
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "127.0.0.1:8001:8000"
+    environment:
+      PYTHONPATH: /app
+      HF_HOME: /cache/huggingface
+      TRANSFORMERS_CACHE: /cache/huggingface
+      SENTENCE_TRANSFORMERS_HOME: /cache/huggingface
+      EMBEDDING_MODEL_NAME: ${EMBEDDING_MODEL_NAME:-microsoft/harrier-oss-v1-270m}
+      EMBEDDING_DEVICE: ${EMBEDDING_DEVICE:-cpu}
+      EMBEDDING_BATCH_SIZE: ${EMBEDDING_BATCH_SIZE:-32}
+    volumes:
+      - huggingface_cache:/cache/huggingface
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+    healthcheck:
+      test: [ "CMD-SHELL", "python -c \"import json,urllib.request,sys; data=json.load(urllib.request.urlopen('http://localhost:8000/health', timeout=5)); sys.exit(0 if data.get('ready') is True else 1)\"" ]
+      interval: 15s
+      timeout: 10s
+      retries: 12
+      start_period: 120s
     networks:
       - app_net
 
@@ -232,4 +270,5 @@ volumes:
   postgres_data:
   minio_data:
   qdrant_data:
+  huggingface_cache:
   ollama_data:

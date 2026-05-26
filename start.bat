@@ -19,7 +19,7 @@ if not exist ".env" (
 where docker >nul 2>&1
 if errorlevel 1 (
     echo [ERROR] Docker was not found in PATH.
-    echo Docker is needed for Redis, Postgres, Qdrant, and MinIO.
+    echo Docker is needed for Redis, Postgres, Qdrant, MinIO, and the embedding service.
     echo.
     pause
     exit /b 1
@@ -49,9 +49,9 @@ if errorlevel 1 (
     set "COMPOSE_CMD=docker compose"
 )
 
-echo [1/5] Starting infrastructure containers only...
+echo [1/5] Starting infrastructure and embedding containers...
 %COMPOSE_CMD% stop nginx backend worker >nul 2>&1
-%COMPOSE_CMD% up -d redis postgres qdrant minio
+%COMPOSE_CMD% up -d redis postgres qdrant minio embedding
 if errorlevel 1 (
     echo.
     echo [ERROR] Could not start infrastructure containers.
@@ -101,6 +101,7 @@ set "REDIS_RESULT_BACKEND=redis://localhost:6379/1"
 set "QDRANT_URL=http://localhost:6333"
 set "QDRANT_HOST=localhost"
 set "QDRANT_PORT=6333"
+set "EMBEDDING_SERVICE_URL=http://localhost:8001"
 set "OBJECT_STORAGE_BACKEND=minio"
 set "MINIO_ENDPOINT=localhost:9000"
 set "MINIO_ACCESS_KEY=minioadmin"
@@ -112,8 +113,8 @@ set "LOCAL_LLM_BASE_URL=http://localhost:11434"
 
 echo.
 echo [5/5] Starting local services...
-start "RAG Backend" cmd /k "cd /d "%~dp0" && set PYTHONPATH=%PYTHONPATH%&& set DATABASE_URL=%DATABASE_URL%&& set REDIS_BROKER_URL=%REDIS_BROKER_URL%&& set REDIS_RESULT_BACKEND=%REDIS_RESULT_BACKEND%&& set QDRANT_URL=%QDRANT_URL%&& set QDRANT_HOST=%QDRANT_HOST%&& set QDRANT_PORT=%QDRANT_PORT%&& set OBJECT_STORAGE_BACKEND=%OBJECT_STORAGE_BACKEND%&& set MINIO_ENDPOINT=%MINIO_ENDPOINT%&& set MINIO_ACCESS_KEY=%MINIO_ACCESS_KEY%&& set MINIO_SECRET_KEY=%MINIO_SECRET_KEY%&& set MINIO_BUCKET=%MINIO_BUCKET%&& set MINIO_SECURE=%MINIO_SECURE%&& set OLLAMA_BASE_URL=%OLLAMA_BASE_URL%&& set LOCAL_LLM_BASE_URL=%LOCAL_LLM_BASE_URL%&& "%PYTHON%" -m uvicorn backend.app.main:app --reload --host 127.0.0.1 --port 8000"
-start "RAG Worker" cmd /k "cd /d "%~dp0" && set PYTHONPATH=%PYTHONPATH%&& set DATABASE_URL=%DATABASE_URL%&& set REDIS_BROKER_URL=%REDIS_BROKER_URL%&& set REDIS_RESULT_BACKEND=%REDIS_RESULT_BACKEND%&& set QDRANT_URL=%QDRANT_URL%&& set QDRANT_HOST=%QDRANT_HOST%&& set QDRANT_PORT=%QDRANT_PORT%&& set OBJECT_STORAGE_BACKEND=%OBJECT_STORAGE_BACKEND%&& set MINIO_ENDPOINT=%MINIO_ENDPOINT%&& set MINIO_ACCESS_KEY=%MINIO_ACCESS_KEY%&& set MINIO_SECRET_KEY=%MINIO_SECRET_KEY%&& set MINIO_BUCKET=%MINIO_BUCKET%&& set MINIO_SECURE=%MINIO_SECURE%&& set OLLAMA_BASE_URL=%OLLAMA_BASE_URL%&& set LOCAL_LLM_BASE_URL=%LOCAL_LLM_BASE_URL%&& "%PYTHON%" -m celery -A backend.app.worker.celery_app.celery_app worker -Q ingest -l info -P solo"
+start "RAG Backend" cmd /k "cd /d "%~dp0" && set PYTHONPATH=%PYTHONPATH%&& set DATABASE_URL=%DATABASE_URL%&& set REDIS_BROKER_URL=%REDIS_BROKER_URL%&& set REDIS_RESULT_BACKEND=%REDIS_RESULT_BACKEND%&& set QDRANT_URL=%QDRANT_URL%&& set QDRANT_HOST=%QDRANT_HOST%&& set QDRANT_PORT=%QDRANT_PORT%&& set EMBEDDING_SERVICE_URL=%EMBEDDING_SERVICE_URL%&& set OBJECT_STORAGE_BACKEND=%OBJECT_STORAGE_BACKEND%&& set MINIO_ENDPOINT=%MINIO_ENDPOINT%&& set MINIO_ACCESS_KEY=%MINIO_ACCESS_KEY%&& set MINIO_SECRET_KEY=%MINIO_SECRET_KEY%&& set MINIO_BUCKET=%MINIO_BUCKET%&& set MINIO_SECURE=%MINIO_SECURE%&& set OLLAMA_BASE_URL=%OLLAMA_BASE_URL%&& set LOCAL_LLM_BASE_URL=%LOCAL_LLM_BASE_URL%&& "%PYTHON%" -m uvicorn backend.app.main:app --reload --host 127.0.0.1 --port 8000"
+start "RAG Worker" cmd /k "cd /d "%~dp0" && set PYTHONPATH=%PYTHONPATH%&& set DATABASE_URL=%DATABASE_URL%&& set REDIS_BROKER_URL=%REDIS_BROKER_URL%&& set REDIS_RESULT_BACKEND=%REDIS_RESULT_BACKEND%&& set QDRANT_URL=%QDRANT_URL%&& set QDRANT_HOST=%QDRANT_HOST%&& set QDRANT_PORT=%QDRANT_PORT%&& set EMBEDDING_SERVICE_URL=%EMBEDDING_SERVICE_URL%&& set OBJECT_STORAGE_BACKEND=%OBJECT_STORAGE_BACKEND%&& set MINIO_ENDPOINT=%MINIO_ENDPOINT%&& set MINIO_ACCESS_KEY=%MINIO_ACCESS_KEY%&& set MINIO_SECRET_KEY=%MINIO_SECRET_KEY%&& set MINIO_BUCKET=%MINIO_BUCKET%&& set MINIO_SECURE=%MINIO_SECURE%&& set OLLAMA_BASE_URL=%OLLAMA_BASE_URL%&& set LOCAL_LLM_BASE_URL=%LOCAL_LLM_BASE_URL%&& "%PYTHON%" -m celery -A backend.app.worker.celery_app.celery_app worker -Q ingest -l info -P solo"
 start "RAG Frontend" cmd /k "cd /d "%~dp0frontend" && "%PYTHON%" -m http.server 5500 --bind 127.0.0.1"
 
 echo.
@@ -128,7 +129,7 @@ echo    Backend:  http://127.0.0.1:8000
 echo    API Docs: http://127.0.0.1:8000/docs
 echo.
 echo    Docker infrastructure:
-echo    %COMPOSE_CMD% ps redis postgres qdrant minio
+echo    %COMPOSE_CMD% ps redis postgres qdrant minio embedding
 echo ==============================================
 echo.
 

@@ -35,6 +35,12 @@ class Settings:
     max_pdf_size_mb: int
     retrieval_mode: str
     retrieval_top_k: int
+    embedding_service_url: str
+    embedding_query_timeout_seconds: float
+    embedding_query_retries: int
+    embedding_batch_timeout_seconds: float
+    embedding_batch_retries: int
+    embedding_batch_size: int
     llm_mode: str
     local_llm_model: str
     local_llm_base_url: str
@@ -91,6 +97,12 @@ def load_settings() -> Settings:
         max_pdf_size_mb=int(os.getenv("MAX_PDF_SIZE_MB", "100")),
         retrieval_mode=os.getenv("RETRIEVAL_MODE", "dense").strip().lower(),
         retrieval_top_k=int(os.getenv("RETRIEVAL_TOP_K", "5")),
+        embedding_service_url=os.getenv("EMBEDDING_SERVICE_URL", "http://localhost:8001").strip(),
+        embedding_query_timeout_seconds=float(os.getenv("EMBEDDING_QUERY_TIMEOUT_SECONDS", "3.0")),
+        embedding_query_retries=int(os.getenv("EMBEDDING_QUERY_RETRIES", "1")),
+        embedding_batch_timeout_seconds=float(os.getenv("EMBEDDING_BATCH_TIMEOUT_SECONDS", "120.0")),
+        embedding_batch_retries=int(os.getenv("EMBEDDING_BATCH_RETRIES", "2")),
+        embedding_batch_size=int(os.getenv("EMBEDDING_BATCH_SIZE", "32")),
         llm_mode=os.getenv("LLM_MODE", "auto").strip().lower(),
         local_llm_model=os.getenv("LOCAL_LLM_MODEL", "llama3.1:8b").strip(),
         local_llm_base_url=os.getenv("LOCAL_LLM_BASE_URL", "http://localhost:11434").strip(),

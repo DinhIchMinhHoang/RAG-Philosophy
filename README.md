@@ -13,7 +13,7 @@ Runtime chính của ứng dụng nằm ở `backend/app/` và `frontend/`. Thư
 - Chat thường và chat streaming qua SSE tại `/api/chat` và `/api/chat/stream`.
 - Citation inline dạng `[C1]`, `[C2]` kèm `source`, `page`, `document_id`, `chunk_id`, `doc_id`.
 - Frontend vanilla JavaScript với upload, job polling, chat streaming, notebook/conversation UI.
-- Docker Compose cho Nginx, backend, worker, Redis, Postgres, MinIO, Qdrant và Ollama.
+- Docker Compose cho Nginx, backend, worker, embedding service, Redis, Postgres, MinIO, Qdrant và Ollama.
 
 ## Cấu trúc thư mục
 
@@ -51,7 +51,7 @@ Luồng chat:
 - Python, FastAPI, SQLAlchemy, Celery, Redis.
 - Qdrant cho vector database.
 - LangChain cho document objects, retriever, prompt và LLM adapters.
-- Hugging Face embeddings, mặc định `microsoft/harrier-oss-v1-270m`.
+- Hugging Face embeddings qua service riêng `rag_embedding`, mặc định `microsoft/harrier-oss-v1-270m`.
 - Gemini, OpenCode/OpenAI-compatible API và local Ollama tùy cấu hình.
 - PyMuPDF, pymupdf4llm, BeautifulSoup, readability-lxml, Pandoc/pypandoc cho parsing.
 - Vanilla JavaScript ES modules cho frontend.
@@ -92,7 +92,7 @@ Launcher Windows chạy backend/worker/frontend bằng `.venv` local và chỉ d
 start.bat
 ```
 
-Script sẽ tạo `.venv` nếu thiếu, chạy `pip install -r requirements.txt`, bật các container hạ tầng, rồi mở frontend tại `http://127.0.0.1:5500`.
+Script sẽ tạo `.venv` nếu thiếu, chạy `pip install -r requirements.txt`, bật các container hạ tầng kèm `rag_embedding`, rồi mở frontend tại `http://127.0.0.1:5500`.
 
 ## Chạy bằng Docker Compose
 

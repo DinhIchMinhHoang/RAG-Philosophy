@@ -11,11 +11,11 @@ from qdrant_client.http import models as rest
 from sqlalchemy.orm import Session
 
 from ..core.settings import settings
-from ..ingest.qdrant_store import build_qdrant_client
+from ..ingest.qdrant_store import build_qdrant_client, validate_collection_vector_size
 from ..models import DocumentChunk
+from .embedding_client import embed_query
 
 try:
-    from rag_core.common.embeddings import get_embeddings as get_embeddings_from_common
     from rag_core.common.llm import build_chat_llm, infer_llm_provider
     from rag_core.common.prompts import SYSTEM_PROMPT
     from rag_core.config import Config as RagConfig
@@ -47,13 +47,8 @@ def _clean_context_value(value: str | None) -> str:
 
 
 class ChatRuntimeService:
-    def __init__(self) -> None:
-        self._embeddings = None
-
-    def _get_embeddings(self):
-        if self._embeddings is None:
-            self._embeddings = get_embeddings_from_common()
-        return self._embeddings
+    def _embed_query(self, question: str) -> list[float]:
+        return embed_query(question)
 
     def _dedupe_contexts(self, contexts: list[RetrievedContext]) -> list[RetrievedContext]:
         deduped: list[RetrievedContext] = []
@@ -220,7 +215,7 @@ class ChatRuntimeService:
         notebook_id: int | None = None,
         selected_source_ids: list[str] | None = None,
     ) -> list[RetrievedContext]:
-        vector = self._get_embeddings().embed_query(question)
+        vector = self._embed_query(question)
         scoped_document_ids = [source_id for source_id in (selected_source_ids or []) if source_id]
         must_filters = [
             rest.FieldCondition(key="pipeline_version", match=rest.MatchValue(value=pipeline_version)),
@@ -233,6 +228,7 @@ class ChatRuntimeService:
         if scoped_document_ids:
             must_filters.append(rest.FieldCondition(key="document_id", match=rest.MatchAny(any=scoped_document_ids)))
         client = build_qdrant_client()
+        validate_collection_vector_size(client, len(vector))
         query_filter = rest.Filter(must=must_filters)
 
         try:

@@ -8,7 +8,12 @@ from backend.app.models import DocumentChunk
 
 
 class _FakeQdrantClient:
+    def __init__(self, vector_size: int | None = None) -> None:
+        self.vector_size = vector_size
+
     def get_collection(self, collection_name: str):
+        if self.vector_size is not None:
+            return {"config": {"params": {"vectors": {"size": self.vector_size}}}}
         return {"name": collection_name}
 
     def create_collection(self, **kwargs):
@@ -83,6 +88,26 @@ class QdrantPayloadTests(unittest.TestCase):
         client = _FakeQdrantClient()
         with self.assertRaises(ValueError):
             upsert_child_vectors(client, [chunk, chunk], [[0.1, 0.2], [0.1]])
+
+    def test_upsert_rejects_existing_collection_vector_size_mismatch(self) -> None:
+        from backend.app.ingest.qdrant_store import upsert_child_vectors
+
+        chunk = DocumentChunk(
+            id=str(uuid.uuid4()),
+            document_id="doc-1",
+            job_id="job-1",
+            kind="child",
+            parent_chunk_id="parent-1",
+            chunk_order=1,
+            text="chunk text",
+            source="paper.pdf",
+            page=3,
+            doc_id="logical-parent",
+            pipeline_version="1.2.3",
+        )
+        client = _FakeQdrantClient(vector_size=2)
+        with self.assertRaisesRegex(ValueError, "vector size mismatch"):
+            upsert_child_vectors(client, [chunk], [[0.1, 0.2, 0.3]])
 
 
 if __name__ == "__main__":

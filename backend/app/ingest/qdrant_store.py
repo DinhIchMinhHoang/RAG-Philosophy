@@ -91,14 +91,84 @@ def _ensure_payload_indexes(client: QdrantClient) -> None:
             continue
 
 
+def _extract_vector_size_from_config(vectors_config: object) -> int | None:
+    if vectors_config is None:
+        return None
+    if isinstance(vectors_config, dict):
+        direct_size = vectors_config.get("size")
+        if direct_size is not None:
+            return int(direct_size)
+        for value in vectors_config.values():
+            size = _extract_vector_size_from_config(value)
+            if size is not None:
+                return size
+        return None
+    size = getattr(vectors_config, "size", None)
+    if size is not None:
+        return int(size)
+    if hasattr(vectors_config, "values"):
+        for value in vectors_config.values():
+            size = _extract_vector_size_from_config(value)
+            if size is not None:
+                return size
+    return None
+
+
+def get_collection_vector_size(collection_info: object) -> int | None:
+    if isinstance(collection_info, dict):
+        vectors_config = (
+            collection_info.get("vectors")
+            or collection_info.get("config", {}).get("params", {}).get("vectors")
+        )
+        return _extract_vector_size_from_config(vectors_config)
+
+    config = getattr(collection_info, "config", None)
+    params = getattr(config, "params", None)
+    vectors_config = getattr(params, "vectors", None)
+    return _extract_vector_size_from_config(vectors_config)
+
+
+def validate_collection_vector_size(client: QdrantClient, vector_size: int) -> bool:
+    if not hasattr(client, "get_collection"):
+        return False
+    try:
+        collection_info = client.get_collection(settings.qdrant_collection)
+    except ApiException as exc:
+        if _is_not_found_api_exception(exc):
+            return False
+        raise
+    except Exception:
+        # Preserve empty/missing collection behavior for older test clients and local modes.
+        return False
+
+    existing_size = get_collection_vector_size(collection_info)
+    if existing_size is None:
+        return True
+    if existing_size != vector_size:
+        raise ValueError(
+            f"Qdrant collection {settings.qdrant_collection!r} vector size mismatch: "
+            f"existing={existing_size}, embedding_service={vector_size}. "
+            "Recreate or reindex the collection before using this embedding model."
+        )
+    return True
+
+
 def ensure_collection(client: QdrantClient, vector_size: int) -> None:
     try:
-        client.get_collection(settings.qdrant_collection)
+        collection_info = client.get_collection(settings.qdrant_collection)
     except Exception:
         client.create_collection(
             collection_name=settings.qdrant_collection,
             vectors_config=rest.VectorParams(size=vector_size, distance=rest.Distance.COSINE),
         )
+    else:
+        existing_size = get_collection_vector_size(collection_info)
+        if existing_size is not None and existing_size != vector_size:
+            raise ValueError(
+                f"Qdrant collection {settings.qdrant_collection!r} vector size mismatch: "
+                f"existing={existing_size}, embedding_service={vector_size}. "
+                "Recreate or reindex the collection before ingesting new vectors."
+            )
     _ensure_payload_indexes(client)
 
 
