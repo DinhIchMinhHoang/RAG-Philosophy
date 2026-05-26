@@ -213,6 +213,8 @@ Idempotent cleanup across metadata/chunks, vectors, and object storage.
 
 Delete still attempts Excel SQL table cleanup for legacy tabular documents.
 
+Active ingest jobs are marked `cancelled` and retained for audit. Deleted document rows are hidden from normal document lists, chat/retrieval, and file preview, but remain as tombstones so `/api/jobs/{job_id}` can still authorize historical job rows.
+
 ### `POST /api/documents/{document_id}/reindex`
 
 Starts a new ingest job for an existing supported document. Existing Excel/CSV documents return `400 Unsupported format while tabular ingest is disabled` and no ingest job is created.

@@ -20,7 +20,6 @@ Services in the stack:
 6. `postgres`
 7. `minio`
 8. `qdrant`
-9. `ollama`
 
 Notes:
 
@@ -29,6 +28,7 @@ Notes:
 - Backend container is not published directly to host.
 - Backend and worker call the internal embedding service at `EMBEDDING_SERVICE_URL=http://embedding:8000`.
 - The embedding service is additionally bound to `127.0.0.1:8001` for local smoke checks and local backend development; browsers should not call it directly.
+- Ollama is optional and is not started by the default stack. Enable it with the `local-llm` profile only on machines with enough memory.
 
 ## First Boot
 
@@ -42,6 +42,32 @@ Notes:
    docker compose up -d
    ```
 4. Open app at `http://localhost`.
+
+## VM Stack: 2vCPU / 8GB
+
+Use the VM compose file on small cloud VMs:
+
+```bash
+cp .env.vm .env
+docker compose -f docker-compose.vm.yml up -d
+```
+
+The VM stack keeps the same external contract (`http://localhost` through Nginx)
+but uses prebuilt GHCR images and lower resource limits. It runs:
+
+1. `nginx`
+2. `backend`
+3. `worker`
+4. `embedding`
+5. `redis`
+6. `postgres`
+7. `minio`
+8. `qdrant`
+
+It intentionally does not run `ollama`; use cloud LLM/OCR settings from `.env`.
+Ingest is handled by the dedicated Celery worker with concurrency `1`, while
+backend chat/API calls the dedicated embedding service at
+`EMBEDDING_SERVICE_URL=http://embedding:8000`.
 
 ## Cold Start Checks
 
@@ -79,14 +105,20 @@ curl -N http://localhost/api/chat/stream \
   -d "{\"message\":\"hello\"}"
 ```
 
-## Optional GPU Acceleration
+## Optional Local LLM / GPU Acceleration
 
-The default Compose stack starts Ollama and the embedding service without a required GPU reservation, so CPU-only hosts can boot the app normally. OCR uses the configured `OCR_*` API settings from `.env`.
+The default Compose stack starts the embedding service on CPU and does not start Ollama, so CPU-only hosts can boot the app normally. OCR uses the configured `OCR_*` API settings from `.env`.
 
-On hosts with an Nvidia runtime, enable GPU acceleration with the override file:
+To start the optional local Ollama fallback:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+docker compose --profile local-llm up -d
+```
+
+On hosts with an Nvidia runtime, enable GPU acceleration for embedding and optional Ollama with the override file:
+
+```bash
+docker compose --profile local-llm -f docker-compose.yml -f docker-compose.gpu.yml up -d
 ```
 
 ## Restart / Persistence Test
@@ -102,7 +134,7 @@ docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
   - MinIO objects (`minio_data` volume)
   - Qdrant vectors (`qdrant_data` volume)
   - HuggingFace model cache (`huggingface_cache` volume)
-  - Ollama models (`ollama_data` volume, only for local chat fallback)
+  - Ollama models (`ollama_data` volume, only when `--profile local-llm` is used)
 
 ## Local SQLite Artifacts
 
@@ -116,6 +148,12 @@ docker compose logs -f backend
 docker compose logs -f worker
 docker compose logs -f embedding
 docker compose logs -f qdrant
+```
+
+For the VM stack, add the compose file flag:
+
+```bash
+docker compose -f docker-compose.vm.yml logs -f backend worker embedding
 ```
 
 If one service is unhealthy, inspect healthcheck status:

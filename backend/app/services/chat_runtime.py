@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from ..core.settings import settings
 from ..ingest.qdrant_store import build_qdrant_client, validate_collection_vector_size
-from ..models import DocumentChunk
+from ..models import DocumentChunk, DocumentRecord
 from .embedding_client import embed_query
 
 try:
@@ -163,6 +163,7 @@ class ChatRuntimeService:
         user_id: int | None = None,
         notebook_id: int | None = None,
         selected_source_ids: list[str] | None = None,
+        is_community: bool = False,
     ) -> list[RetrievedContext]:
         mode = settings.retrieval_mode
         if mode == "hybrid":
@@ -173,6 +174,7 @@ class ChatRuntimeService:
                 user_id=user_id,
                 notebook_id=notebook_id,
                 selected_source_ids=selected_source_ids,
+                is_community=is_community,
             )
         return self._retrieve_dense(
             db,
@@ -181,6 +183,7 @@ class ChatRuntimeService:
             user_id=user_id,
             notebook_id=notebook_id,
             selected_source_ids=selected_source_ids,
+            is_community=is_community,
         )
 
     def _retrieve_hybrid(
@@ -192,6 +195,7 @@ class ChatRuntimeService:
         user_id: int | None = None,
         notebook_id: int | None = None,
         selected_source_ids: list[str] | None = None,
+        is_community: bool = False,
     ) -> list[RetrievedContext]:
         # Run-ready hybrid stub: keep same interface and return dense results,
         # while reserving hook points for future sparse merge + RRF.
@@ -203,6 +207,7 @@ class ChatRuntimeService:
             user_id=user_id,
             notebook_id=notebook_id,
             selected_source_ids=selected_source_ids,
+            is_community=is_community,
         )
 
     def _retrieve_dense(
@@ -214,6 +219,7 @@ class ChatRuntimeService:
         user_id: int | None = None,
         notebook_id: int | None = None,
         selected_source_ids: list[str] | None = None,
+        is_community: bool = False,
     ) -> list[RetrievedContext]:
         vector = self._embed_query(question)
         scoped_document_ids = [source_id for source_id in (selected_source_ids or []) if source_id]
@@ -221,7 +227,7 @@ class ChatRuntimeService:
             rest.FieldCondition(key="pipeline_version", match=rest.MatchValue(value=pipeline_version)),
             rest.FieldCondition(key="kind", match=rest.MatchValue(value="child")),
         ]
-        if user_id is not None:
+        if user_id is not None and not is_community:
             must_filters.append(rest.FieldCondition(key="owner_id", match=rest.MatchValue(value=user_id)))
         if notebook_id is not None:
             must_filters.append(rest.FieldCondition(key="notebook_id", match=rest.MatchValue(value=notebook_id)))
@@ -262,12 +268,17 @@ class ChatRuntimeService:
             return []
 
         parent_ids = list(ranked_parents.keys())
-        parent_query = db.query(DocumentChunk).filter(
+        parent_query = db.query(DocumentChunk).join(
+            DocumentRecord,
+            DocumentRecord.id == DocumentChunk.document_id,
+        ).filter(
             DocumentChunk.id.in_(parent_ids),
             DocumentChunk.kind == "parent",
             DocumentChunk.pipeline_version == pipeline_version,
+            DocumentRecord.deleted_at.is_(None),
+            DocumentRecord.delete_requested_at.is_(None),
         )
-        if user_id is not None:
+        if user_id is not None and not is_community:
             parent_query = parent_query.filter(DocumentChunk.owner_id == user_id)
         if notebook_id is not None:
             parent_query = parent_query.filter(DocumentChunk.notebook_id == notebook_id)

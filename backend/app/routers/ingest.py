@@ -14,9 +14,9 @@ from sqlalchemy.orm import Session
 from ..core.dependencies import get_current_user
 from ..core.settings import settings
 from ..database import SessionLocal, get_db
+from ..ingest.deletion import cancel_and_cleanup_document
 from ..ingest.logging_utils import log_event
 from ..ingest.processor import run_ingest_job
-from ..ingest.qdrant_store import build_qdrant_client, delete_vectors_for_document
 from ..ingest.storage import compute_content_hash, storage_client
 from ..ingest.url_safety import URLValidationError, validate_ingest_url
 from ..models import DocumentRecord, IngestJob, JobStage, JobStatus, Notebook, User
@@ -123,17 +123,17 @@ class DeleteDocumentResponse(BaseModel):
     document_id: str
     deleted: bool
     status: str
-    cleanup: dict[str, bool]
+    cleanup: dict[str, bool | int]
     cleanup_errors: list[str]
 
 
-def _enqueue_ingest(job_id: str, document_id: str, object_key: str, pipeline_version: str, user_id: str) -> None:
+def _enqueue_ingest(job_id: str, document_id: str, object_key: str, pipeline_version: str, user_id: str) -> str:
     try:
         from ..worker.celery_app import celery_app
     except ModuleNotFoundError as exc:
         raise RuntimeError("Celery is not installed. Run `pip install -r requirements.txt`.") from exc
 
-    celery_app.send_task(
+    result = celery_app.send_task(
         "backend.app.worker.tasks.process_ingest_job",
         kwargs={
             "job_id": job_id,
@@ -144,15 +144,16 @@ def _enqueue_ingest(job_id: str, document_id: str, object_key: str, pipeline_ver
         },
         queue=settings.celery_ingest_queue,
     )
+    return result.id
 
 
-def _enqueue_url_ingest(job_id: str, document_id: str, url: str, pipeline_version: str, user_id: str) -> None:
+def _enqueue_url_ingest(job_id: str, document_id: str, url: str, pipeline_version: str, user_id: str) -> str:
     try:
         from ..worker.celery_app import celery_app
     except ModuleNotFoundError as exc:
         raise RuntimeError("Celery is not installed. Run `pip install -r requirements.txt`.") from exc
 
-    celery_app.send_task(
+    result = celery_app.send_task(
         "backend.app.worker.tasks.process_url_ingest_job",
         kwargs={
             "job_id": job_id,
@@ -163,6 +164,7 @@ def _enqueue_url_ingest(job_id: str, document_id: str, url: str, pipeline_versio
         },
         queue=settings.celery_ingest_queue,
     )
+    return result.id
 
 
 def _create_job(db: Session, document_id: str, pipeline_version: str) -> IngestJob:
@@ -188,7 +190,7 @@ def _validate_notebook_for_upload(db: Session, notebook_id: int | None, current_
     notebook = db.query(Notebook).filter(Notebook.id == notebook_id).first()
     if notebook is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Notebook not found")
-    if notebook.owner_id != current_user.id and not notebook.is_community:
+    if notebook.owner_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed to use this notebook")
 
 
@@ -246,6 +248,8 @@ async def _create_document_impl(
                 DocumentRecord.notebook_id == notebook_id,
                 DocumentRecord.content_hash == content_hash,
                 DocumentRecord.content_hash.isnot(None),
+                DocumentRecord.deleted_at.is_(None),
+                DocumentRecord.delete_requested_at.is_(None),
             ).first()
             if existing:
                 return JSONResponse(
@@ -310,7 +314,9 @@ async def _create_document_impl(
             }
         else:
             # Queue is busy → delegate to Celery (existing behavior)
-            _enqueue_ingest(job.id, document.id, document.object_key, version, current_user.username)
+            job.celery_task_id = _enqueue_ingest(job.id, document.id, document.object_key, version, current_user.username)
+            db.add(job)
+            db.commit()
             return {
                 "document_id": document.id,
                 "job_id": job.id,
@@ -368,10 +374,16 @@ def _list_documents_impl(
     *,
     notebook_id: int | None = None,
 ) -> list[DocumentListItem]:
-    query = db.query(DocumentRecord).filter(DocumentRecord.owner_id == current_user.id)
     if notebook_id is not None:
-        query = query.filter(DocumentRecord.notebook_id == notebook_id)
+        nb = db.query(Notebook).filter(Notebook.id == notebook_id).first()
+        if nb and nb.is_community:
+            query = db.query(DocumentRecord).filter(DocumentRecord.notebook_id == notebook_id)
+        else:
+            query = db.query(DocumentRecord).filter(DocumentRecord.owner_id == current_user.id, DocumentRecord.notebook_id == notebook_id)
+    else:
+        query = db.query(DocumentRecord).filter(DocumentRecord.owner_id == current_user.id)
 
+    query = query.filter(DocumentRecord.deleted_at.is_(None), DocumentRecord.delete_requested_at.is_(None))
     rows = query.order_by(DocumentRecord.created_at.desc()).all()
     output: list[DocumentListItem] = []
     for row in rows:
@@ -418,12 +430,18 @@ def _delete_document_impl(db: Session, document_id: str, current_user: User) -> 
         "vectors_deleted": False,
         "object_deleted": False,
         "excel_tables_dropped": 0,
+        "jobs_cancelled": 0,
+        "tasks_revoked": 0,
     }
-    cleanup_errors: list[str] = []
 
     document = (
         db.query(DocumentRecord)
-        .filter(DocumentRecord.id == document_id, DocumentRecord.owner_id == current_user.id)
+        .filter(
+            DocumentRecord.id == document_id,
+            DocumentRecord.owner_id == current_user.id,
+            DocumentRecord.deleted_at.is_(None),
+            DocumentRecord.delete_requested_at.is_(None),
+        )
         .first()
     )
     if not document:
@@ -435,38 +453,8 @@ def _delete_document_impl(db: Session, document_id: str, current_user: User) -> 
             cleanup_errors=[],
         )
 
-    object_key = document.object_key
-
-    if object_key.startswith("url://"):
-        cleanup["object_deleted"] = True
-    else:
-        try:
-            storage_client.delete(object_key)
-            cleanup["object_deleted"] = True
-        except Exception as exc:
-            cleanup_errors.append(f"object_storage: {exc}")
-
     try:
-        client = build_qdrant_client()
-        delete_vectors_for_document(client, document_id)
-        cleanup["vectors_deleted"] = True
-    except Exception as exc:
-        cleanup_errors.append(f"qdrant: {exc}")
-
-    chunk_count = len(document.chunks)
-    cleanup["chunks_deleted"] = chunk_count > 0
-
-    try:
-        from ..ingest.excel_ingestor import drop_excel_tables
-        dropped = drop_excel_tables(db, document_id)
-        cleanup["excel_tables_dropped"] = dropped
-    except Exception as exc:
-        cleanup_errors.append(f"excel_cleanup: {exc}")
-
-    try:
-        db.delete(document)
-        db.commit()
-        cleanup["metadata_deleted"] = True
+        result = cancel_and_cleanup_document(db, document)
     except Exception as exc:
         db.rollback()
         raise HTTPException(
@@ -478,8 +466,8 @@ def _delete_document_impl(db: Session, document_id: str, current_user: User) -> 
         document_id=document_id,
         deleted=True,
         status="deleted",
-        cleanup=cleanup,
-        cleanup_errors=cleanup_errors,
+        cleanup=result.cleanup,
+        cleanup_errors=result.errors,
     )
 
 
@@ -487,7 +475,12 @@ def _reindex_document_impl(db: Session, document_id: str, request: ReindexReques
     try:
         document = (
             db.query(DocumentRecord)
-            .filter(DocumentRecord.id == document_id, DocumentRecord.owner_id == current_user.id)
+            .filter(
+                DocumentRecord.id == document_id,
+                DocumentRecord.owner_id == current_user.id,
+                DocumentRecord.deleted_at.is_(None),
+                DocumentRecord.delete_requested_at.is_(None),
+            )
             .first()
         )
         if not document:
@@ -507,7 +500,9 @@ def _reindex_document_impl(db: Session, document_id: str, request: ReindexReques
 
         if document.object_key.startswith("url://"):
             url = document.object_key[6:]
-            _enqueue_url_ingest(job.id, document.id, url, version, current_user.username)
+            job.celery_task_id = _enqueue_url_ingest(job.id, document.id, url, version, current_user.username)
+            db.add(job)
+            db.commit()
             return {
                 "document_id": document.id,
                 "job_id": job.id,
@@ -516,7 +511,9 @@ def _reindex_document_impl(db: Session, document_id: str, request: ReindexReques
                 "url": url,
             }
         else:
-            _enqueue_ingest(job.id, document.id, document.object_key, version, current_user.username)
+            job.celery_task_id = _enqueue_ingest(job.id, document.id, document.object_key, version, current_user.username)
+            db.add(job)
+            db.commit()
             return {
                 "document_id": document.id,
                 "job_id": job.id,
@@ -620,6 +617,8 @@ async def replace_document(
         document = db.query(DocumentRecord).filter(
             DocumentRecord.id == document_id,
             DocumentRecord.owner_id == current_user.id,
+            DocumentRecord.deleted_at.is_(None),
+            DocumentRecord.delete_requested_at.is_(None),
         ).first()
         if not document:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
@@ -676,7 +675,9 @@ async def replace_document(
                 "chunks": result["child_chunks"],
             }
         else:
-            _enqueue_ingest(job.id, document.id, document.object_key, version, current_user.username)
+            job.celery_task_id = _enqueue_ingest(job.id, document.id, document.object_key, version, current_user.username)
+            db.add(job)
+            db.commit()
             return {
                 "document_id": document.id,
                 "job_id": job.id,
@@ -746,7 +747,9 @@ def create_url_document(
         db.refresh(document)
 
         job = _create_job(db, document_id=document.id, pipeline_version=version)
-        _enqueue_url_ingest(job.id, document.id, url, version, current_user.username)
+        job.celery_task_id = _enqueue_url_ingest(job.id, document.id, url, version, current_user.username)
+        db.add(job)
+        db.commit()
 
         return {
             "document_id": document.id,

@@ -45,7 +45,7 @@ class JobUpdater:
                 job.queued_at = now
             if status == "running" and job.started_at is None:
                 job.started_at = now
-            if status in {"succeeded", "failed"}:
+            if status in {"succeeded", "failed", "cancelled"}:
                 job.finished_at = now
 
         if stage is not None:
@@ -77,6 +77,8 @@ class JobUpdater:
 
     def start_run(self, job_id: str, *, pipeline_version: str) -> IngestJob:
         job = self.get_job(job_id)
+        if job.status == "cancelled":
+            return job
         now = datetime.now(timezone.utc)
 
         # Celery retries replay the ingest pipeline from the beginning on the
@@ -115,4 +117,13 @@ class JobUpdater:
             progress_pct=100,
             error_message=message,
             stage_detail="ingest_failed",
+        )
+
+    def cancel(self, job_id: str, stage_detail: str = "ingest_cancelled") -> IngestJob:
+        return self.set_state(
+            job_id,
+            status="cancelled",
+            progress_pct=100,
+            stage_detail=stage_detail,
+            error_message=None,
         )

@@ -114,7 +114,7 @@ class NonAdminApiContractTests(unittest.TestCase):
         notebook_id = notebook_response.json()["id"]
 
         with patch("backend.app.routers.ingest._enqueue_ingest", return_value=None), patch(
-            "backend.app.routers.ingest.build_qdrant_client", return_value=_FakeQdrantClient()
+            "backend.app.ingest.deletion.build_qdrant_client", return_value=_FakeQdrantClient()
         ):
             upload_response = self.client.post(
                 "/api/documents",
@@ -163,6 +163,94 @@ class NonAdminApiContractTests(unittest.TestCase):
             self.assertEqual(delete_again_response.status_code, 200)
             self.assertFalse(delete_again_response.json()["deleted"])
             self.assertEqual(delete_again_response.json()["status"], "not_found")
+
+    def test_notebook_file_delete_cancels_active_job_and_keeps_audit_row(self) -> None:
+        token = self._signup_and_get_token()
+        headers = {"Authorization": f"Bearer {token}"}
+        notebook_response = self.client.post(
+            "/api/notebooks",
+            headers=headers,
+            json={"title": "Delete target", "is_community": False},
+        )
+        self.assertEqual(notebook_response.status_code, 201)
+        notebook_id = notebook_response.json()["id"]
+
+        db = self.SessionLocal()
+        try:
+            document = models.DocumentRecord(
+                id="doc-cancel",
+                owner_id=1,
+                notebook_id=notebook_id,
+                filename="cancel.pdf",
+                object_key="doc-cancel/cancel.pdf",
+                mime_type="application/pdf",
+                size_bytes=12,
+                content_hash="hash-cancel",
+            )
+            job = models.IngestJob(
+                id="job-cancel",
+                document_id="doc-cancel",
+                status="running",
+                stage="embedding",
+                progress_pct=60,
+                pipeline_version="1.0.0",
+                celery_task_id="celery-task-1",
+            )
+            chunk = models.DocumentChunk(
+                id="chunk-cancel",
+                document_id="doc-cancel",
+                owner_id=1,
+                notebook_id=notebook_id,
+                job_id="job-cancel",
+                kind="parent",
+                parent_chunk_id=None,
+                chunk_order=0,
+                text="text",
+                source="cancel.pdf",
+                page=1,
+                doc_id="doc-cancel-1",
+                pipeline_version="1.0.0",
+            )
+            db.add_all([document, job, chunk])
+            db.commit()
+        finally:
+            db.close()
+
+        with patch("backend.app.ingest.deletion.storage_client.delete", return_value=None), patch(
+            "backend.app.ingest.deletion.build_qdrant_client", return_value=_FakeQdrantClient()
+        ), patch("backend.app.ingest.deletion.delete_vectors_for_document", return_value=None) as delete_vectors, patch(
+            "backend.app.ingest.deletion._revoke_tasks", return_value=None
+        ) as revoke_tasks:
+            delete_response = self.client.delete(
+                f"/api/notebooks/{notebook_id}/files/doc-cancel",
+                headers=headers,
+            )
+
+        self.assertEqual(delete_response.status_code, 200)
+        payload = delete_response.json()
+        self.assertTrue(payload["deleted"])
+        self.assertEqual(payload["cleanup"]["jobs_cancelled"], 1)
+        delete_vectors.assert_called()
+        revoke_tasks.assert_called_once_with(["celery-task-1"], [])
+
+        list_response = self.client.get(f"/api/documents?notebook_id={notebook_id}", headers=headers)
+        self.assertEqual(list_response.status_code, 200)
+        self.assertEqual(list_response.json(), [])
+
+        job_response = self.client.get("/api/jobs/job-cancel", headers=headers)
+        self.assertEqual(job_response.status_code, 200)
+        self.assertEqual(job_response.json()["status"], "cancelled")
+        self.assertIsNotNone(job_response.json()["finished_at"])
+
+        db = self.SessionLocal()
+        try:
+            tombstone = db.query(models.DocumentRecord).filter(models.DocumentRecord.id == "doc-cancel").first()
+            self.assertIsNotNone(tombstone)
+            self.assertIsNotNone(tombstone.delete_requested_at)
+            self.assertIsNotNone(tombstone.deleted_at)
+            self.assertEqual(db.query(models.DocumentChunk).filter(models.DocumentChunk.document_id == "doc-cancel").count(), 0)
+        finally:
+            db.close()
 
     def test_tabular_upload_replace_and_reindex_are_disabled(self) -> None:
         token = self._signup_and_get_token()

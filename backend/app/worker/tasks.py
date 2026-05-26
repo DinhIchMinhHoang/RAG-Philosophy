@@ -6,6 +6,7 @@ from celery import Task
 
 from ..core.settings import settings
 from ..database import SessionLocal
+from ..ingest.cancellation import IngestCancelled, assert_ingest_not_cancelled
 from ..ingest.job_updater import JobUpdater
 from ..ingest.logging_utils import log_event
 from ..ingest.processor import run_ingest_job, run_url_ingest_job
@@ -52,6 +53,38 @@ def _mark_failed_after_exception(db: Any, job_id: str, exc: Exception) -> None:
             stage="failed",
             error_message=_safe_error_message(fail_exc),
         )
+
+
+def _log_cancelled(payload: dict[str, Any], exc: IngestCancelled) -> None:
+    log_event(
+        "info",
+        "ingest_cancelled_no_retry",
+        job_id=payload.get("job_id"),
+        document_id=payload.get("document_id"),
+        pipeline_version=payload.get("pipeline_version"),
+        stage=exc.stage,
+        stage_detail=exc.reason,
+        skipped_chunks=exc.skipped_chunks,
+        skipped_batches=exc.skipped_batches,
+    )
+
+
+def _cancelled_after_exception(db: Any, payload: dict[str, Any]) -> IngestCancelled | None:
+    job_id = payload.get("job_id")
+    document_id = payload.get("document_id")
+    if not job_id or not document_id:
+        return None
+    try:
+        db.rollback()
+        assert_ingest_not_cancelled(
+            db,
+            job_id=job_id,
+            document_id=document_id,
+            stage="exception",
+        )
+    except IngestCancelled as exc:
+        return exc
+    return None
 
 
 
@@ -101,6 +134,8 @@ class IngestTaskBase(Task):
         )
 
     def on_failure(self, exc: Exception, task_id: str, args: tuple[Any, ...], kwargs: dict[str, Any], einfo: Any) -> None:
+        if isinstance(exc, IngestCancelled):
+            return
         payload = _payload_from_call(args, kwargs)
         job_id = payload.get("job_id")
         if job_id:
@@ -173,12 +208,28 @@ def process_ingest_job(
             stage="persisting_metadata",
         )
         return result
+    except IngestCancelled as exc:
+        db.rollback()
+        _log_cancelled(
+            {"job_id": job_id, "document_id": document_id, "pipeline_version": pipeline_version},
+            exc,
+        )
+        return {"cancelled": 1}
     except Exception as exc:
+        cancelled = _cancelled_after_exception(
+            db,
+            {"job_id": job_id, "document_id": document_id, "pipeline_version": pipeline_version},
+        )
+        if cancelled is not None:
+            _log_cancelled(
+                {"job_id": job_id, "document_id": document_id, "pipeline_version": pipeline_version},
+                cancelled,
+            )
+            return {"cancelled": 1}
         if _is_retryable(exc):
             raise RetryableIngestError(str(exc)) from exc
 
-        updater = JobUpdater(db)
-        updater.fail(job_id, _safe_error_message(exc))
+        _mark_failed_after_exception(db, job_id, exc)
         raise
     finally:
         db.close()
@@ -235,7 +286,24 @@ def process_url_ingest_job(
             stage="persisting_metadata",
         )
         return result
+    except IngestCancelled as exc:
+        db.rollback()
+        _log_cancelled(
+            {"job_id": job_id, "document_id": document_id, "pipeline_version": pipeline_version},
+            exc,
+        )
+        return {"cancelled": 1}
     except Exception as exc:
+        cancelled = _cancelled_after_exception(
+            db,
+            {"job_id": job_id, "document_id": document_id, "pipeline_version": pipeline_version},
+        )
+        if cancelled is not None:
+            _log_cancelled(
+                {"job_id": job_id, "document_id": document_id, "pipeline_version": pipeline_version},
+                cancelled,
+            )
+            return {"cancelled": 1}
         if _is_retryable(exc):
             raise RetryableIngestError(str(exc)) from exc
 

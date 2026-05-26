@@ -12,13 +12,16 @@ from sqlalchemy.orm import Session
 from rag_core.step1_parser import HybridPDFParser
 from rag_core.step2_chunker import chunk_documents
 
+from ..core.settings import settings
 from ..models import DocumentChunk, DocumentRecord
 from ..services.embedding_client import embed_texts
+from .cancellation import IngestCancelled, assert_ingest_not_cancelled
 from .idempotency import delete_chunks_for_document_version
 from .job_updater import JobUpdater
 from .logging_utils import log_event
 from .qdrant_store import (
     build_qdrant_client,
+    delete_vectors_for_document,
     delete_vectors_for_document_version,
     upsert_child_vectors,
 )
@@ -79,6 +82,30 @@ def _draft_to_model(draft: ChunkDraft) -> DocumentChunk:
 def _normalize_parsed_page_sources(parsed_pages: list[Document], filename: str) -> None:
     for page in parsed_pages:
         page.metadata["source"] = filename
+
+
+def _check_cancelled(
+    db: Session,
+    *,
+    job_id: str,
+    document_id: str,
+    stage: str,
+    skipped_chunks: int = 0,
+    skipped_batches: int = 0,
+) -> None:
+    assert_ingest_not_cancelled(
+        db,
+        job_id=job_id,
+        document_id=document_id,
+        stage=stage,
+        skipped_chunks=skipped_chunks,
+        skipped_batches=skipped_batches,
+    )
+
+
+def _batch_items(items: list[ChunkDraft], batch_size: int) -> list[list[ChunkDraft]]:
+    size = max(1, int(batch_size or 1))
+    return [items[idx : idx + size] for idx in range(0, len(items), size)]
 
 
 
@@ -186,31 +213,35 @@ def _process_parsed_documents(
     updater: JobUpdater,
     total_started: float,
 ) -> dict[str, int]:
-    updater = JobUpdater(db)
+    _check_cancelled(db, job_id=job_id, document_id=document_id, stage="after_parsing")
     document = db.query(DocumentRecord).filter(DocumentRecord.id == document_id).first()
     if document is None:
-        raise ValueError(f"Document not found: {document_id}")
+        _check_cancelled(db, job_id=job_id, document_id=document_id, stage="document_lookup")
+        raise IngestCancelled(job_id, document_id, "document_lookup", "document missing during ingest")
+    document_filename = document.filename
+    document_owner_id = document.owner_id
+    document_notebook_id = document.notebook_id
+    db.rollback()
 
-    total_started = time.perf_counter()
 
     def _mark_stage(stage: str, ratio: float, detail: str) -> None:
         updater.advance_stage(job_id, stage, ratio=ratio, stage_detail=detail)
 
-    updater.start_run(job_id, pipeline_version=pipeline_version)
-
     # Normalize source metadata (override temp filename → original filename)
-    _normalize_parsed_page_sources(parsed_pages, document.filename)
+    _normalize_parsed_page_sources(parsed_pages, document_filename)
 
     stage_started = time.perf_counter()
+    _check_cancelled(db, job_id=job_id, document_id=document_id, stage="before_chunking")
     _mark_stage("chunking", 0.1, "chunking_started")
     child_docs, parent_docs = chunk_documents(parsed_pages)
+    _check_cancelled(db, job_id=job_id, document_id=document_id, stage="after_chunking")
     if not child_docs or not parent_docs:
         raise ValueError("Chunking produced empty parent/child docs")
 
     parent_drafts, child_drafts = _build_chunk_drafts(
         document_id=document_id,
-        owner_id=document.owner_id,
-        notebook_id=document.notebook_id,
+        owner_id=document_owner_id,
+        notebook_id=document_notebook_id,
         job_id=job_id,
         pipeline_version=pipeline_version,
         parent_docs=parent_docs,
@@ -235,8 +266,72 @@ def _process_parsed_documents(
 
     stage_started = time.perf_counter()
     _mark_stage("embedding", 0.05, "embedding_started")
-    child_texts = [draft.text for draft in child_drafts]
-    vectors = embed_texts(child_texts)
+    qdrant_client = build_qdrant_client()
+    _check_cancelled(db, job_id=job_id, document_id=document_id, stage="before_qdrant_delete_existing")
+    delete_vectors_for_document_version(qdrant_client, document_id, pipeline_version)
+    _check_cancelled(db, job_id=job_id, document_id=document_id, stage="after_qdrant_delete_existing")
+    batches = _batch_items(child_drafts, settings.embedding_batch_size)
+    embedded_children = 0
+    indexed_children = 0
+    vectors_upserted = False
+    indexing_started_at: float | None = None
+
+    try:
+        for batch_index, batch in enumerate(batches):
+            _check_cancelled(
+                db,
+                job_id=job_id,
+                document_id=document_id,
+                stage="before_embedding_batch",
+                skipped_chunks=len(child_drafts) - embedded_children,
+                skipped_batches=len(batches) - batch_index,
+            )
+            vectors = embed_texts([draft.text for draft in batch])
+            _check_cancelled(
+                db,
+                job_id=job_id,
+                document_id=document_id,
+                stage="after_embedding_batch",
+                skipped_chunks=len(child_drafts) - embedded_children,
+                skipped_batches=len(batches) - batch_index,
+            )
+            embedded_children += len(batch)
+            _mark_stage(
+                "embedding",
+                embedded_children / max(1, len(child_drafts)),
+                f"embedded_children={embedded_children}/{len(child_drafts)}",
+            )
+
+            if indexing_started_at is None:
+                indexing_started_at = time.perf_counter()
+            _check_cancelled(
+                db,
+                job_id=job_id,
+                document_id=document_id,
+                stage="before_qdrant_upsert",
+                skipped_chunks=len(child_drafts) - indexed_children,
+                skipped_batches=len(batches) - batch_index,
+            )
+            upsert_child_vectors(qdrant_client, [_draft_to_model(draft) for draft in batch], vectors)
+            vectors_upserted = True
+            indexed_children += len(batch)
+            try:
+                _check_cancelled(
+                    db,
+                    job_id=job_id,
+                    document_id=document_id,
+                    stage="after_qdrant_upsert",
+                    skipped_chunks=len(child_drafts) - indexed_children,
+                    skipped_batches=len(batches) - batch_index - 1,
+                )
+            except IngestCancelled:
+                delete_vectors_for_document(qdrant_client, document_id)
+                raise
+    except IngestCancelled:
+        if vectors_upserted:
+            delete_vectors_for_document(qdrant_client, document_id)
+        raise
+
     _mark_stage("embedding", 1.0, f"embedded_children={len(child_drafts)}")
     embedding_duration_ms = int((time.perf_counter() - stage_started) * 1000)
     log_event(
@@ -249,12 +344,7 @@ def _process_parsed_documents(
         duration_ms=embedding_duration_ms,
     )
 
-    stage_started = time.perf_counter()
-    _mark_stage("indexing_vector", 0.05, "indexing_started")
-    qdrant_client = build_qdrant_client()
-    delete_vectors_for_document_version(qdrant_client, document_id, pipeline_version)
-    child_chunk_models = [_draft_to_model(draft) for draft in child_drafts]
-    upsert_child_vectors(qdrant_client, child_chunk_models, vectors)
+    stage_started = indexing_started_at or time.perf_counter()
     _mark_stage("indexing_vector", 1.0, f"indexed_children={len(child_drafts)}")
     indexing_duration_ms = int((time.perf_counter() - stage_started) * 1000)
     log_event(
@@ -268,11 +358,18 @@ def _process_parsed_documents(
     )
 
     stage_started = time.perf_counter()
+    _check_cancelled(db, job_id=job_id, document_id=document_id, stage="before_metadata_persistence")
     _mark_stage("persisting_metadata", 0.05, "metadata_started")
     deleted_chunks = delete_chunks_for_document_version(db, document_id, pipeline_version)
     all_rows = [_draft_to_model(draft) for draft in parent_drafts + child_drafts]
     db.add_all(all_rows)
     db.commit()
+    try:
+        _check_cancelled(db, job_id=job_id, document_id=document_id, stage="after_metadata_persistence")
+    except IngestCancelled:
+        delete_chunks_for_document_version(db, document_id, pipeline_version)
+        delete_vectors_for_document(qdrant_client, document_id)
+        raise
     _mark_stage(
         "persisting_metadata",
         1.0,
@@ -324,12 +421,15 @@ def run_ingest_job(
     def _mark_stage(stage: str, ratio: float, detail: str) -> None:
         updater.advance_stage(job_id, stage, ratio=ratio, stage_detail=detail)
 
+    _check_cancelled(db, job_id=job_id, document_id=document_id, stage="task_start")
     updater.start_run(job_id, pipeline_version=pipeline_version)
 
     stage_started = time.perf_counter()
+    _check_cancelled(db, job_id=job_id, document_id=document_id, stage="before_fetch")
     _mark_stage("fetching_object", 0.1, "fetch_started")
     file_bytes = storage_client.get_bytes(object_key)
     file_ext = validate_file_bytes(object_key, file_bytes)
+    _check_cancelled(db, job_id=job_id, document_id=document_id, stage="after_fetch")
     _mark_stage("fetching_object", 1.0, f"fetched_bytes={len(file_bytes)}, format={file_ext}")
     fetch_duration_ms = int((time.perf_counter() - stage_started) * 1000)
     log_event(
@@ -353,23 +453,32 @@ def run_ingest_job(
 
     try:
         if file_ext == '.pdf':
+            _check_cancelled(db, job_id=job_id, document_id=document_id, stage="before_parsing")
             _mark_stage("parsing", 0.1, "parse_started")
             parsed_pages = _run_pdf_parse(tmp_path)
+            _check_cancelled(db, job_id=job_id, document_id=document_id, stage="after_ocr_parsing")
 
         elif file_ext == '.docx':
+            _check_cancelled(db, job_id=job_id, document_id=document_id, stage="before_parsing")
             _mark_stage("parsing", 0.1, "parse_started")
             parsed_pages = _run_docx_parse(tmp_path, document_id, pipeline_version)
+            _check_cancelled(db, job_id=job_id, document_id=document_id, stage="after_ocr_parsing")
 
         elif file_ext in ('.html', '.htm'):
+            _check_cancelled(db, job_id=job_id, document_id=document_id, stage="before_parsing")
             _mark_stage("parsing", 0.1, "parse_started")
             parsed_pages = _run_html_parse(tmp_path, document_id, pipeline_version)
+            _check_cancelled(db, job_id=job_id, document_id=document_id, stage="after_ocr_parsing")
 
         elif file_ext == '.md':
+            _check_cancelled(db, job_id=job_id, document_id=document_id, stage="before_parsing")
             _mark_stage("parsing", 0.1, "parse_started")
             parsed_pages = _run_md_parse(tmp_path, document_id, pipeline_version)
+            _check_cancelled(db, job_id=job_id, document_id=document_id, stage="after_ocr_parsing")
 
         elif file_ext in ['.xlsx', '.xls', '.csv']:
             is_excel = True
+            _check_cancelled(db, job_id=job_id, document_id=document_id, stage="before_loading_sql")
             _mark_stage("loading_sql", 0.1, "excel_ingest_started")
             from .excel_ingestor import ingest_excel_to_sql
             table_records = ingest_excel_to_sql(
@@ -380,6 +489,7 @@ def run_ingest_job(
                 job_id=job_id,
                 user_id=user_id,
             )
+            _check_cancelled(db, job_id=job_id, document_id=document_id, stage="after_loading_sql")
             _mark_stage("loading_sql", 1.0, f"tables={len(table_records)}")
             sql_duration_ms = int((time.perf_counter() - stage_started) * 1000)
             total_duration_ms = int((time.perf_counter() - total_started) * 1000)
@@ -418,6 +528,7 @@ def run_ingest_job(
     if not parsed_pages:
         raise ValueError(f"No pages parsed from {file_ext} file")
 
+    _check_cancelled(db, job_id=job_id, document_id=document_id, stage="after_parsing_before_chunking")
     _mark_stage("parsing", 1.0, f"parsed_pages={len(parsed_pages)}")
     parse_duration_ms = int((time.perf_counter() - stage_started) * 1000)
     log_event(
@@ -456,9 +567,11 @@ def run_url_ingest_job(
     def _mark_stage(stage: str, ratio: float, detail: str) -> None:
         updater.advance_stage(job_id, stage, ratio=ratio, stage_detail=detail)
 
+    _check_cancelled(db, job_id=job_id, document_id=document_id, stage="task_start")
     updater.start_run(job_id, pipeline_version=pipeline_version)
 
     stage_started = time.perf_counter()
+    _check_cancelled(db, job_id=job_id, document_id=document_id, stage="before_url_fetch")
     _mark_stage("fetching_object", 0.1, "url_fetch_started")
 
     import urllib.request
@@ -482,6 +595,7 @@ def run_url_ingest_job(
                 f"URL content too large ({len(content)} bytes > {DEFAULT_URL_MAX_BYTES})"
             )
 
+    _check_cancelled(db, job_id=job_id, document_id=document_id, stage="after_url_fetch")
     object_key = f"{document_id}/index.html"
     storage_client.put_bytes(object_key, content, "text/html")
 
@@ -490,10 +604,12 @@ def run_url_ingest_job(
         doc.object_key = object_key
         doc.size_bytes = len(content)
         db.commit()
+    _check_cancelled(db, job_id=job_id, document_id=document_id, stage="before_url_parse")
 
     _validate_html_content(content[:8192])
     html = content.decode("utf-8", errors="ignore").lstrip("\ufeff")
     parsed_pages = parse_html_bytes(html, url, document_id, pipeline_version)
+    _check_cancelled(db, job_id=job_id, document_id=document_id, stage="after_ocr_parsing")
 
     _mark_stage("fetching_object", 1.0, f"fetched_and_parsed_pages={len(parsed_pages)}")
     fetch_duration_ms = int((time.perf_counter() - stage_started) * 1000)
@@ -511,6 +627,7 @@ def run_url_ingest_job(
         raise ValueError(f"No pages parsed from URL: {url}")
 
     stage_started = time.perf_counter()
+    _check_cancelled(db, job_id=job_id, document_id=document_id, stage="after_parsing_before_chunking")
     _mark_stage("parsing", 1.0, f"parsed_pages={len(parsed_pages)}")
     parse_duration_ms = int((time.perf_counter() - stage_started) * 1000)
     log_event(

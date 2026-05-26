@@ -4,6 +4,8 @@
 
 Current backend ingest flow is persistent and job-based: `/api/documents` creates a `DocumentRecord` plus `IngestJob`, Celery retries reuse the same job row, and the worker updates job state while fetching, parsing, chunking, embedding, indexing, and persisting metadata.
 
+Document deletion is cooperative-cancellation aware. Delete requests set `delete_requested_at`, mark active jobs `cancelled`, revoke stored Celery task ids without terminating running workers, remove object/chunk/Excel/Qdrant data, and then set `deleted_at`. The document row remains as a hidden tombstone for job-audit authorization; user-facing lists, chat source resolution, file preview, and retrieval exclude tombstoned documents. Workers check cancellation between ingest stages and around each embedding/Qdrant batch, and a post-upsert cancellation check deletes vectors by `document_id` to close the delete/upsert race.
+
 The diagram below is the older standalone `rag_core` flow and is kept as a legacy reference.
 
 ```

@@ -239,14 +239,24 @@ List currently ingested source files.
 
 ### DELETE /api/documents/{document_id}
 
-Delete a document and associated vectors.
+Delete a document and associated vectors. Active queued or running ingest jobs for the document are marked `cancelled`, any stored Celery task ids are revoked with `terminate=false`, and the document row is retained as a hidden tombstone so job audit lookups can still authorize through the original owner. Normal document lists, chat source selection, file preview, and retrieval exclude tombstoned documents.
 
 **Response (200):**
 ```json
 {
   "document_id": "doc-uuid",
   "deleted": true,
-  "status": "deleted"
+  "status": "deleted",
+  "cleanup": {
+    "metadata_deleted": true,
+    "chunks_deleted": true,
+    "vectors_deleted": true,
+    "object_deleted": true,
+    "excel_tables_dropped": 0,
+    "jobs_cancelled": 1,
+    "tasks_revoked": 1
+  },
+  "cleanup_errors": []
 }
 ```
 

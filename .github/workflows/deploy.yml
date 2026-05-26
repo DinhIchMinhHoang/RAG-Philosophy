@@ -1,0 +1,145 @@
+name: Build and Deploy
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-and-deploy:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Extract commit SHA and lowercase owner
+        id: sha
+        run: |
+          SHA="${{ github.event.workflow_run.head_sha || github.sha }}"
+          echo "full=${SHA}" >> $GITHUB_OUTPUT
+          echo "short=${SHA::7}" >> $GITHUB_OUTPUT
+          echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_OUTPUT
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/backend.Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ steps.sha.outputs.owner }}/rag-philosophy-backend:sha-${{ steps.sha.outputs.short }}
+            ghcr.io/${{ steps.sha.outputs.owner }}/rag-philosophy-backend:latest
+
+      - name: Build and push embedding image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/embedding.Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ steps.sha.outputs.owner }}/rag-philosophy-embedding:sha-${{ steps.sha.outputs.short }}
+            ghcr.io/${{ steps.sha.outputs.owner }}/rag-philosophy-embedding:latest
+
+      - name: Deploy to VM
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.VM_HOST }}
+          username: ${{ secrets.VM_USER }}
+          password: ${{ secrets.VM_PASSWORD }}
+          envs: IMAGE_TAG,COMMIT_SHA,GHCR_PAT
+          script: |
+            cd ${{ secrets.VM_APP_DIR }}
+
+            # Capture current good state for rollback
+            LAST_GOOD_TAG=$(cat .deploy_last_good 2>/dev/null || echo "")
+            LAST_GOOD_COMMIT=$(cat .deploy_last_good_commit 2>/dev/null || echo "")
+
+            # Deploy new version
+            echo "Pulling latest code"
+            git pull --ff-only
+
+            export IMAGE_TAG
+            echo "Deploying IMAGE_TAG=$IMAGE_TAG"
+
+            echo "Logging in to GHCR"
+            echo "$GHCR_PAT" | docker login ghcr.io -u ${{ steps.sha.outputs.owner }} --password-stdin
+            docker-compose -f docker-compose.vm.yml pull
+            sleep 5
+            docker-compose -f docker-compose.vm.yml down
+            docker-compose -f docker-compose.vm.yml up -d
+
+            # Wait for containers to initialize. The CPU embedding service can take
+            # longer than the API to load and warm up its model.
+            echo "Waiting for core services to become healthy..."
+            for i in $(seq 1 24); do
+                BACKEND_HEALTH=$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' rag_backend 2>/dev/null || echo "missing")
+                WORKER_HEALTH=$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' rag_worker 2>/dev/null || echo "missing")
+                EMBEDDING_HEALTH=$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' rag_embedding 2>/dev/null || echo "missing")
+                echo "  attempt $i/24 backend=$BACKEND_HEALTH worker=$WORKER_HEALTH embedding=$EMBEDDING_HEALTH"
+                if [ "$BACKEND_HEALTH" = "healthy" ] && [ "$WORKER_HEALTH" = "healthy" ] && [ "$EMBEDDING_HEALTH" = "healthy" ]; then
+                    break
+                fi
+                sleep 10
+            done
+
+            ROLLBACK=false
+            echo ""
+            echo "=== HEALTH CHECKS ==="
+
+            echo "1/5  Backend /api/docs (via nginx)"
+            curl -sf --max-time 10 http://localhost/api/docs > /dev/null && echo "  OK" || { echo "  FAIL"; ROLLBACK=true; }
+
+            echo "2/5  Nginx /api/openapi.json"
+            curl -sf --max-time 10 http://localhost/api/openapi.json > /dev/null && echo "  OK" || { echo "  FAIL"; ROLLBACK=true; }
+
+            echo "3/5  Qdrant /collections"
+            curl -sf --max-time 10 http://localhost:6333/collections > /dev/null && echo "  OK" || { echo "  FAIL"; ROLLBACK=true; }
+
+            echo "4/5  Embedding /health"
+            docker-compose -f docker-compose.vm.yml exec -T embedding python -c "import json,urllib.request,sys; data=json.load(urllib.request.urlopen('http://localhost:8000/health', timeout=5)); sys.exit(0 if data.get('ready') is True else 1)" && echo "  OK" || { echo "  FAIL"; ROLLBACK=true; }
+
+            echo "5/5  Worker health"
+            docker inspect --format='{{.State.Health.Status}}' rag_worker | grep -q healthy && echo "  OK" || { echo "  FAIL"; ROLLBACK=true; }
+
+            if [ "$ROLLBACK" = "true" ]; then
+                echo ""
+                echo "=== ROLLING BACK ==="
+                if [ -n "$LAST_GOOD_TAG" ] && [ -n "$LAST_GOOD_COMMIT" ]; then
+                    echo "Restoring frontend to $LAST_GOOD_COMMIT"
+                    git checkout "$LAST_GOOD_COMMIT"
+                    echo "Restoring backend image $LAST_GOOD_TAG"
+                    export IMAGE_TAG="$LAST_GOOD_TAG"
+                    docker-compose -f docker-compose.vm.yml down
+                    docker-compose -f docker-compose.vm.yml up -d
+                    echo "Rolled back to $LAST_GOOD_TAG ($LAST_GOOD_COMMIT)"
+                else
+                    echo "No previous good state — deploy left as-is"
+                fi
+                exit 1
+            fi
+
+            echo ""
+            echo "=== ALL HEALTH CHECKS PASSED ==="
+            echo "$IMAGE_TAG" > .deploy_last_good
+            echo "$COMMIT_SHA" > .deploy_last_good_commit
+            echo "Deploy of $IMAGE_TAG ($COMMIT_SHA) successful"
+        env:
+          IMAGE_TAG: sha-${{ steps.sha.outputs.short }}
+          COMMIT_SHA: ${{ steps.sha.outputs.full }}
+          GHCR_PAT: ${{ secrets.GHCR_PAT }}

@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from .. import database, models
 from ..core.dependencies import get_current_user
 from ..core.settings import settings
+from ..ingest.deletion import cancel_and_cleanup_document
 from ..ingest.storage import storage_client
 from ..ingest.storage import LocalStorageClient
 
@@ -154,13 +155,13 @@ def _is_share_title_valid(title: str | None) -> bool:
     return trimmed.lower() != "untitled notebook"
 
 
-def _enqueue_ingest(job_id: str, document_id: str, object_key: str, pipeline_version: str, user_id: str = "system") -> None:
+def _enqueue_ingest(job_id: str, document_id: str, object_key: str, pipeline_version: str, user_id: str = "system") -> str:
     try:
         from ..worker.celery_app import celery_app
     except ModuleNotFoundError as exc:
         raise RuntimeError("Celery is not installed. Run `pip install -r requirements.txt`.") from exc
 
-    celery_app.send_task(
+    result = celery_app.send_task(
         "backend.app.worker.tasks.process_ingest_job",
         kwargs={
             "job_id": job_id,
@@ -171,15 +172,16 @@ def _enqueue_ingest(job_id: str, document_id: str, object_key: str, pipeline_ver
         },
         queue=settings.celery_ingest_queue,
     )
+    return result.id
 
 
-def _enqueue_url_ingest(job_id: str, document_id: str, url: str, pipeline_version: str, user_id: str = "system") -> None:
+def _enqueue_url_ingest(job_id: str, document_id: str, url: str, pipeline_version: str, user_id: str = "system") -> str:
     try:
         from ..worker.celery_app import celery_app
     except ModuleNotFoundError as exc:
         raise RuntimeError("Celery is not installed. Run `pip install -r requirements.txt`.") from exc
 
-    celery_app.send_task(
+    result = celery_app.send_task(
         "backend.app.worker.tasks.process_url_ingest_job",
         kwargs={
             "job_id": job_id,
@@ -190,6 +192,7 @@ def _enqueue_url_ingest(job_id: str, document_id: str, url: str, pipeline_versio
         },
         queue=settings.celery_ingest_queue,
     )
+    return result.id
 
 
 def _create_job(db: Session, document_id: str, pipeline_version: str) -> models.IngestJob:
@@ -235,7 +238,13 @@ def _sanitize_filename(name: str) -> str:
 def _get_document_for_notebook(db: Session, notebook_id: int, file_id: str, user_id: int) -> models.DocumentRecord:
     doc = (
         db.query(models.DocumentRecord)
-        .filter(models.DocumentRecord.id == file_id, models.DocumentRecord.owner_id == user_id, models.DocumentRecord.notebook_id == notebook_id)
+        .filter(
+            models.DocumentRecord.id == file_id,
+            models.DocumentRecord.owner_id == user_id,
+            models.DocumentRecord.notebook_id == notebook_id,
+            models.DocumentRecord.deleted_at.is_(None),
+            models.DocumentRecord.delete_requested_at.is_(None),
+        )
         .first()
     )
     if not doc:
@@ -457,7 +466,15 @@ def copy_notebook(
     db.commit()
     db.refresh(new_notebook)
 
-    documents = db.query(models.DocumentRecord).filter(models.DocumentRecord.notebook_id == source.id).all()
+    documents = (
+        db.query(models.DocumentRecord)
+        .filter(
+            models.DocumentRecord.notebook_id == source.id,
+            models.DocumentRecord.deleted_at.is_(None),
+            models.DocumentRecord.delete_requested_at.is_(None),
+        )
+        .all()
+    )
     pipeline_version = settings.pipeline_version
     documents_copied = 0
     jobs_enqueued = 0
@@ -482,7 +499,9 @@ def copy_notebook(
 
             try:
                 job = _create_job(db, document_id=copied.id, pipeline_version=pipeline_version)
-                _enqueue_url_ingest(job.id, copied.id, url, pipeline_version, current_user.username)
+                job.celery_task_id = _enqueue_url_ingest(job.id, copied.id, url, pipeline_version, current_user.username)
+                db.add(job)
+                db.commit()
                 jobs_enqueued += 1
             except Exception as exc:
                 raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to enqueue ingest for copied URL document: {exc}")
@@ -514,7 +533,9 @@ def copy_notebook(
 
             try:
                 job = _create_job(db, document_id=copied.id, pipeline_version=pipeline_version)
-                _enqueue_ingest(job.id, copied.id, copied.object_key, pipeline_version, current_user.username)
+                job.celery_task_id = _enqueue_ingest(job.id, copied.id, copied.object_key, pipeline_version, current_user.username)
+                db.add(job)
+                db.commit()
                 jobs_enqueued += 1
             except Exception as exc:
                 raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to enqueue ingest for copied document: {exc}")
@@ -684,51 +705,22 @@ def delete_file(
 
     document = (
         db.query(models.DocumentRecord)
-        .filter(models.DocumentRecord.id == file_id, models.DocumentRecord.owner_id == current_user.id, models.DocumentRecord.notebook_id == notebook_id)
+        .filter(
+            models.DocumentRecord.id == file_id,
+            models.DocumentRecord.owner_id == current_user.id,
+            models.DocumentRecord.notebook_id == notebook_id,
+            models.DocumentRecord.deleted_at.is_(None),
+            models.DocumentRecord.delete_requested_at.is_(None),
+        )
         .first()
     )
     if not document:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
 
-    cleanup = {"object_deleted": False, "vectors_deleted": False, "metadata_deleted": False}
-    errors: list[str] = []
-
-    # delete physical file
-    if document.object_key.startswith("url://"):
-        cleanup["object_deleted"] = True
-    else:
-        try:
-            # storage_client.delete is idempotent for missing files
-            storage_client.delete(document.object_key)
-            cleanup["object_deleted"] = True
-        except FileNotFoundError:
-            # missing on disk - proceed
-            cleanup["object_deleted"] = False
-        except Exception as exc:
-            errors.append(f"storage: {exc}")
-
-    # delete vectors if qdrant available
     try:
-        from ..ingest.qdrant_store import build_qdrant_client, delete_vectors_for_document
-
-        client = build_qdrant_client()
-        delete_vectors_for_document(client, document.id)
-        cleanup["vectors_deleted"] = True
-    except Exception:
-        # don't fail the whole op if qdrant not configured or delete fails
-        errors.append("qdrant: failed or not configured")
-
-    # Drop Excel SQL tables if this is an Excel document
-    from ..ingest.excel_ingestor import drop_excel_tables
-    drop_excel_tables(db, document.id)
-
-    # delete DB rows
-    try:
-        db.delete(document)
-        db.commit()
-        cleanup["metadata_deleted"] = True
+        result = cancel_and_cleanup_document(db, document)
     except Exception as exc:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to delete metadata: {exc}")
 
-    return {"deleted": True, "cleanup": cleanup, "errors": errors}
+    return {"deleted": True, "cleanup": result.cleanup, "errors": result.errors}

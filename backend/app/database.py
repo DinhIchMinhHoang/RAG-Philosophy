@@ -29,6 +29,11 @@ def ensure_runtime_schema(engine: Engine) -> None:
             "owner_id": "INTEGER",
             "notebook_id": "INTEGER",
             "content_hash": "VARCHAR(64)",
+            "delete_requested_at": "TIMESTAMP",
+            "deleted_at": "TIMESTAMP",
+        },
+        "ingest_jobs": {
+            "celery_task_id": "VARCHAR(128)",
         },
         "document_chunks": {
             "owner_id": "INTEGER",

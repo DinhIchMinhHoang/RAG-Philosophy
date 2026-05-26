@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 from ..core.dependencies import get_current_user
 from ..database import get_db
 from ..ingest.storage import storage_client
-from ..models import DocumentRecord, User
+from ..models import DocumentRecord, Notebook, User
 from rag_core.config import Config
 # Import rag_service lazily inside endpoints to avoid heavy rag_core imports at module import time.
 
@@ -52,11 +52,26 @@ def _authorized_document(db: Session, document_key: str, current_user: User) -> 
         .filter(
             DocumentRecord.owner_id == current_user.id,
             or_(DocumentRecord.id == document_key, DocumentRecord.filename == document_key),
+            DocumentRecord.deleted_at.is_(None),
+            DocumentRecord.delete_requested_at.is_(None),
         )
         .order_by(DocumentRecord.created_at.desc())
         .first()
     )
     if document is None:
+        document = (
+            db.query(DocumentRecord)
+            .filter(
+                DocumentRecord.id == document_key,
+                DocumentRecord.deleted_at.is_(None),
+                DocumentRecord.delete_requested_at.is_(None),
+            )
+            .first()
+        )
+        if document is not None and document.notebook_id:
+            nb = db.query(Notebook).filter(Notebook.id == document.notebook_id).first()
+            if nb and nb.is_community:
+                return document
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="File not found",

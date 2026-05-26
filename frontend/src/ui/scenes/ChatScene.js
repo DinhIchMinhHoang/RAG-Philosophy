@@ -2,7 +2,7 @@ import { store } from '../../state/store.js';
 import {
     BASE_URL,
     chatStream,
-    createSavedNotebookItem,
+
     getJob,
     getLatestNotebookConversation,
     getToken,
@@ -512,7 +512,9 @@ function addMessage(chatThread, role, text, citations = [], messageId = '') {
     msg.className = role === 'ai' ? 'ai-response' : `message ${role}`;
     msg.dataset.role = role;
     msg.dataset.messageId = messageId || '';
-    msg.innerHTML = `<div class="message-text"></div><div class="citation-strip"></div><div class="message-actions"><button class="message-action" data-action="pin-message" title="Pin message"><span class="material-icons">push_pin</span></button><button class="message-action" data-action="save-message" title="Save to Notes"><span class="material-icons">bookmark_add</span></button></div><div class="message-meta"></div>`;
+    const chatScene = document.getElementById('scene-chat');
+    const isReadOnly = chatScene && chatScene.dataset.notebookOwnerId && String(store.user?.id) !== String(chatScene.dataset.notebookOwnerId);
+    msg.innerHTML = `<div class="message-text"></div><div class="citation-strip"></div><div class="message-meta"></div>`;
     const textEl = msg.querySelector('.message-text');
     const citationsEl = msg.querySelector('.citation-strip');
     const metaEl = msg.querySelector('.message-meta');
@@ -821,6 +823,10 @@ export function initChatScene(transitionManager) {
     const sourceDrop = chatScene.querySelector('.source-drop');
     const sourceAddButtons = chatScene.querySelectorAll('.source-add-button');
     const sourceNoteButton = chatScene.querySelector('.source-note-button');
+    const sourceReadonlyNotice = document.createElement('div');
+    sourceReadonlyNotice.className = 'source-readonly-notice';
+    sourceReadonlyNotice.textContent = 'Viewing a community notebook — files are read-only';
+    sourceDrop?.parentElement?.prepend(sourceReadonlyNotice);
     const urlIngestModal = document.getElementById('urlIngestModal');
     const urlIngestInput = document.getElementById('urlIngestInput');
     const urlIngestError = document.getElementById('urlIngestError');
@@ -961,6 +967,8 @@ export function initChatScene(transitionManager) {
         if (notebookId && pruneSelection) pruneSelectedSourceIdsForVisible(notebookId, visibleIds);
         const selectedIds = notebookId ? getSelectedSourceIdsSet(notebookId) : new Set();
 
+        const isReadOnly = chatScene.dataset.notebookOwnerId && String(store.user?.id) !== String(chatScene.dataset.notebookOwnerId);
+
         sourceList.innerHTML = '';
         sourceDocuments.forEach((doc) => {
             const item = document.createElement('div');
@@ -981,9 +989,9 @@ export function initChatScene(transitionManager) {
                     <div class="source-type">${escapeHtml(formatDocumentStatus(doc))}</div>
                 </div>
                 <div class="source-actions">
-                    <button class="source-menu-btn" aria-label="Source actions" aria-haspopup="menu" aria-expanded="false" title="More" type="button">
+                    ${isReadOnly ? '' : `<button class="source-menu-btn" aria-label="Source actions" aria-haspopup="menu" aria-expanded="false" title="More" type="button">
                         <span class="material-icons">more_vert</span>
-                    </button>
+                    </button>`}
                     <input
                         class="source-select-checkbox"
                         type="checkbox"
@@ -993,6 +1001,7 @@ export function initChatScene(transitionManager) {
                         ${checkboxDisabledAttr}
                     >
                 </div>
+                ${isReadOnly ? '' : `
                 <div class="source-menu" role="menu" aria-label="Source actions menu">
                     <button class="source-menu-item" role="menuitem" data-action="rename" aria-label="Rename source">
                         <span class="material-icons">edit</span>Đổi tên nguồn
@@ -1001,6 +1010,7 @@ export function initChatScene(transitionManager) {
                         <span class="material-icons">delete</span>Xóa nguồn
                     </button>
                 </div>
+                `}
             `;
 
             item.addEventListener('click', (ev) => {
@@ -1143,6 +1153,11 @@ export function initChatScene(transitionManager) {
             sourceList.appendChild(item);
         });
         updateSourceEmpty(sourceEmpty, sourceList);
+        if (sourceEmpty && isReadOnly && sourceList.children.length === 0) {
+            sourceEmpty.textContent = 'This community notebook has no documents';
+        } else if (sourceEmpty) {
+            sourceEmpty.textContent = 'No sources yet';
+        }
         updateSelectAllState();
     };
 
@@ -1219,6 +1234,7 @@ export function initChatScene(transitionManager) {
 
     document.addEventListener('chat:notebookChanged', () => {
         notebookLoadVersion += 1;
+        const isReadOnly = chatScene.dataset.notebookOwnerId && String(store.user?.id) !== String(chatScene.dataset.notebookOwnerId);
         if (shareButton) {
             shareButton.classList.remove('active');
             shareButton.style.pointerEvents = '';
@@ -1228,12 +1244,26 @@ export function initChatScene(transitionManager) {
             const isShared = chatScene.dataset.isCommunity === 'true';
             if (isShared) shareButton.classList.add('active');
 
-            const ownerId = chatScene.dataset.notebookOwnerId;
-            if (ownerId && String(store.user?.id) !== ownerId) {
+            if (isReadOnly) {
                 shareButton.style.pointerEvents = 'none';
                 shareButton.style.opacity = '0.35';
                 shareButton.title = 'Only the owner can share this notebook';
             }
+        }
+
+        // Toggle upload controls for read-only notebooks
+        const uploadControls = [sourceDrop, sourceNoteButton];
+        sourceAddButtons.forEach(btn => uploadControls.push(btn));
+        uploadControls.forEach(el => {
+            if (!el) return;
+            if (isReadOnly) {
+                el.style.display = 'none';
+            } else {
+                el.style.display = '';
+            }
+        });
+        if (sourceReadonlyNotice) {
+            sourceReadonlyNotice.style.display = isReadOnly ? 'block' : 'none';
         }
         const settingsBtn = chatScene.querySelector('.panel-icon-button[title="Notebook settings"]');
         if (settingsBtn) {
@@ -1443,9 +1473,9 @@ export function initChatScene(transitionManager) {
     });
 
     if (sourceDrop) {
-        sourceDrop.addEventListener('dragover', (ev) => { ev.preventDefault(); sourceDrop.classList.add('is-dragover'); });
+        sourceDrop.addEventListener('dragover', (ev) => { if (sourceDrop.style.display === 'none') return; ev.preventDefault(); sourceDrop.classList.add('is-dragover'); });
         sourceDrop.addEventListener('dragleave', () => sourceDrop.classList.remove('is-dragover'));
-        sourceDrop.addEventListener('drop', (ev) => { ev.preventDefault(); sourceDrop.classList.remove('is-dragover'); if (ev.dataTransfer) handleFiles(ev.dataTransfer.files); });
+        sourceDrop.addEventListener('drop', (ev) => { ev.preventDefault(); sourceDrop.classList.remove('is-dragover'); if (sourceDrop.style.display !== 'none' && ev.dataTransfer) handleFiles(ev.dataTransfer.files); });
     }
     updateSourceEmpty(sourceEmpty, sourceList);
     updateSelectAllState();
@@ -1463,16 +1493,6 @@ export function initChatScene(transitionManager) {
         })
         .filter(Boolean)
         .join('\n\n');
-
-    const saveNotebookItem = async (payload) => {
-        const notebookId = currentNotebookId(chatScene);
-        if (!notebookId) return;
-        try {
-            await createSavedNotebookItem(notebookId, payload);
-        } catch (err) {
-            console.error('[Notes] Failed to save notebook item', err);
-        }
-    };
 
     if (chatForm && chatPrompt) {
         sendButton = chatForm.querySelector('.send-button');
@@ -1601,26 +1621,6 @@ export function initChatScene(transitionManager) {
         });
         chatPrompt.addEventListener('input', () => { chatPrompt.style.height = 'auto'; chatPrompt.style.height = `${Math.min(chatPrompt.scrollHeight, 140)}px`; });
     }
-
-    chatThread?.addEventListener('click', (ev) => {
-        const action = ev.target.closest('.message-action')?.getAttribute('data-action');
-        if (!action) return;
-        const messageEl = ev.target.closest('.message, .ai-response');
-        const content = messageEl?.querySelector('.message-text')?.textContent?.trim();
-        if (!messageEl || !content) return;
-        const notebookId = currentNotebookId(chatScene);
-        const state = notebookId ? conversationStateByNotebook.get(notebookId) : null;
-        const messageId = messageEl.dataset.messageId || null;
-        const stateMessage = state?.messages?.find((message) => message.id === messageId);
-        saveNotebookItem({
-            kind: action === 'pin-message' ? 'pin' : 'note',
-            title: action === 'pin-message' ? 'Pinned message' : 'Saved message',
-            content,
-            conversation_id: activeConversationId,
-            message_id: messageId,
-            sources_used: stateMessage?.sources_used || [],
-        });
-    });
 
     clearChatBtn?.addEventListener('click', () => {
         if (activeStreamController) cancelActiveStream({ preservePartial: false });

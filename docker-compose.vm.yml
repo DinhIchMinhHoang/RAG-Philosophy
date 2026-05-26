@@ -26,9 +26,7 @@ services:
       - app_net
 
   backend:
-    build:
-      context: .
-      dockerfile: docker/backend.Dockerfile
+    image: ghcr.io/dinhichminhhoang/rag-philosophy-backend:${IMAGE_TAG:-latest}
     container_name: rag_backend
     restart: unless-stopped
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1
@@ -42,8 +40,7 @@ services:
       WEB_CONCURRENCY: "1"
     volumes:
       - ./data:/app/data
-      - ./backend:/app/backend
-      - ./rag_core:/app/rag_core
+      - ./.env:/app/.env:ro
     deploy:
       resources:
         limits:
@@ -65,14 +62,12 @@ services:
       interval: 15s
       timeout: 10s
       retries: 8
-      start_period: 40s
+      start_period: 60s
     networks:
       - app_net
 
   worker:
-    build:
-      context: .
-      dockerfile: docker/backend.Dockerfile
+    image: ghcr.io/dinhichminhhoang/rag-philosophy-backend:${IMAGE_TAG:-latest}
     container_name: rag_worker
     restart: unless-stopped
     command: celery -A app.worker.celery_app.celery_app worker -Q ingest -l info --concurrency 1
@@ -85,8 +80,7 @@ services:
       CELERYD_CONCURRENCY: "1"
     volumes:
       - ./data:/app/data
-      - ./backend:/app/backend
-      - ./rag_core:/app/rag_core
+      - ./.env:/app/.env:ro
     deploy:
       resources:
         limits:
@@ -113,22 +107,18 @@ services:
       - app_net
 
   embedding:
-    build:
-      context: .
-      dockerfile: docker/embedding.Dockerfile
+    image: ghcr.io/dinhichminhhoang/rag-philosophy-embedding:${IMAGE_TAG:-latest}
     container_name: rag_embedding
     restart: unless-stopped
     env_file:
       - .env
-    ports:
-      - "127.0.0.1:8001:8000"
     environment:
       PYTHONPATH: /app
       HF_HOME: /cache/huggingface
       TRANSFORMERS_CACHE: /cache/huggingface
       SENTENCE_TRANSFORMERS_HOME: /cache/huggingface
       EMBEDDING_MODEL_NAME: ${EMBEDDING_MODEL_NAME:-microsoft/harrier-oss-v1-270m}
-      EMBEDDING_DEVICE: ${EMBEDDING_DEVICE:-cpu}
+      EMBEDDING_DEVICE: cpu
       EMBEDDING_BATCH_SIZE: ${EMBEDDING_BATCH_SIZE:-16}
     volumes:
       - huggingface_cache:/cache/huggingface
@@ -241,30 +231,6 @@ services:
     networks:
       - app_net
 
-  ollama:
-    image: ollama/ollama:latest
-    container_name: rag_ollama
-    profiles:
-      - local-llm
-    restart: unless-stopped
-    entrypoint: [ "/bin/sh", "/entrypoint.sh" ]
-    volumes:
-      - ollama_data:/root/.ollama
-      - ./docker/ollama-entrypoint.sh:/entrypoint.sh:ro
-    deploy:
-      resources:
-        limits:
-          cpus: '1.5'
-          memory: 6G
-    healthcheck:
-      test: [ "CMD-SHELL", "ollama list > /dev/null 2>&1 || exit 1" ]
-      interval: 20s
-      timeout: 10s
-      retries: 8
-      start_period: 40s
-    networks:
-      - app_net
-
 networks:
   app_net:
     driver: bridge
@@ -274,4 +240,3 @@ volumes:
   minio_data:
   qdrant_data:
   huggingface_cache:
-  ollama_data:

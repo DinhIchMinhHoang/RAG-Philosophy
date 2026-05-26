@@ -134,13 +134,13 @@ def _delete_documents(db: Session, document_ids: list[str], cleanup_errors: list
     return True
 
 
-def _enqueue_ingest(job_id: str, document_id: str, object_key: str, pipeline_version: str, user_id: str = "system") -> None:
+def _enqueue_ingest(job_id: str, document_id: str, object_key: str, pipeline_version: str, user_id: str = "system") -> str:
     try:
         from ..worker.celery_app import celery_app
     except ModuleNotFoundError as exc:
         raise RuntimeError("Celery is not installed. Run `pip install -r requirements.txt`.") from exc
 
-    celery_app.send_task(
+    result = celery_app.send_task(
         "backend.app.worker.tasks.process_ingest_job",
         kwargs={
             "job_id": job_id,
@@ -151,15 +151,16 @@ def _enqueue_ingest(job_id: str, document_id: str, object_key: str, pipeline_ver
         },
         queue=settings.celery_ingest_queue,
     )
+    return result.id
 
 
-def _enqueue_url_ingest(job_id: str, document_id: str, url: str, pipeline_version: str, user_id: str = "system") -> None:
+def _enqueue_url_ingest(job_id: str, document_id: str, url: str, pipeline_version: str, user_id: str = "system") -> str:
     try:
         from ..worker.celery_app import celery_app
     except ModuleNotFoundError as exc:
         raise RuntimeError("Celery is not installed. Run `pip install -r requirements.txt`.") from exc
 
-    celery_app.send_task(
+    result = celery_app.send_task(
         "backend.app.worker.tasks.process_url_ingest_job",
         kwargs={
             "job_id": job_id,
@@ -170,6 +171,7 @@ def _enqueue_url_ingest(job_id: str, document_id: str, url: str, pipeline_versio
         },
         queue=settings.celery_ingest_queue,
     )
+    return result.id
 
 
 def _create_job(db: Session, document_id: str, pipeline_version: str) -> models.IngestJob:
@@ -512,7 +514,9 @@ def reindex_document_admin(
 
     if document.object_key.startswith("url://"):
         url = document.object_key[6:]
-        _enqueue_url_ingest(job.id, document.id, url, version, user_id)
+        job.celery_task_id = _enqueue_url_ingest(job.id, document.id, url, version, user_id)
+        db.add(job)
+        db.commit()
         return AdminReindexResponse(
             document_id=document.id,
             job_id=job.id,
@@ -521,7 +525,9 @@ def reindex_document_admin(
             url=url,
         )
     else:
-        _enqueue_ingest(job.id, document.id, document.object_key, version, user_id)
+        job.celery_task_id = _enqueue_ingest(job.id, document.id, document.object_key, version, user_id)
+        db.add(job)
+        db.commit()
         return AdminReindexResponse(
             document_id=document.id,
             job_id=job.id,
