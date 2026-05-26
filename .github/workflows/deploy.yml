@@ -81,9 +81,6 @@ jobs:
             echo "Pulling latest code"
             git pull --ff-only
 
-            echo "Cleaning Docker disk"
-            docker system prune -af > /dev/null 2>&1 || true
-
             export IMAGE_TAG
             echo "Deploying IMAGE_TAG=$IMAGE_TAG"
 
@@ -92,11 +89,13 @@ jobs:
             docker-compose -f docker-compose.vm.yml pull
             sleep 5
             docker-compose -f docker-compose.vm.yml down
+            echo "Cleaning old Docker images"
+            docker system prune -af > /dev/null 2>&1 || true
             docker-compose -f docker-compose.vm.yml up -d
 
-            # Wait for containers to initialize
-            echo "Waiting for containers to start..."
-            sleep 60
+            # Wait for containers to initialize (embedding start_period=120s + model download)
+            echo "Waiting for containers to start (embedding service may take 2-3 min)..."
+            sleep 240
 
             # Health checks (10s per check, ~60s total)
             ROLLBACK=false
