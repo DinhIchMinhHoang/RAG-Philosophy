@@ -51,6 +51,18 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Build and push embedding image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/embedding.Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ steps.sha.outputs.owner }}/rag-philosophy-embedding:sha-${{ steps.sha.outputs.short }}
+            ghcr.io/${{ steps.sha.outputs.owner }}/rag-philosophy-embedding:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
       - name: Deploy to VM
         uses: appleboy/ssh-action@v1.2.0
         with:
