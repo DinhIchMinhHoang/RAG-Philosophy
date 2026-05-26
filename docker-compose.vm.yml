@@ -82,43 +82,6 @@ services:
     networks:
       - app_net
 
-  worker:
-    image: ghcr.io/dinhichminhhoang/rag-philosophy-backend:${IMAGE_TAG:-latest}
-    container_name: rag_worker
-    restart: unless-stopped
-    command: celery -A app.worker.celery_app.celery_app worker -Q ingest -l info --concurrency 1
-    working_dir: /app/backend
-    env_file:
-      - .env
-    environment:
-      PYTHONPATH: /app
-      EMBEDDING_DEVICE: cpu
-      CELERYD_CONCURRENCY: "1"
-    volumes:
-      - ./data:/app/data
-    deploy:
-      resources:
-        limits:
-          cpus: '0.6'
-          memory: 2G
-    depends_on:
-      redis:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
-      minio:
-        condition: service_healthy
-      qdrant:
-        condition: service_healthy
-    healthcheck:
-      test: [ "CMD-SHELL", "python -c \"import pathlib,sys; data=pathlib.Path('/proc/1/cmdline').read_bytes(); sys.exit(0 if b'celery' in data else 1)\"" ]
-      interval: 20s
-      timeout: 10s
-      retries: 6
-      start_period: 60s
-    networks:
-      - app_net
-
   postgres:
     image: postgres:16-alpine
     container_name: rag_postgres
