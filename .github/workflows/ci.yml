@@ -28,10 +28,13 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends pandoc
 
       - name: Compile Python
-        run: python -m compileall backend rag_core -q
+        run: python -m compileall backend rag_core embedding_service -q
 
       - name: Run RAG core tests
         run: python -m unittest discover rag_core/tests -v
+
+      - name: Run embedding service tests
+        run: python -m unittest discover embedding_service/tests -v
 
       - name: Run backend tests
         run: python -m unittest discover backend/tests -v
@@ -125,11 +128,47 @@ jobs:
           done <<< "$CHANGED"
           echo "skip=$SKIP" >> $GITHUB_OUTPUT
 
+      - name: Cache Hugging Face models
+        if: steps.docs_check.outputs.skip != 'true'
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: huggingface-embedding-ci-v1
+
+      - name: Start embedding service
+        if: steps.docs_check.outputs.skip != 'true'
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+          HF_HOME: /home/runner/.cache/huggingface
+          TRANSFORMERS_CACHE: /home/runner/.cache/huggingface
+          SENTENCE_TRANSFORMERS_HOME: /home/runner/.cache/huggingface
+          EMBEDDING_MODEL_NAME: sentence-transformers/paraphrase-MiniLM-L3-v2
+          EMBEDDING_DEVICE: cpu
+          EMBEDDING_BATCH_SIZE: "16"
+        run: |
+          uvicorn embedding_service.app.main:app --host 127.0.0.1 --port 8001 &
+          EMBED_PID=$!
+          for i in $(seq 1 120); do
+            if python -c "import json,urllib.request,sys; data=json.load(urllib.request.urlopen('http://localhost:8001/health', timeout=5)); sys.exit(0 if data.get('ready') is True else 1)" 2>/dev/null; then
+              echo "Embedding service ready after ${i}s"
+              exit 0
+            fi
+            if ! kill -0 "$EMBED_PID" 2>/dev/null; then
+              echo "Embedding service exited before becoming ready"
+              exit 1
+            fi
+            echo "Waiting for embedding service... (${i}s)"
+            sleep 2
+          done
+          echo "Embedding service did not become ready"
+          exit 1
+
       - name: Start backend services
         if: steps.docs_check.outputs.skip != 'true'
         env:
           PYTHONPATH: ${{ github.workspace }}
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/rag_db
+          EMBEDDING_SERVICE_URL: http://localhost:8001
           QDRANT_HOST: localhost
           QDRANT_PORT: 6333
           REDIS_BROKER_URL: redis://localhost:6379/0

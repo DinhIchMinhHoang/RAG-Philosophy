@@ -85,6 +85,24 @@ class ChatRuntimeModeTests(unittest.TestCase):
         try:
             db.add_all(
                 [
+                    models.DocumentRecord(
+                        id="doc-1",
+                        owner_id=1,
+                        notebook_id=None,
+                        filename="allowed.pdf",
+                        object_key="doc-1/allowed.pdf",
+                        mime_type="application/pdf",
+                        size_bytes=12,
+                    ),
+                    models.DocumentRecord(
+                        id="doc-2",
+                        owner_id=2,
+                        notebook_id=None,
+                        filename="leaked.pdf",
+                        object_key="doc-2/leaked.pdf",
+                        mime_type="application/pdf",
+                        size_bytes=12,
+                    ),
                     models.DocumentChunk(
                         id="parent-1",
                         document_id="doc-1",
@@ -169,6 +187,24 @@ class ChatRuntimeModeTests(unittest.TestCase):
         try:
             db.add_all(
                 [
+                    models.DocumentRecord(
+                        id="doc-1",
+                        owner_id=1,
+                        notebook_id=11,
+                        filename="allowed.pdf",
+                        object_key="doc-1/allowed.pdf",
+                        mime_type="application/pdf",
+                        size_bytes=12,
+                    ),
+                    models.DocumentRecord(
+                        id="doc-2",
+                        owner_id=1,
+                        notebook_id=11,
+                        filename="blocked.pdf",
+                        object_key="doc-2/blocked.pdf",
+                        mime_type="application/pdf",
+                        size_bytes=12,
+                    ),
                     models.DocumentChunk(
                         id="parent-1",
                         document_id="doc-1",
