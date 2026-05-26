@@ -36,7 +36,7 @@ function buildNotebookItem(nb) {
         cover.style.backgroundSize = nb.cover_mode || 'cover';
         cover.style.backgroundPosition = 'center';
     } else if (nb.cover_color) {
-        cover.style.backgroundColor = nb.cover_color;
+        cover.style.background = nb.cover_color;
     }
     item.appendChild(cover);
 
@@ -229,11 +229,11 @@ function setupMoreMenu(transitionManager) {
                 const activeTab = document.querySelector('.image-modal-tabs .tab.active')?.getAttribute('data-tab') || 'upload';
                 if (activeTab === 'upload') {
                     const data = imagePreview?.dataset?.image || '';
-                    if (!data) { coverEl.style.backgroundImage = ''; coverEl.style.backgroundColor = ''; currentTarget.removeAttribute('data-cover'); currentTarget.removeAttribute('data-cover-mode'); }
-                    else { coverEl.style.backgroundImage = `url(${data})`; coverEl.style.backgroundSize = (imageModeSelect ? imageModeSelect.value : 'cover'); coverEl.style.backgroundPosition = 'center'; coverEl.style.backgroundColor = ''; currentTarget.setAttribute('data-cover', data); currentTarget.setAttribute('data-cover-mode', imageModeSelect?.value || 'cover'); }
+                    if (!data) { coverEl.style.background = ''; currentTarget.removeAttribute('data-cover'); currentTarget.removeAttribute('data-cover-mode'); }
+                    else { const mode = imageModeSelect ? imageModeSelect.value : 'cover'; coverEl.style.background = `url(${data}) center / ${mode} no-repeat`; currentTarget.setAttribute('data-cover', data); currentTarget.setAttribute('data-cover-mode', mode); }
                 } else {
                     const color = colorPreview?.dataset?.color || colorPicker?.value || '#000000';
-                    coverEl.style.backgroundImage = ''; coverEl.style.backgroundColor = color; currentTarget.setAttribute('data-cover-color', color); currentTarget.removeAttribute('data-cover'); currentTarget.removeAttribute('data-cover-mode');
+                    coverEl.style.background = color; currentTarget.setAttribute('data-cover-color', color); currentTarget.removeAttribute('data-cover'); currentTarget.removeAttribute('data-cover-mode');
                 }
                 const nbId = currentTarget.dataset.notebookId;
                 if (nbId) {
@@ -380,6 +380,13 @@ export function initDashboardScene(transitionManager) {
                 if (isActive) { icon.textContent = 'close'; setTimeout(() => searchInput.focus(), 200); }
                 else { icon.textContent = 'search'; searchInput.value = ''; }
             });
+            searchInput.addEventListener('input', () => {
+                const query = searchInput.value.toLowerCase();
+                container.querySelectorAll('.notebook-item').forEach(item => {
+                    const title = (item.dataset.title || '').toLowerCase();
+                    item.style.display = title.includes(query) ? '' : 'none';
+                });
+            });
         }
 
         const viewToggle = dashboard.querySelector('.view-toggle');
@@ -508,6 +515,13 @@ export function initDashboardScene(transitionManager) {
                     const icon = saSearchBtn.querySelector('.material-icons');
                     if (isActive) { icon.textContent = 'close'; setTimeout(() => saSearchInput.focus(), 200); }
                     else { icon.textContent = 'search'; saSearchInput.value = ''; }
+                });
+                saSearchInput.addEventListener('input', () => {
+                    const query = saSearchInput.value.toLowerCase();
+                    saContainer.querySelectorAll('.notebook-item').forEach(item => {
+                        const title = (item.dataset.title || '').toLowerCase();
+                        item.style.display = title.includes(query) ? '' : 'none';
+                    });
                 });
             }
 

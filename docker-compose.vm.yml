@@ -39,6 +39,7 @@ services:
       WEB_CONCURRENCY: "1"
     volumes:
       - ./data:/app/data
+      - ./.env:/app/.env:ro
     deploy:
       resources:
         limits:
