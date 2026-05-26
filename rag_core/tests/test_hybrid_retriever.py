@@ -98,7 +98,7 @@ class TestHybridRetriever(unittest.TestCase):
         child_docs = [Document(page_content="child", metadata={"doc_id": "x", "source": "s", "page": 1, "_child_point_id": "point-1"})]
         parent_docs = [Document(page_content="parent", metadata={"doc_id": "x", "source": "s", "page": 1})]
 
-        with patch.object(Config, "HYBRID_ENABLED", True):
+        with patch.object(Config, "HYBRID_ENABLED", True), patch.object(Config, "RERANK_ENABLED", False):
             retriever = build_vector_db(child_docs, parent_docs)
 
         self.assertIsInstance(retriever, HybridParentRetriever)

@@ -13,6 +13,8 @@ from pathlib import Path
 # Add parent dir to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
+from rag_core.config import Config
+
 # Fixtures directory
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
@@ -79,7 +81,7 @@ class TestTabularParserBasic(unittest.TestCase):
         from rag_core.parsers.tabular_parser import TabularParser
         
         parser = TabularParser()
-        self.assertEqual(parser.max_rows, 50)  # Default
+        self.assertEqual(parser.max_rows, Config.TABULAR_CHUNK_ROWS)
         self.assertEqual(parser.max_cols, 15)   # Default
         self.assertEqual(parser.max_size_mb, 20)  # Default
     
