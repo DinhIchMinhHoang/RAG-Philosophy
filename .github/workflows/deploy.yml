@@ -51,7 +51,7 @@ jobs:
           host: ${{ secrets.VM_HOST }}
           username: ${{ secrets.VM_USER }}
           password: ${{ secrets.VM_PASSWORD }}
-          envs: IMAGE_TAG,COMMIT_SHA
+          envs: IMAGE_TAG,COMMIT_SHA,GHCR_PAT
           script: |
             cd ${{ secrets.VM_APP_DIR }}
 
@@ -66,6 +66,8 @@ jobs:
             export IMAGE_TAG
             echo "Deploying IMAGE_TAG=$IMAGE_TAG"
 
+            echo "Logging in to GHCR"
+            echo "$GHCR_PAT" | docker login ghcr.io -u ${{ github.repository_owner }} --password-stdin
             docker-compose -f docker-compose.vm.yml pull
             sleep 5
             docker-compose -f docker-compose.vm.yml down
