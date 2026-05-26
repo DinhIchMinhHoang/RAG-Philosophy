@@ -21,12 +21,13 @@ jobs:
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
-      - name: Extract commit SHA
+      - name: Extract commit SHA and lowercase owner
         id: sha
         run: |
           SHA="${{ github.event.workflow_run.head_sha || github.sha }}"
           echo "full=${SHA}" >> $GITHUB_OUTPUT
           echo "short=${SHA::7}" >> $GITHUB_OUTPUT
+          echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_OUTPUT
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -42,8 +43,8 @@ jobs:
           file: docker/backend.Dockerfile
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner | lower }}/rag-philosophy-backend:sha-${{ steps.sha.outputs.short }}
-            ghcr.io/${{ github.repository_owner | lower }}/rag-philosophy-backend:latest
+            ghcr.io/${{ steps.sha.outputs.owner }}/rag-philosophy-backend:sha-${{ steps.sha.outputs.short }}
+            ghcr.io/${{ steps.sha.outputs.owner }}/rag-philosophy-backend:latest
 
       - name: Deploy to VM
         uses: appleboy/ssh-action@v1.2.0
@@ -67,7 +68,7 @@ jobs:
             echo "Deploying IMAGE_TAG=$IMAGE_TAG"
 
             echo "Logging in to GHCR"
-            echo "$GHCR_PAT" | docker login ghcr.io -u ${{ github.repository_owner }} --password-stdin
+            echo "$GHCR_PAT" | docker login ghcr.io -u ${{ steps.sha.outputs.owner }} --password-stdin
             docker-compose -f docker-compose.vm.yml pull
             sleep 5
             docker-compose -f docker-compose.vm.yml down
