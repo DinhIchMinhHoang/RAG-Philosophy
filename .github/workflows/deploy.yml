@@ -45,6 +45,8 @@ jobs:
           tags: |
             ghcr.io/${{ steps.sha.outputs.owner }}/rag-philosophy-backend:sha-${{ steps.sha.outputs.short }}
             ghcr.io/${{ steps.sha.outputs.owner }}/rag-philosophy-backend:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       - name: Deploy to VM
         uses: appleboy/ssh-action@v1.2.0
