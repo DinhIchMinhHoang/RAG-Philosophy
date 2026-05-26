@@ -76,7 +76,7 @@ jobs:
 
             # Wait for containers to initialize
             echo "Waiting for containers to start..."
-            sleep 15
+            sleep 60
 
             # Health checks (10s per check, ~60s total)
             ROLLBACK=false
