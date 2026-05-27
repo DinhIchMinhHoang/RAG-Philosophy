@@ -18,6 +18,7 @@ Lumina Notebook là một ứng dụng RAG full-stack cho phép người dùng �
 
 Runtime chính của ứng dụng nằm ở `backend/app/` và `frontend/`. Phần lõi RAG dùng chung nằm ở `rag_core/`, bao gồm parser, chunker, retriever, generator, embedding helper, kiểm thử và các tiện ích đánh giá.
 
+![Lumina Notebook preview](data/ARCHITECTURE.png)
 ## Tính Năng Chính
 
 ### Người Dùng Và Tài Khoản
