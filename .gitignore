@@ -46,3 +46,4 @@ e2e-artifacts/
 todo_backlog.md
 TODO.md
 .env.backup
+.pytest_cache/
