@@ -168,5 +168,46 @@ class TestPageClassification(unittest.TestCase):
             self.assertTrue(HybridPDFParser._classify_page(_FakePage(text="∑ ∫")))
 
 
+class _FakePdfDocument:
+    page_count = 3
+
+    def close(self) -> None:
+        return None
+
+
+class TestHybridPDFParserProgress(unittest.TestCase):
+    def test_parse_pdf_reports_fast_and_heavy_page_progress(self) -> None:
+        parser = HybridPDFParser()
+        progress: list[tuple[int, int]] = []
+
+        def fake_heavy_track(doc: object, pages: list[int], on_page_complete=None) -> dict[int, str]:
+            results = {}
+            for page_idx in pages:
+                results[page_idx] = f"Heavy page {page_idx + 1} content"
+                if on_page_complete:
+                    on_page_complete(page_idx)
+            return results
+
+        with (
+            mock.patch("rag_core.step1_parser.os.path.exists", return_value=True),
+            mock.patch("rag_core.step1_parser.fitz.open", return_value=_FakePdfDocument()),
+            mock.patch.object(parser, "_scan_and_classify", return_value=([0, 2], [1])),
+            mock.patch.object(
+                parser,
+                "_extract_fast_track",
+                return_value={0: "Fast page 1 content", 2: "Fast page 3 content"},
+            ),
+            mock.patch.object(parser, "_extract_heavy_track", side_effect=fake_heavy_track),
+        ):
+            docs = parser.parse_pdf(
+                "sample.pdf",
+                progress_callback=lambda processed, total: progress.append((processed, total)),
+            )
+
+        self.assertEqual(progress, [(1, 3), (2, 3), (3, 3)])
+        self.assertEqual(len(docs), 3)
+        self.assertEqual([doc.metadata["page"] for doc in docs], [1, 2, 3])
+
+
 if __name__ == "__main__":
     unittest.main()

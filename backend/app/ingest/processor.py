@@ -171,9 +171,9 @@ def _build_chunk_drafts(
     return parent_drafts, child_drafts
 
 
-def _run_pdf_parse(tmp_path: str) -> list[Document]:
+def _run_pdf_parse(tmp_path: str, progress_callback=None) -> list[Document]:
     parser = HybridPDFParser()
-    return parser.parse_pdf(tmp_path)
+    return parser.parse_pdf(tmp_path, progress_callback=progress_callback)
 
 
 def _run_docx_parse(
@@ -285,6 +285,11 @@ def _process_parsed_documents(
                 stage="before_embedding_batch",
                 skipped_chunks=len(child_drafts) - embedded_children,
                 skipped_batches=len(batches) - batch_index,
+            )
+            _mark_stage(
+                "embedding",
+                max(0.05, embedded_children / max(1, len(child_drafts))),
+                f"embedding_batch={batch_index + 1}/{len(batches)}",
             )
             vectors = embed_texts([draft.text for draft in batch])
             _check_cancelled(
@@ -455,7 +460,18 @@ def run_ingest_job(
         if file_ext == '.pdf':
             _check_cancelled(db, job_id=job_id, document_id=document_id, stage="before_parsing")
             _mark_stage("parsing", 0.1, "parse_started")
-            parsed_pages = _run_pdf_parse(tmp_path)
+
+            def _mark_pdf_parse_progress(processed_pages: int, total_pages: int) -> None:
+                if total_pages <= 0:
+                    return
+                ratio = 0.1 + (0.9 * (processed_pages / total_pages))
+                _mark_stage(
+                    "parsing",
+                    ratio,
+                    f"parsed_pages={processed_pages}/{total_pages}",
+                )
+
+            parsed_pages = _run_pdf_parse(tmp_path, progress_callback=_mark_pdf_parse_progress)
             _check_cancelled(db, job_id=job_id, document_id=document_id, stage="after_ocr_parsing")
 
         elif file_ext == '.docx':

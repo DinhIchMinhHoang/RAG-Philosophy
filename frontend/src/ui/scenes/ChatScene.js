@@ -18,6 +18,7 @@ import {
 const CONVERSATION_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const CONVERSATION_MESSAGE_LIMIT = 50;
 const SOURCE_SELECTION_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const SOURCE_SELECTION_CACHE_VERSION = 2;
 
 function renderMessageSkeleton(thread) {
     thread.innerHTML = '';
@@ -53,7 +54,7 @@ export function conversationCacheKey(notebookId) {
     return `notebook:${notebookId}:conversation:last`;
 }
 
-function sourceSelectionCacheKey(notebookId) {
+export function sourceSelectionCacheKey(notebookId) {
     return `notebook:${notebookId}:sources:selected`;
 }
 
@@ -145,7 +146,7 @@ export function renderCitationMarkup(text, citations = []) {
     return html;
 }
 
-function readCachedSourceSelection(notebookId) {
+export function readCachedSourceSelection(notebookId) {
     if (!notebookId) return null;
     try {
         const raw = localStorage.getItem(sourceSelectionCacheKey(notebookId));
@@ -158,21 +159,31 @@ function readCachedSourceSelection(notebookId) {
         const ids = Array.isArray(parsed.selected_source_ids)
             ? parsed.selected_source_ids.map((id) => String(id)).filter(Boolean)
             : [];
-        return new Set(ids);
+        const schemaVersion = Number(parsed.schema_version || 0);
+        if (schemaVersion < SOURCE_SELECTION_CACHE_VERSION && ids.length === 0) {
+            localStorage.removeItem(sourceSelectionCacheKey(notebookId));
+            return null;
+        }
+        return {
+            selectedIds: new Set(ids),
+            explicit: parsed.explicit === true || (parsed.explicit !== false && ids.length > 0),
+        };
     } catch (err) {
         console.error('[Source selection] Failed to read cache', err);
         return null;
     }
 }
 
-function writeCachedSourceSelection(notebookId, selectedSourceIds) {
+export function writeCachedSourceSelection(notebookId, selectedSourceIds, { explicit = true } = {}) {
     if (!notebookId) return;
     try {
         localStorage.setItem(
             sourceSelectionCacheKey(notebookId),
             JSON.stringify({
+                schema_version: SOURCE_SELECTION_CACHE_VERSION,
                 cached_at: Date.now(),
                 selected_source_ids: Array.from(selectedSourceIds || []).map((id) => String(id)).filter(Boolean),
+                explicit,
             }),
         );
     } catch (err) {
@@ -212,7 +223,16 @@ function tokenizeCitations(text, citations = []) {
 
 function materializeCitationButtons(container, tokenMap) {
     if (!container || !tokenMap || tokenMap.size === 0) return;
-    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+    if (!globalThis.document?.createTreeWalker || !container.childNodes) {
+        let html = String(container.innerHTML || '');
+        tokenMap.forEach((payload, token) => {
+            html = html.split(token).join(citationButtonHtml(payload.citation, payload.label));
+        });
+        container.innerHTML = html;
+        return;
+    }
+
+    const walker = document.createTreeWalker(container, globalThis.NodeFilter?.SHOW_TEXT ?? 4);
     const textNodes = [];
     let node;
     while ((node = walker.nextNode())) textNodes.push(node);
@@ -248,18 +268,66 @@ function materializeCitationButtons(container, tokenMap) {
     }
 }
 
-function normalizeMathDelimiters(text) {
+export function normalizeMathDelimiters(text) {
     const raw = String(text ?? '');
-    // marked may consume backslash delimiters \(...\) and \[...\].
-    // Normalize them to KaTeX-safe dollar delimiters before markdown parsing.
     let normalized = raw.replace(/\\\[((?:[\s\S]*?))\\\]/g, (_, expr) => `$$${expr}$$`);
     normalized = normalized.replace(/\\\(((?:[\s\S]*?))\\\)/g, (_, expr) => `$${expr}$`);
-    // Heuristic fallback: model sometimes returns "(\alpha + \beta)" or "[\mathbf{x}]"
-    // without escaped TeX delimiters.
-    normalized = normalized.replace(/\((\\[a-zA-Z]+[\s\S]*?)\)/g, (_, expr) => `$${expr}$`);
-    normalized = normalized.replace(/\[(\\[a-zA-Z]+[\s\S]*?)\]/g, (_, expr) => `$$${expr}$$`);
     return normalized;
 }
+
+(function registerMarkedKatex() {
+    if (!window.marked || !window.katex) return;
+
+    const blockMath = {
+        name: 'blockMath',
+        level: 'block',
+        start(src) { return src.match(/^(?:\$\$|\$)/m)?.index; },
+        tokenizer(src) {
+            const rule = /^\$\$\n?([\s\S]*?)\n?\$\$/;
+            const match = rule.exec(src);
+            if (match) {
+                return {
+                    type: 'blockMath',
+                    raw: match[0],
+                    text: match[1].trim()
+                };
+            }
+        },
+        renderer(token) {
+            try {
+                return `<p class="katex-block">${window.katex.renderToString(token.text, { throwOnError: false, displayMode: true })}</p>`;
+            } catch (_) {
+                return `<p>$$${token.text}$$</p>`;
+            }
+        }
+    };
+
+    const inlineMath = {
+        name: 'inlineMath',
+        level: 'inline',
+        start(src) { return src.match(/\$(?!\$)/)?.index; },
+        tokenizer(src) {
+            const rule = /^\$(?!\$)([^$\n]+?)\$(?!\$)/;
+            const match = rule.exec(src);
+            if (match) {
+                return {
+                    type: 'inlineMath',
+                    raw: match[0],
+                    text: match[1].trim()
+                };
+            }
+        },
+        renderer(token) {
+            try {
+                return window.katex.renderToString(token.text, { throwOnError: false });
+            } catch (_) {
+                return token.raw;
+            }
+        }
+    };
+
+    marked.use({ extensions: [blockMath, inlineMath] });
+})();
 
 function renderCitationChips(container, citations = []) {
     if (!container) return;
@@ -291,17 +359,6 @@ export function processRichText(container, text, citations = []) {
     else container.textContent = text;
     materializeCitationButtons(container, tokenized.tokenMap);
 
-    if (window.renderMathInElement) {
-        renderMathInElement(container, {
-            delimiters: [
-                { left: '$$', right: '$$', display: true },
-                { left: '$', right: '$', display: false },
-                { left: '\\(', right: '\\)', display: false },
-                { left: '\\[', right: '\\]', display: true }
-            ], throwOnError: false
-        });
-    }
-
     container.querySelectorAll('.citation-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             const documentId = btn.getAttribute('data-document-id');
@@ -321,6 +378,8 @@ let activeStreamUi = null;
 const activeConversationByNotebook = new Map();
 const conversationStateByNotebook = new Map();
 const selectedSourceIdsByNotebook = new Map();
+const sourceSelectionExplicitByNotebook = new Map();
+const activeSourceJobPolls = new Map();
 const manualNewChatByNotebook = new Set();
 let setCollapsedFn = null;
 let notebookLoadVersion = 0;
@@ -568,30 +627,51 @@ function cacheConversationState(notebookId) {
     if (state) writeCachedConversation(notebookId, state);
 }
 
-function getSelectedSourceIdsSet(notebookId) {
+function ensureSourceSelectionLoaded(notebookId) {
+    if (!notebookId || selectedSourceIdsByNotebook.has(notebookId)) return;
+    const cached = readCachedSourceSelection(notebookId);
+    selectedSourceIdsByNotebook.set(notebookId, cached?.selectedIds || new Set());
+    sourceSelectionExplicitByNotebook.set(notebookId, Boolean(cached?.explicit));
+}
+
+export function getSelectedSourceIdsSet(notebookId) {
     if (!notebookId) return new Set();
-    if (!selectedSourceIdsByNotebook.has(notebookId)) {
-        const cached = readCachedSourceSelection(notebookId);
-        selectedSourceIdsByNotebook.set(notebookId, cached || new Set());
-    }
+    ensureSourceSelectionLoaded(notebookId);
     return selectedSourceIdsByNotebook.get(notebookId);
 }
 
-function persistSelectedSourceIdsSet(notebookId, selectedIds) {
+function persistSelectedSourceIdsSet(notebookId, selectedIds, { explicit = true } = {}) {
     if (!notebookId) return;
     selectedSourceIdsByNotebook.set(notebookId, new Set(selectedIds || []));
-    writeCachedSourceSelection(notebookId, selectedSourceIdsByNotebook.get(notebookId));
+    sourceSelectionExplicitByNotebook.set(notebookId, explicit);
+    writeCachedSourceSelection(notebookId, selectedSourceIdsByNotebook.get(notebookId), { explicit });
 }
 
-function pruneSelectedSourceIdsForVisible(notebookId, visibleSourceIds = []) {
+export function reconcileSourceSelectionForVisible(notebookId, visibleSourceIds = []) {
     if (!notebookId) return;
     const visible = new Set((visibleSourceIds || []).map((id) => String(id)).filter(Boolean));
+    ensureSourceSelectionLoaded(notebookId);
+    if (!sourceSelectionExplicitByNotebook.get(notebookId)) {
+        persistSelectedSourceIdsSet(notebookId, visible, { explicit: false });
+        return;
+    }
+
     const next = new Set();
     getSelectedSourceIdsSet(notebookId).forEach((id) => {
         const normalized = String(id);
         if (visible.has(normalized)) next.add(normalized);
     });
-    persistSelectedSourceIdsSet(notebookId, next);
+    persistSelectedSourceIdsSet(notebookId, next, { explicit: true });
+}
+
+export function addSelectedSourceId(notebookId, sourceId) {
+    if (!notebookId || !sourceId) return;
+    ensureSourceSelectionLoaded(notebookId);
+    const next = new Set(getSelectedSourceIdsSet(notebookId));
+    next.add(String(sourceId));
+    persistSelectedSourceIdsSet(notebookId, next, {
+        explicit: Boolean(sourceSelectionExplicitByNotebook.get(notebookId)),
+    });
 }
 
 function showThinkingIndicator(chatThread) {
@@ -652,10 +732,6 @@ const ingestStageLabels = {
     loading_sql: 'Loading spreadsheet',
 };
 
-function sleep(ms) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 function setSourceMeta(metaEl, text, active = false) {
     if (!metaEl) return;
     metaEl.textContent = text;
@@ -693,12 +769,31 @@ function showReplaceConfirm(filename) {
     });
 }
 
-function formatJobProgress(job) {
+function formatStageDetail(detail) {
+    const value = String(detail || '').trim();
+    if (!value || value === 'parse_started' || value === 'embedding_started') return '';
+
+    let match = value.match(/^parsed_pages=(\d+)\/(\d+)$/);
+    if (match) return `Parsed ${match[1]} of ${match[2]} pages`;
+
+    match = value.match(/^parsed_pages=(\d+)$/);
+    if (match) return `Parsed ${match[1]} pages`;
+
+    match = value.match(/^embedding_batch=(\d+)\/(\d+)$/);
+    if (match) return `Embedding batch ${match[1]} of ${match[2]}`;
+
+    match = value.match(/^embedded_children=(\d+)\/(\d+)$/);
+    if (match) return `Embedded ${match[1]} of ${match[2]} chunks`;
+
+    return '';
+}
+
+export function formatJobProgress(job) {
     if (job.status === 'queued') return 'Queued for indexing';
 
     const label = ingestStageLabels[job.stage] || 'Indexing document';
     const pct = Number(job.progress_pct);
-    if (Number.isFinite(pct)) return `${label} ${pct}%`;
+    if (Number.isFinite(pct)) return `${label} · ${pct}%`;
     return label;
 }
 
@@ -707,36 +802,149 @@ function formatDocumentStatus(doc) {
     if (!job) return 'Uploaded';
     if (job.status === 'succeeded') return 'Ready';
     if (job.status === 'failed') return `Error: ${job.error_message || 'Ingest failed'}`;
+    if (job.status === 'cancelled') return 'Cancelled';
     return formatJobProgress(job);
 }
 
 function isActiveIngestJob(job) {
-    return Boolean(job) && !['succeeded', 'failed'].includes(job.status);
+    return Boolean(job) && !['succeeded', 'failed', 'cancelled'].includes(job.status);
 }
 
-async function pollUploadJob(jobId, metaEl) {
-    let delayMs = 1000;
+export function sourceTypeClassForDocument(doc) {
+    return isActiveIngestJob(doc?.latest_job) ? 'source-type uploading' : 'source-type';
+}
 
-    for (let attempt = 0; attempt < 90; attempt += 1) {
-        const job = await getJob(jobId);
+function sourceJobPollKey(notebookKey, jobId) {
+    return `${String(notebookKey || '')}:${String(jobId || '')}`;
+}
 
-        if (job.status === 'succeeded') {
-            setSourceMeta(metaEl, 'Ready', false);
-            return job;
+function isMetaElAttached(metaEl) {
+    if (!metaEl) return false;
+    return !globalThis.document?.body || document.body.contains(metaEl);
+}
+
+function applyJobToMeta(metaEl, job) {
+    if (!job) return;
+    if (job.status === 'succeeded') {
+        setSourceMeta(metaEl, 'Ready', false);
+        return;
+    }
+    if (job.status === 'failed') {
+        setSourceMeta(metaEl, `Error: ${job.error_message || 'Ingest failed'}`, false);
+        return;
+    }
+    if (job.status === 'cancelled') {
+        setSourceMeta(metaEl, 'Cancelled', false);
+        return;
+    }
+    setSourceMeta(metaEl, formatJobProgress(job), true);
+}
+
+function applySourceJobSnapshot(entry) {
+    for (const metaEl of Array.from(entry.metaEls)) {
+        if (!isMetaElAttached(metaEl)) {
+            entry.metaEls.delete(metaEl);
+            continue;
         }
+        applyJobToMeta(metaEl, entry.snapshot);
+    }
+}
 
-        if (job.status === 'failed') {
-            setSourceMeta(metaEl, `Error: ${job.error_message || 'Ingest failed'}`, false);
-            return job;
-        }
+function stopSourceJobPoll(entry) {
+    if (!entry || entry.stopped) return;
+    entry.stopped = true;
+    if (entry.timerId) clearTimeout(entry.timerId);
+    activeSourceJobPolls.delete(entry.key);
+}
 
-        setSourceMeta(metaEl, formatJobProgress(job), true);
-        await sleep(delayMs);
-        delayMs = 2000;
+function stopAllSourceJobPolls() {
+    for (const entry of Array.from(activeSourceJobPolls.values())) {
+        stopSourceJobPoll(entry);
+    }
+}
+
+function scheduleSourceJobPoll(entry, delayMs = 0) {
+    if (entry.stopped) return;
+    if (entry.timerId) clearTimeout(entry.timerId);
+    entry.timerId = setTimeout(() => {
+        entry.timerId = null;
+        return pollSourceJob(entry);
+    }, delayMs);
+}
+
+async function pollSourceJob(entry) {
+    if (entry.stopped || !entry.shouldContinue()) {
+        stopSourceJobPoll(entry);
+        return;
     }
 
-    setSourceMeta(metaEl, 'Still indexing', false);
-    return null;
+    try {
+        const job = await getJob(entry.jobId);
+        entry.snapshot = job;
+        applySourceJobSnapshot(entry);
+
+        if (!isActiveIngestJob(job)) {
+            const callbacks = Array.from(entry.onTerminalCallbacks);
+            stopSourceJobPoll(entry);
+            callbacks.forEach((callback) => callback(job));
+            return;
+        }
+
+        if (entry.shouldContinue()) scheduleSourceJobPoll(entry, 1000);
+        else stopSourceJobPoll(entry);
+    } catch (err) {
+        for (const metaEl of Array.from(entry.metaEls)) {
+            if (isMetaElAttached(metaEl)) setSourceMeta(metaEl, `Error: ${err.message}`, false);
+        }
+        stopSourceJobPoll(entry);
+        entry.onErrorCallbacks.forEach((callback) => callback(err));
+    }
+}
+
+export function registerSourceJobPolling(jobId, metaEl, {
+    notebookKey = getActiveNotebookKey(),
+    version = notebookLoadVersion,
+    initialJob = null,
+    onTerminal = null,
+    onError = null,
+} = {}) {
+    if (!jobId) return null;
+    const key = sourceJobPollKey(notebookKey, jobId);
+    let entry = activeSourceJobPolls.get(key);
+    if (!entry) {
+        entry = {
+            key,
+            jobId,
+            notebookKey: String(notebookKey || ''),
+            version,
+            metaEls: new Set(),
+            snapshot: null,
+            timerId: null,
+            stopped: false,
+            onTerminalCallbacks: new Set(),
+            onErrorCallbacks: new Set(),
+            shouldContinue: () => isCurrentNotebookLoad(version, notebookKey),
+        };
+        activeSourceJobPolls.set(key, entry);
+        scheduleSourceJobPoll(entry, 0);
+    }
+
+    if (metaEl) entry.metaEls.add(metaEl);
+    if (onTerminal && entry.onTerminalCallbacks.size === 0) entry.onTerminalCallbacks.add(onTerminal);
+    if (onError && entry.onErrorCallbacks.size === 0) entry.onErrorCallbacks.add(onError);
+
+    if (!entry.snapshot && initialJob) entry.snapshot = initialJob;
+    if (entry.snapshot) applySourceJobSnapshot(entry);
+
+    return entry;
+}
+
+export function resetSourceJobPollingForTests() {
+    stopAllSourceJobPolls();
+}
+
+export function getActiveSourceJobPollCount() {
+    return activeSourceJobPolls.size;
 }
 
 export function initChatScene(transitionManager) {
@@ -964,7 +1172,7 @@ export function initChatScene(transitionManager) {
         sourceDocuments = Array.isArray(documents) ? documents : [];
         const notebookId = currentNotebookId(chatScene);
         const visibleIds = sourceDocuments.map((doc) => String(doc?.document_id || '')).filter(Boolean);
-        if (notebookId && pruneSelection) pruneSelectedSourceIdsForVisible(notebookId, visibleIds);
+        if (notebookId && pruneSelection) reconcileSourceSelectionForVisible(notebookId, visibleIds);
         const selectedIds = notebookId ? getSelectedSourceIdsSet(notebookId) : new Set();
 
         const isReadOnly = chatScene.dataset.notebookOwnerId && String(store.user?.id) !== String(chatScene.dataset.notebookOwnerId);
@@ -981,12 +1189,15 @@ export function initChatScene(transitionManager) {
             const isSelected = Boolean(fileId && selectedIds.has(fileId));
             const checkboxDisabledAttr = fileId ? '' : 'disabled';
             const checkboxCheckedAttr = isSelected ? 'checked' : '';
+            const latestJob = doc.latest_job;
+            const latestJobId = latestJob?.job_id || latestJob?.id || '';
+            const sourceTypeClass = sourceTypeClassForDocument(doc);
 
             item.innerHTML = `
                 <div class="source-icon"><span class="material-icons">picture_as_pdf</span></div>
                 <div class="source-meta">
                     <div class="source-name">${escapeHtml(doc.filename || 'Untitled document')}</div>
-                    <div class="source-type">${escapeHtml(formatDocumentStatus(doc))}</div>
+                    <div class="${sourceTypeClass}">${escapeHtml(formatDocumentStatus(doc))}</div>
                 </div>
                 <div class="source-actions">
                     ${isReadOnly ? '' : `<button class="source-menu-btn" aria-label="Source actions" aria-haspopup="menu" aria-expanded="false" title="More" type="button">
@@ -1151,6 +1362,22 @@ export function initChatScene(transitionManager) {
             });
 
             sourceList.appendChild(item);
+
+            if (latestJobId && isActiveIngestJob(latestJob)) {
+                const pollNotebookKey = getActiveNotebookKey();
+                const pollVersion = notebookLoadVersion;
+                const metaEl = item.querySelector('.source-type');
+                registerSourceJobPolling(latestJobId, metaEl, {
+                    notebookKey: pollNotebookKey,
+                    version: pollVersion,
+                    initialJob: latestJob,
+                    onTerminal: () => refreshSourcesIfCurrent(pollNotebookKey),
+                    onError: (err) => {
+                        if (!isCurrentNotebookLoad(pollVersion, pollNotebookKey)) return;
+                        console.error('[Source job]', err);
+                    },
+                });
+            }
         });
         updateSourceEmpty(sourceEmpty, sourceList);
         if (sourceEmpty && isReadOnly && sourceList.children.length === 0) {
@@ -1220,6 +1447,7 @@ export function initChatScene(transitionManager) {
         notebookLoadVersion += 1;
         sourceLoadToken += 1;
         conversationLoadToken += 1;
+        stopAllSourceJobPolls();
         sourceDocuments = [];
         if (activeStreamController) {
             activeStreamController.abort();
@@ -1234,6 +1462,7 @@ export function initChatScene(transitionManager) {
 
     document.addEventListener('chat:notebookChanged', () => {
         notebookLoadVersion += 1;
+        stopAllSourceJobPolls();
         const isReadOnly = chatScene.dataset.notebookOwnerId && String(store.user?.id) !== String(chatScene.dataset.notebookOwnerId);
         if (shareButton) {
             shareButton.classList.remove('active');
@@ -1305,6 +1534,7 @@ export function initChatScene(transitionManager) {
         const list = Array.from(files || []);
         const uploadNotebookKey = getActiveNotebookKey();
         const uploadNotebookId = uploadNotebookKey ? Number(uploadNotebookKey) : null;
+        const uploadVersion = notebookLoadVersion;
         for (const file of list) {
             if (getActiveNotebookKey() !== uploadNotebookKey) return;
             const isPDF = file.name.toLowerCase().endsWith('.pdf');
@@ -1328,20 +1558,26 @@ export function initChatScene(transitionManager) {
                 try {
                     const result = await uploadDocument(file, { notebookId: uploadNotebookId });
                     if (getActiveNotebookKey() !== uploadNotebookKey) return;
-                    if (result.document_id) item.dataset.documentId = result.document_id;
+                    if (result.document_id) {
+                        item.dataset.documentId = result.document_id;
+                        addSelectedSourceId(uploadNotebookId, result.document_id);
+                    }
                     if (result.pages !== undefined || result.chunks !== undefined) {
                         setSourceMeta(metaEl, `${result.pages ?? 0} pages, ${result.chunks ?? 0} chunks`, false);
                         refreshSourcesIfCurrent(uploadNotebookKey);
                     } else if (result.job_id) {
                         setSourceMeta(metaEl, 'Queued for indexing', true);
                         refreshSourcesIfCurrent(uploadNotebookKey);
-                        pollUploadJob(result.job_id, metaEl)
-                            .then(() => refreshSourcesIfCurrent(uploadNotebookKey))
-                            .catch((err) => {
+                        registerSourceJobPolling(result.job_id, metaEl, {
+                            notebookKey: uploadNotebookKey,
+                            version: uploadVersion,
+                            initialJob: { job_id: result.job_id, status: 'queued' },
+                            onTerminal: () => refreshSourcesIfCurrent(uploadNotebookKey),
+                            onError: (err) => {
                                 if (getActiveNotebookKey() !== uploadNotebookKey) return;
                                 console.error('[Upload job]', err);
-                                setSourceMeta(metaEl, `Error: ${err.message}`, false);
-                            });
+                            },
+                        });
                     } else {
                         setSourceMeta(metaEl, result.status || 'Upload accepted', false);
                         refreshSourcesIfCurrent(uploadNotebookKey);
@@ -1357,20 +1593,26 @@ export function initChatScene(transitionManager) {
                             try {
                                 const result = await replaceDocument(err.documentId, file);
                                 if (getActiveNotebookKey() !== uploadNotebookKey) return;
-                                if (result.document_id) item.dataset.documentId = result.document_id;
+                                if (result.document_id) {
+                                    item.dataset.documentId = result.document_id;
+                                    addSelectedSourceId(uploadNotebookId, result.document_id);
+                                }
                                 if (result.pages !== undefined || result.chunks !== undefined) {
                                     setSourceMeta(metaEl, `${result.pages ?? 0} pages, ${result.chunks ?? 0} chunks`, false);
                                     refreshSourcesIfCurrent(uploadNotebookKey);
                                 } else if (result.job_id) {
                                     setSourceMeta(metaEl, 'Queued for indexing', true);
                                     refreshSourcesIfCurrent(uploadNotebookKey);
-                                    pollUploadJob(result.job_id, metaEl)
-                                        .then(() => refreshSourcesIfCurrent(uploadNotebookKey))
-                                        .catch((err2) => {
+                                    registerSourceJobPolling(result.job_id, metaEl, {
+                                        notebookKey: uploadNotebookKey,
+                                        version: uploadVersion,
+                                        initialJob: { job_id: result.job_id, status: 'queued' },
+                                        onTerminal: () => refreshSourcesIfCurrent(uploadNotebookKey),
+                                        onError: (err2) => {
                                             if (getActiveNotebookKey() !== uploadNotebookKey) return;
                                             console.error('[Replace job]', err2);
-                                            setSourceMeta(metaEl, `Error: ${err2.message}`, false);
-                                        });
+                                        },
+                                    });
                                 } else {
                                     setSourceMeta(metaEl, result.status || 'Replace accepted', false);
                                     refreshSourcesIfCurrent(uploadNotebookKey);
@@ -1446,7 +1688,8 @@ export function initChatScene(transitionManager) {
         urlIngestSubmit.disabled = true;
         urlIngestSubmit.textContent = 'Adding...';
         try {
-            await ingestUrl({ url: normalized, notebookId });
+            const result = await ingestUrl({ url: normalized, notebookId });
+            if (result?.document_id) addSelectedSourceId(notebookId, result.document_id);
             closeUrlIngestModal();
             loadNotebookSources();
         } catch (err) {

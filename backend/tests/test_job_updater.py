@@ -51,6 +51,15 @@ class JobUpdaterTests(unittest.TestCase):
         self.assertEqual(job.progress_pct, 30)
         self.assertEqual(job.status, "running")
 
+    def test_advance_stage_keeps_progress_monotonic_with_detail_updates(self) -> None:
+        updater = JobUpdater(self.session)
+
+        updater.advance_stage(self.job.id, "parsing", ratio=0.8, stage_detail="parsed_pages=8/10")
+        job = updater.advance_stage(self.job.id, "parsing", ratio=0.2, stage_detail="parsed_pages=2/10")
+
+        self.assertEqual(job.progress_pct, 30)
+        self.assertEqual(job.stage_detail, "parsed_pages=2/10")
+
     def test_rejects_backward_stage(self) -> None:
         updater = JobUpdater(self.session)
 

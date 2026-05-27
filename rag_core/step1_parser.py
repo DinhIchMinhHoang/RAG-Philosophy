@@ -19,7 +19,7 @@ import re
 import socket
 import time
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError, as_completed
-from typing import List, Optional, Protocol
+from typing import Callable, List, Optional, Protocol
 from urllib import error as urllib_error
 from urllib import request as urllib_request
 
@@ -379,7 +379,12 @@ class HybridPDFParser:
         except Exception:
             return doc[page_idx].get_text("text")
 
-    def _extract_heavy_track(self, doc: fitz.Document, complex_pages: list[int]) -> dict[int, str]:
+    def _extract_heavy_track(
+        self,
+        doc: fitz.Document,
+        complex_pages: list[int],
+        on_page_complete: Callable[[int], None] | None = None,
+    ) -> dict[int, str]:
         if not complex_pages:
             return {}
 
@@ -405,6 +410,8 @@ class HybridPDFParser:
                 try:
                     page_idx, md_text = future.result(timeout=timeout)
                     results[page_idx] = md_text
+                    if on_page_complete:
+                        on_page_complete(page_idx)
                 except FutureTimeoutError:
                     logger.error(
                         "Timeout after %ss on page %d; using fallback",
@@ -413,6 +420,8 @@ class HybridPDFParser:
                     )
                     future.cancel()
                     results[submitted_page] = self._fallback_pymupdf(doc, submitted_page)
+                    if on_page_complete:
+                        on_page_complete(submitted_page)
                 except Exception as exc:
                     logger.error(
                         "Heavy track failed on page %d: %s; using fallback",
@@ -420,10 +429,16 @@ class HybridPDFParser:
                         exc,
                     )
                     results[submitted_page] = self._fallback_pymupdf(doc, submitted_page)
+                    if on_page_complete:
+                        on_page_complete(submitted_page)
 
         return results
 
-    def parse_pdf(self, file_path: str) -> List[Document]:
+    def parse_pdf(
+        self,
+        file_path: str,
+        progress_callback: Callable[[int, int], None] | None = None,
+    ) -> List[Document]:
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"PDF not found: {file_path}")
 
@@ -435,13 +450,28 @@ class HybridPDFParser:
         try:
             simple_pages, complex_pages = self._scan_and_classify(doc)
             page_results: dict[int, str] = {}
+            processed_pages = 0
+
+            def notify_page_complete(_page_idx: int) -> None:
+                nonlocal processed_pages
+                processed_pages += 1
+                if progress_callback:
+                    progress_callback(processed_pages, total_pages)
 
             if simple_pages:
                 logger.info("Fast track: %d pages via pymupdf4llm", len(simple_pages))
                 page_results.update(self._extract_fast_track(doc, simple_pages))
+                for page_idx in simple_pages:
+                    notify_page_complete(page_idx)
 
             if complex_pages:
-                page_results.update(self._extract_heavy_track(doc, complex_pages))
+                page_results.update(
+                    self._extract_heavy_track(
+                        doc,
+                        complex_pages,
+                        on_page_complete=notify_page_complete,
+                    )
+                )
         finally:
             doc.close()
 
@@ -482,9 +512,12 @@ class HybridPDFParser:
         return output_path
 
 
-def parse_pdf(file_path: str) -> List[Document]:
+def parse_pdf(
+    file_path: str,
+    progress_callback: Callable[[int, int], None] | None = None,
+) -> List[Document]:
     parser = HybridPDFParser()
-    return parser.parse_pdf(file_path)
+    return parser.parse_pdf(file_path, progress_callback=progress_callback)
 
 
 if __name__ == "__main__":

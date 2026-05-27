@@ -313,7 +313,9 @@ test.describe('Chat Suite (4.x)', () => {
         const sourceItem = page.locator('.source-item').first();
         await expect(sourceItem).toBeVisible();
         await expect(page.locator('.source-select-all-checkbox')).toBeVisible();
-        await expect(sourceItem.locator('.source-select-checkbox')).toBeVisible();
+        const sourceCheckbox = sourceItem.locator('.source-select-checkbox');
+        await expect(sourceCheckbox).toBeVisible();
+        await expect(sourceCheckbox).toBeChecked();
 
         const menuBtn = sourceItem.locator('.source-menu-btn');
         const initialOpacity = await menuBtn.evaluate((el) => getComputedStyle(el).opacity);
@@ -326,7 +328,7 @@ test.describe('Chat Suite (4.x)', () => {
         const viewerContent = page.locator('#sourceViewer .viewer-content');
         await expect(viewerContent).toBeHidden();
 
-        await sourceItem.locator('.source-select-checkbox').click();
+        await sourceCheckbox.click();
         await expect(viewerContent).toBeHidden();
 
         await menuBtn.click();

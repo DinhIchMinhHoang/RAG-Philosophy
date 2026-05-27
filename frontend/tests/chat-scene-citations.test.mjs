@@ -6,10 +6,21 @@ globalThis.localStorage = {
 
 globalThis.window = {
     marked: { parse: (value) => value },
+    katex: { renderToString: (value) => `<span class="katex">${value}</span>` },
 };
 globalThis.marked = globalThis.window.marked;
+globalThis.katex = globalThis.window.katex;
 
-const { processRichText, resetSourceViewer, showPagePreview, sourceFileUrl } = await import('../src/ui/scenes/ChatScene.js');
+// Ensure marked has .use() for the extension registration
+globalThis.marked.use = () => {};
+
+const {
+    normalizeMathDelimiters,
+    processRichText,
+    resetSourceViewer,
+    showPagePreview,
+    sourceFileUrl,
+} = await import('../src/ui/scenes/ChatScene.js');
 
 const animationFrameQueue = [];
 globalThis.requestAnimationFrame = (callback) => {
@@ -58,6 +69,31 @@ processRichText(
 assert.match(richTextContainer.innerHTML, />Trang 2<\/button>/);
 assert.doesNotMatch(richTextContainer.innerHTML, /\[C2, C5\]/);
 assert.doesNotMatch(richTextContainer.innerHTML, />Trang 8<\/button>/);
+
+const rawAttentionFormula = String.raw`\operatorname{Attention}(Q, K, V) = \operatorname{softmax}\left(\frac{QK^T}{\sqrt{d_k}}\right)V`;
+
+assert.equal(
+    normalizeMathDelimiters(`\\[${rawAttentionFormula}\\]`),
+    `$$${rawAttentionFormula}$$`,
+);
+assert.equal(
+    normalizeMathDelimiters(`\\(${rawAttentionFormula}\\)`),
+    `$${rawAttentionFormula}$`,
+);
+assert.equal(
+    normalizeMathDelimiters(`${rawAttentionFormula} [C1]`),
+    `${rawAttentionFormula} [C1]`,
+);
+
+processRichText(
+    richTextContainer,
+    `$$${rawAttentionFormula}$$ [C1]`,
+    [{ citation_id: 'C1', source: 'paper.pdf', page: 4, document_id: 'doc-1' }],
+);
+
+assert.match(richTextContainer.innerHTML, /\$\$\\operatorname\{Attention\}/);
+assert.match(richTextContainer.innerHTML, />Trang 4<\/button>/);
+assert.doesNotMatch(richTextContainer.innerHTML, /\[C1\]/);
 
 const empty = { style: {} };
 const content = { style: {} };

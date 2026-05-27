@@ -309,6 +309,9 @@
 .message-text { color: #fff; font-size: 18px; line-height: 1.4; white-space: normal; }
 .message-text ul, .message-text ol { padding-left: 1.5em; }
 .message-text li { list-style-position: inside; }
+.message-text .katex { color: #fff; }
+.message-text .katex-display { margin: 10px 0; overflow-x: auto; overflow-y: hidden; padding: 4px 0; }
+.message-text .katex-error { color: inherit; }
 .message-meta { font-size: 15px; color: rgba(255, 255, 255, 0.6); }
 
 .chat-input { display: flex; gap: 10px; align-items: flex-end; }

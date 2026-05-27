@@ -101,6 +101,18 @@ class IngestProcessorRetryTests(unittest.TestCase):
         self.assertEqual(parent_drafts[0].source, "test.pdf")
         self.assertEqual(parent_drafts[0].doc_id, "doc-a")
 
+    def test_pdf_parse_forwards_progress_callback(self) -> None:
+        callback = object()
+
+        with patch.object(processor, "HybridPDFParser") as parser_cls:
+            parser = parser_cls.return_value
+            parser.parse_pdf.return_value = []
+
+            result = processor._run_pdf_parse("tmp.pdf", progress_callback=callback)
+
+        self.assertEqual(result, [])
+        parser.parse_pdf.assert_called_once_with("tmp.pdf", progress_callback=callback)
+
 
 if __name__ == "__main__":
     unittest.main()
