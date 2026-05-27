@@ -51,6 +51,18 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Build and push embedding image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/embedding.Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ steps.sha.outputs.owner }}/rag-philosophy-embedding:sha-${{ steps.sha.outputs.short }}
+            ghcr.io/${{ steps.sha.outputs.owner }}/rag-philosophy-embedding:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
       - name: Deploy to VM
         uses: appleboy/ssh-action@v1.2.0
         with:
@@ -69,9 +81,6 @@ jobs:
             echo "Pulling latest code"
             git pull --ff-only
 
-            echo "Cleaning Docker disk"
-            docker system prune -af > /dev/null 2>&1 || true
-
             export IMAGE_TAG
             echo "Deploying IMAGE_TAG=$IMAGE_TAG"
 
@@ -80,11 +89,13 @@ jobs:
             docker-compose -f docker-compose.vm.yml pull
             sleep 5
             docker-compose -f docker-compose.vm.yml down
+            echo "Cleaning old Docker images"
+            docker system prune -af > /dev/null 2>&1 || true
             docker-compose -f docker-compose.vm.yml up -d
 
-            # Wait for containers to initialize
-            echo "Waiting for containers to start..."
-            sleep 60
+            # Wait for containers to initialize (embedding start_period=120s + model download)
+            echo "Waiting for containers to start (embedding service may take 2-3 min)..."
+            sleep 240
 
             # Health checks (10s per check, ~60s total)
             ROLLBACK=false
