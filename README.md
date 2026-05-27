@@ -160,24 +160,8 @@ cp .env.example .env
 
 Sau đó chỉnh `.env` và thay các giá trị placeholder như `SECRET_KEY`, `GEMINI_API_KEY`, `OPENCODE_API_KEY`, OCR credentials và SMTP credentials nếu cần. Không commit `.env`.
 
-### Chạy Local Trên Windows
 
-Trên Windows, launcher của dự án khởi động Docker infrastructure cùng backend, worker và frontend local:
-
-```bat
-start.bat
-```
-
-Launcher sẽ:
-
-- khởi động Redis, Postgres, Qdrant, MinIO và embedding service bằng Docker Compose;
-- tạo `.venv` nếu chưa có;
-- cài `requirements.txt`;
-- chạy backend tại `http://127.0.0.1:8000`;
-- chạy frontend tại `http://127.0.0.1:5500`;
-- mở frontend trong trình duyệt.
-
-### Chạy Toàn Bộ Bằng Docker Compose
+### Chạy Bằng Docker Compose
 
 ```bash
 docker compose up -d
