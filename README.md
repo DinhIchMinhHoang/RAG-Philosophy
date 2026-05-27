@@ -75,7 +75,7 @@ Nginx
   |
   +--> FastAPI backend -----> Postgres
   |         |                   ^
-  |         | enqueue            |
+  |         | enqueue           |
   |         v                   |
   |      Redis -----> Celery worker
   |                     |
