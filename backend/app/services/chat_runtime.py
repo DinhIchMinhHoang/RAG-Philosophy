@@ -197,6 +197,8 @@ class ChatRuntimeService:
         selected_source_ids: list[str] | None = None,
         is_community: bool = False,
     ) -> list[RetrievedContext]:
+        if selected_source_ids is not None and len(selected_source_ids) == 0:
+            return []
         # Run-ready hybrid stub: keep same interface and return dense results,
         # while reserving hook points for future sparse merge + RRF.
         logger.info("hybrid_mode_stub_dense_passthrough")
@@ -221,6 +223,8 @@ class ChatRuntimeService:
         selected_source_ids: list[str] | None = None,
         is_community: bool = False,
     ) -> list[RetrievedContext]:
+        if selected_source_ids is not None and len(selected_source_ids) == 0:
+            return []
         vector = self._embed_query(question)
         scoped_document_ids = [source_id for source_id in (selected_source_ids or []) if source_id]
         must_filters = [
