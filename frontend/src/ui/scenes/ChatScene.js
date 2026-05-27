@@ -276,7 +276,7 @@ export function normalizeMathDelimiters(text) {
 }
 
 (function registerMarkedKatex() {
-    if (!window.marked || !window.katex) return;
+    if (typeof window === 'undefined' || !window.marked || !window.katex) return;
 
     const blockMath = {
         name: 'blockMath',
