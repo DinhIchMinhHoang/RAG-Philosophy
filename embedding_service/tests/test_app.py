@@ -19,6 +19,7 @@ def _fake_load_model() -> None:
     main.state.ready = True
     main.state.error = None
     main.state.dimension = 2
+    main.state.device = "cpu"
     main.state.loaded_at = 1.0
 
 
@@ -34,7 +35,10 @@ class EmbeddingServiceEndpointTests(unittest.TestCase):
                 self.assertEqual(info.status_code, 200)
                 self.assertEqual(info.json()["model_name"], main.settings.model_name)
                 self.assertEqual(info.json()["embedding_dimension"], 2)
+                self.assertEqual(info.json()["device"], "cpu")
+                self.assertEqual(info.json()["configured_device"], main.settings.device)
                 self.assertEqual(info.json()["normalize_embeddings"], True)
+                self.assertIn("cuda", info.json())
 
                 embed = client.post("/embed", json={"text": "hello"})
                 self.assertEqual(embed.status_code, 200)
@@ -43,6 +47,15 @@ class EmbeddingServiceEndpointTests(unittest.TestCase):
                 batch = client.post("/embed-batch", json={"texts": ["a", "b", "c"], "batch_size": 2})
                 self.assertEqual(batch.status_code, 200)
                 self.assertEqual(batch.json()["embeddings"], [[0.0, 0.5], [1.0, 1.5], [2.0, 2.5]])
+
+    def test_auto_device_uses_cuda_when_available(self) -> None:
+        with patch.object(main, "_cuda_status", return_value={"available": True, "device_count": 1}):
+            self.assertEqual(main._resolve_device("auto"), "cuda")
+
+    def test_auto_and_cuda_devices_fall_back_to_cpu_when_cuda_unavailable(self) -> None:
+        with patch.object(main, "_cuda_status", return_value={"available": False, "device_count": 0}):
+            self.assertEqual(main._resolve_device("auto"), "cpu")
+            self.assertEqual(main._resolve_device("cuda"), "cpu")
 
 
 if __name__ == "__main__":

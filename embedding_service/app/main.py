@@ -36,6 +36,7 @@ class ModelState:
     ready: bool = False
     error: str | None = None
     dimension: int | None = None
+    device: str | None = None
     loaded_at: float | None = None
 
 
@@ -58,7 +59,7 @@ def _int_env(name: str, default: int) -> int:
 def load_settings() -> EmbeddingSettings:
     return EmbeddingSettings(
         model_name=os.getenv("EMBEDDING_MODEL_NAME", "microsoft/harrier-oss-v1-270m").strip(),
-        device=os.getenv("EMBEDDING_DEVICE", os.getenv("DEVICE", "cpu")).strip() or "cpu",
+        device=os.getenv("EMBEDDING_DEVICE", os.getenv("DEVICE", "auto")).strip() or "auto",
         batch_size=_int_env("EMBEDDING_BATCH_SIZE", 32),
         warmup_text=os.getenv("EMBEDDING_WARMUP_TEXT", "embedding warmup").strip() or "embedding warmup",
     )
@@ -78,6 +79,68 @@ def _as_vectors(value: Any) -> list[list[float]]:
     if vectors and vectors[0] and isinstance(vectors[0][0], (int, float)):
         return [[float(item) for item in vector] for vector in vectors]
     return [[float(item) for item in vectors]]
+
+
+def _cuda_status() -> dict[str, object]:
+    try:
+        import torch
+    except Exception as exc:
+        return {"available": False, "error": f"torch import failed: {exc}"}
+
+    available = bool(torch.cuda.is_available())
+    status: dict[str, object] = {
+        "available": available,
+        "device_count": int(torch.cuda.device_count()) if available else 0,
+    }
+    if available:
+        status["current_device"] = int(torch.cuda.current_device())
+        status["device_name"] = torch.cuda.get_device_name(torch.cuda.current_device())
+    return status
+
+
+def _resolve_device(device: str) -> str:
+    normalized = (device or "").strip().lower()
+    if normalized in {"", "auto", "cuda-if-available"}:
+        status = _cuda_status()
+        if status.get("available"):
+            return "cuda"
+        logger.info(
+            "embedding_device_auto_fallback requested=%s resolved=cpu reason=%s",
+            device,
+            status.get("error") or "cuda_unavailable",
+        )
+        return "cpu"
+
+    if not normalized.startswith("cuda"):
+        return device
+
+    status = _cuda_status()
+    if not status.get("available"):
+        reason = status.get("error") or "torch.cuda.is_available() returned false"
+        logger.warning(
+            "embedding_device_cuda_fallback requested=%s resolved=cpu reason=%s",
+            device,
+            reason,
+        )
+        return "cpu"
+
+    if ":" not in normalized:
+        return device
+    _, _, raw_index = normalized.partition(":")
+    try:
+        index = int(raw_index)
+    except ValueError:
+        logger.warning("embedding_device_invalid_fallback requested=%s resolved=cpu", device)
+        return "cpu"
+    device_count = int(status.get("device_count") or 0)
+    if index < 0 or index >= device_count:
+        logger.warning(
+            "embedding_device_unavailable_fallback requested=%s resolved=cpu visible_cuda_devices=%s",
+            device,
+            device_count,
+        )
+        return "cpu"
+    return device
 
 
 def _require_ready() -> SentenceTransformer:
@@ -114,16 +177,18 @@ def _encode(texts: list[str], batch_size: int) -> list[list[float]]:
 
 def load_model() -> None:
     started = time.perf_counter()
+    resolved_device = _resolve_device(settings.device)
     logger.info(
-        "embedding_model_load_started model=%s device=%s normalize_embeddings=%s",
+        "embedding_model_load_started model=%s requested_device=%s resolved_device=%s normalize_embeddings=%s",
         settings.model_name,
         settings.device,
+        resolved_device,
         NORMALIZE_EMBEDDINGS,
     )
     try:
         model = SentenceTransformer(
             settings.model_name,
-            device=settings.device,
+            device=resolved_device,
             trust_remote_code=True,
         )
         with _encode_lock:
@@ -137,15 +202,17 @@ def load_model() -> None:
             raise RuntimeError("embedding warmup returned an empty vector")
         state.model = model
         state.dimension = len(warmup_vectors[0])
+        state.device = resolved_device
         state.ready = True
         state.error = None
         state.loaded_at = time.time()
         latency_ms = int((time.perf_counter() - started) * 1000)
         logger.info(
-            "embedding_model_ready model=%s dimension=%s device=%s normalize_embeddings=%s load_ms=%s",
+            "embedding_model_ready model=%s dimension=%s requested_device=%s resolved_device=%s normalize_embeddings=%s load_ms=%s",
             settings.model_name,
             state.dimension,
             settings.device,
+            resolved_device,
             NORMALIZE_EMBEDDINGS,
             latency_ms,
         )
@@ -206,7 +273,9 @@ def info() -> dict[str, object]:
     return {
         "model_name": settings.model_name,
         "embedding_dimension": state.dimension,
-        "device": settings.device,
+        "device": state.device or settings.device,
+        "configured_device": settings.device,
+        "cuda": _cuda_status(),
         "normalize_embeddings": NORMALIZE_EMBEDDINGS,
         "batch_size": settings.batch_size,
     }

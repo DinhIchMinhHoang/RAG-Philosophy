@@ -1,5 +1,12 @@
 services:
   embedding:
+    build:
+      args:
+        TORCH_INDEX_URL: ${TORCH_INDEX_URL:-https://download.pytorch.org/whl/cu121}
+    environment:
+      EMBEDDING_DEVICE: ${GPU_EMBEDDING_DEVICE:-auto}
+      NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-all}
+      NVIDIA_DRIVER_CAPABILITIES: ${NVIDIA_DRIVER_CAPABILITIES:-compute,utility}
     deploy:
       resources:
         reservations:

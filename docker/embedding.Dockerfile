@@ -10,8 +10,15 @@ ENV SENTENCE_TRANSFORMERS_HOME=/cache/huggingface
 
 WORKDIR /app
 
+ARG TORCH_INDEX_URL=https://download.pytorch.org/whl/cpu
+
+# Pre-install torch from an explicit index so the default image stays CPU-only,
+# while docker-compose.gpu.yml can switch the embedding service to a CUDA wheel.
+RUN pip install --upgrade pip \
+    && pip install torch --index-url "${TORCH_INDEX_URL}" --no-cache-dir
+
 COPY requirements.txt /app/requirements.txt
-RUN pip install --upgrade pip && pip install -r /app/requirements.txt
+RUN pip install -r /app/requirements.txt
 
 COPY embedding_service /app/embedding_service
 

@@ -34,7 +34,7 @@ class Config:
     QDRANT_COLLECTION: str = "rag_philosophy"
     TOP_K_RESULTS: int = 3
 
-    HYBRID_ENABLED: bool = False
+    HYBRID_ENABLED: bool = True
     HYBRID_FINAL_K: int = 3
     HYBRID_DENSE_K: int = 5
     HYBRID_SPARSE_K: int = 10

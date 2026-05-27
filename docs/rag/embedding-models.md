@@ -6,9 +6,17 @@ Embedding model is configured through environment variables:
 
 ```bash
 EMBEDDING_MODEL_NAME=microsoft/harrier-oss-v1-270m
-EMBEDDING_DEVICE=cpu
+EMBEDDING_DEVICE=auto
 EMBEDDING_BATCH_SIZE=32
 EMBEDDING_SERVICE_URL=http://embedding:8000
+```
+
+For Docker GPU runs, keep `EMBEDDING_DEVICE=auto` as the safe default and use
+the GPU override variables:
+
+```bash
+GPU_EMBEDDING_DEVICE=auto
+TORCH_INDEX_URL=https://download.pytorch.org/whl/cu121
 ```
 
 ## Model: microsoft/harrier-oss-v1-270m
@@ -42,8 +50,20 @@ Standalone `rag_core` scripts may still use `rag_core/common/embeddings.py` for 
 
 ## Device Configuration
 
-- **CPU**: Default, works on any machine without GPU
-- **CUDA**: Set `EMBEDDING_DEVICE=cuda` and start Compose with `docker-compose.gpu.yml` on a host with Nvidia runtime support.
+- **Auto**: Default. Uses CUDA when visible to PyTorch; otherwise uses CPU.
+- **CPU**: Set `EMBEDDING_DEVICE=cpu` to force CPU.
+- **CUDA**: Start Compose with `docker-compose.gpu.yml` on a host with Nvidia
+  Container Toolkit. The override sets `EMBEDDING_DEVICE` from
+  `GPU_EMBEDDING_DEVICE`, defaulting to `auto`, and builds the embedding image
+  with a CUDA PyTorch wheel.
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml build embedding
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+```
+
+The `/info` endpoint reports both `configured_device` and the resolved runtime
+`device`, plus CUDA availability.
 
 ## Performance Notes
 

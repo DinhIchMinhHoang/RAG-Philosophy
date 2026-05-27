@@ -105,9 +105,12 @@ curl -N http://localhost/api/chat/stream \
   -d "{\"message\":\"hello\"}"
 ```
 
-## Optional Local LLM / GPU Acceleration
+## Optional GPU Acceleration
 
-The default Compose stack starts the embedding service on CPU and does not start Ollama, so CPU-only hosts can boot the app normally. OCR uses the configured `OCR_*` API settings from `.env`.
+The default Compose stack starts the embedding service with
+`EMBEDDING_DEVICE=auto`, which resolves to CUDA only when CUDA is visible inside
+the container and otherwise falls back to CPU. CPU-only hosts and VMs can boot
+normally. OCR uses the configured `OCR_*` API settings from `.env`.
 
 To start the optional local Ollama fallback:
 
@@ -115,7 +118,30 @@ To start the optional local Ollama fallback:
 docker compose --profile local-llm up -d
 ```
 
-On hosts with an Nvidia runtime, enable GPU acceleration for embedding and optional Ollama with the override file:
+On hosts with Nvidia Container Toolkit installed, enable GPU acceleration for
+the embedding service with the override file:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml build embedding
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+```
+
+The GPU override sets `EMBEDDING_DEVICE` from `GPU_EMBEDDING_DEVICE`, defaulting
+to `auto`, and builds the embedding image with a CUDA PyTorch wheel from
+`TORCH_INDEX_URL`, defaulting to `https://download.pytorch.org/whl/cu121`.
+
+Verify the embedding service is using CUDA:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml exec embedding \
+  python -c "import json,urllib.request; print(json.load(urllib.request.urlopen('http://localhost:8000/info')))"
+```
+
+On a GPU host, the response should include `"configured_device": "auto"`,
+`"device": "cuda"`, and `"cuda": {"available": true, ...}`. On a CPU-only host,
+the service should stay healthy and report `"device": "cpu"`.
+
+To enable GPU acceleration for both embedding and optional Ollama:
 
 ```bash
 docker compose --profile local-llm -f docker-compose.yml -f docker-compose.gpu.yml up -d
