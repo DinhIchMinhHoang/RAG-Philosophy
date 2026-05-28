@@ -1,6 +1,6 @@
 # API Contracts
 
-## API Object (frontend/api.js)
+## API Object (frontend/src/api/client.js)
 
 ```javascript
 const API = {
@@ -61,7 +61,7 @@ const API = {
 - **Headers**: Authorization: Bearer token
 - **Body**: multipart/form-data with 'file' field; supported source files are PDF, DOCX, HTML/HTM, and Markdown
 - **Response**: `{document_id, job_id, status, pipeline_version, object_key}`
-- **Disabled formats**: Excel/CSV (`.xlsx`, `.xls`, `.csv`) are rejected with `400 Unsupported format` while tabular ingest/query is disabled
+- **Disabled formats**: Excel/CSV (.xlsx, .xls, .csv) are rejected with 400 Unsupported format while tabular ingest/query is disabled
 
 ### listSources()
 - **Endpoint**: GET /api/documents
@@ -85,12 +85,12 @@ const API = {
 ### chatStream(message, callbacks)
 - **Endpoint**: POST /api/chat/stream
 - **Request**: `{message: "question", notebook_id?: number, selected_source_ids?: string[]}`
-- **Response**: SSE stream with token events plus a final `done: true` payload
-- **Callback**: `onToken` called for each chunk, `onDone` receives the final SSE payload, `onError` handles stream failures
+- **Response**: SSE stream with token events plus a final done: true payload
+- **Callback**: onToken called for each chunk, onDone receives the final SSE payload, onError handles stream failures
 - **Selected-source semantics**:
-  - non-empty `selected_source_ids` restricts retrieval to those sources
-  - omitted or empty `selected_source_ids` falls back to all notebook sources
-  - when `notebook_id` is set, source IDs must belong to that notebook and the current user or backend returns `404`
+  - non-empty selected_source_ids restricts retrieval to those sources
+  - omitted or empty selected_source_ids falls back to all notebook sources
+  - when notebook_id is set, source IDs must belong to that notebook and the current user or backend returns 404
 
 ## Error Handling
 

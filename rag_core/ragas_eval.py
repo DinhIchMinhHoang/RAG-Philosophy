@@ -16,6 +16,7 @@ from typing import List, Dict, Any
 
 import fitz
 import pandas as pd
+import torch
 from datasets import Dataset
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_openai import ChatOpenAI
@@ -30,7 +31,7 @@ from ragas.metrics import faithfulness, answer_relevancy, context_precision, con
 
 from config import Config
 from common.logging_utils import configure_logging, get_logger
-from common.embeddings import build_embeddings
+from common.embeddings import get_embeddings
 from pipeline import ingest
 from step4_generator import SYSTEM_PROMPT
 
@@ -39,6 +40,7 @@ logger = get_logger(__name__)
 
 
 _CITATION_PATTERN = re.compile(r"\s*\[cite:\s*\d+\]\s*", re.IGNORECASE)
+_RAGAS_LLM_MODEL = "deepseek-v4-flash"
 
 
 def _strip_citations(text: str) -> str:
@@ -91,16 +93,38 @@ def _build_retriever() -> Any:
 def _build_llm() -> ChatOpenAI:
     if not Config.OPENCODE_API_KEY:
         raise EnvironmentError("OPENCODE_API_KEY is not set.")
+    logger.info(f"Using RAGAS eval LLM model: {_RAGAS_LLM_MODEL}")
     return ChatOpenAI(
-        model=Config.OPENCODE_MODEL,
+        model=_RAGAS_LLM_MODEL,
         openai_api_key=Config.OPENCODE_API_KEY,
         openai_api_base=Config.OPENCODE_API_BASE,
         temperature=0.2,
     )
 
 
+def _resolve_eval_embedding_device() -> str:
+    configured_device = (Config.DEVICE or "cpu").strip().lower()
+    if configured_device == "auto":
+        if torch.cuda.is_available():
+            return "cuda"
+        raise RuntimeError(
+            "RAGAS eval requires GPU embeddings, but EMBEDDING_DEVICE=auto "
+            "could not resolve to CUDA because torch.cuda.is_available() is false."
+        )
+
+    if configured_device.startswith("cuda") and not torch.cuda.is_available():
+        raise RuntimeError(
+            f"RAGAS eval requires GPU embeddings, but EMBEDDING_DEVICE={Config.DEVICE!r} "
+            "was requested and torch.cuda.is_available() is false."
+        )
+
+    return configured_device
+
+
 def _build_embeddings() -> Any:
-    return build_embeddings()
+    device = _resolve_eval_embedding_device()
+    logger.info(f"Using RAGAS eval embeddings: model={Config.EMBEDDING_MODEL_NAME}, device={device}")
+    return get_embeddings(model_name=Config.EMBEDDING_MODEL_NAME, device=device)
 
 
 def _generate_answer(llm: ChatOpenAI, question: str, contexts: List[str]) -> str:
