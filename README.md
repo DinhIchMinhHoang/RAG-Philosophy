@@ -7,7 +7,7 @@
 ![Lumina Notebook preview](data/LUMINA_1.png)
 
 [Website](http://luminanotebook.koreacentral.cloudapp.azure.com/) |
-[Report](REPORT\Report.pdf) |
+[Report](https://drive.google.com/file/d/1xTGA0uNg2hdblAurdsmPU3ecXpIgTkWN/view?usp=sharing) |
 [Feedback](https://github.com/DinhIchMinhHoang/RAG-Philosophy/issues)
 
 </div>
